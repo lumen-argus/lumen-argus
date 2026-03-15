@@ -67,6 +67,25 @@ def _exclude_private_ips(value: str) -> bool:
     return True
 
 
+def _validate_iban(value: str) -> bool:
+    """Validate IBAN using MOD-97 checksum (ISO 13616)."""
+    cleaned = value.replace(" ", "").upper()
+    if len(cleaned) < 5 or len(cleaned) > 34:
+        return False
+    # Move first 4 chars to end
+    rearranged = cleaned[4:] + cleaned[:4]
+    # Convert letters to numbers (A=10, B=11, ..., Z=35)
+    digits = []
+    for c in rearranged:
+        if c.isdigit():
+            digits.append(c)
+        elif c.isalpha():
+            digits.append(str(ord(c) - ord('A') + 10))
+        else:
+            return False
+    return int("".join(digits)) % 97 == 1
+
+
 PII_PATTERNS = (
     PIIPattern(
         "email",
@@ -108,7 +127,7 @@ PII_PATTERNS = (
         "iban",
         re.compile(r"\b[A-Z]{2}\d{2}[A-Z0-9]{4,30}\b"),
         "warning",
-        None,
+        _validate_iban,
     ),
     PIIPattern(
         "passport_us",

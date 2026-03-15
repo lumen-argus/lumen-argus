@@ -101,16 +101,6 @@ class TerminalDisplay:
         with self._lock:
             print(line)
 
-    def show_blocked_response(self, request_id: int, result: ScanResult) -> None:
-        """Display a block notification."""
-        detail = self._format_findings_summary(result)
-        with self._lock:
-            print("  %s Request #%d blocked: %s" % (
-                self._red("[BLOCKED]"),
-                request_id,
-                detail,
-            ))
-
     def show_error(self, request_id: int, error: str) -> None:
         """Display a proxy error."""
         with self._lock:

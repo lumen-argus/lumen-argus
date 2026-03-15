@@ -13,7 +13,7 @@ from lumen_argus.detectors.proprietary import ProprietaryDetector
 from lumen_argus.detectors.secrets import SecretsDetector
 from lumen_argus.extensions import ExtensionRegistry
 from lumen_argus.extractor import RequestExtractor
-from lumen_argus.models import Finding, ScanResult
+from lumen_argus.models import Finding, ScanField, ScanResult
 from lumen_argus.policy import PolicyEngine
 
 
@@ -87,7 +87,6 @@ class ScannerPipeline:
                 # Include truncated field up to the budget
                 remaining = self._max_scan_bytes - total_text
                 if remaining > 100:
-                    from lumen_argus.models import ScanField
                     fields_to_scan.append(ScanField(
                         path=field.path,
                         text=field.text[:remaining],

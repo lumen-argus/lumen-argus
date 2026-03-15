@@ -153,8 +153,6 @@ def main(argv=None):
         shutting_down[0] = True
         display.show_shutdown(0)
         audit.close()
-        # Request serve_forever to stop (non-blocking flag set)
-        server._BaseServer__shutdown_request = True
         # Close the listening socket so select() unblocks
         try:
             server.socket.close()

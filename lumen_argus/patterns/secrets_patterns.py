@@ -160,7 +160,7 @@ SECRETS_PATTERNS = (
     ),
     SecretPattern(
         "vault_token",
-        re.compile(r"(?:hvs|s)\.[A-Za-z0-9]{24,}"),
+        re.compile(r"\bhvs\.[A-Za-z0-9]{24,}"),
         "critical", False,
     ),
     SecretPattern(

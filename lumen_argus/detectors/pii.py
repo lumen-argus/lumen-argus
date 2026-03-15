@@ -47,7 +47,8 @@ def _find_field(pos: int, boundaries: List[Tuple[int, int, int]]) -> int:
             lo = mid + 1
         else:
             return boundaries[mid][2]
-    return 0
+    idx = min(lo, len(boundaries) - 1)
+    return boundaries[idx][2]
 
 
 class PIIDetector(BaseDetector):

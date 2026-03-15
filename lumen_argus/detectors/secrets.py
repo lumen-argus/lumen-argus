@@ -68,7 +68,9 @@ def _find_field(pos: int, boundaries: List[Tuple[int, int, int]]) -> int:
             lo = mid + 1
         else:
             return boundaries[mid][2]
-    return 0
+    # pos is in separator — return nearest field
+    idx = min(lo, len(boundaries) - 1)
+    return boundaries[idx][2]
 
 
 class SecretsDetector(BaseDetector):
@@ -126,14 +128,16 @@ class SecretsDetector(BaseDetector):
             if shannon_entropy(token) < self._entropy_threshold:
                 continue
 
-            start = max(0, span[0] - 100)
-            end = min(len(merged_lower), span[1] + 100)
+            # Clip context to same field's boundaries to avoid cross-field bleed
+            field_idx = _find_field(span[0], boundaries)
+            field_start, field_end, _ = boundaries[field_idx]
+            start = max(field_start, span[0] - 100)
+            end = min(field_end, span[1] + 100)
             context = merged_lower[start:end]
 
             if any(kw in context for kw in SECRET_PROXIMITY_KEYWORDS):
                 if allowlist.is_allowed_secret(token):
                     continue
-                field_idx = _find_field(span[0], boundaries)
                 findings.append(Finding(
                     detector="secrets",
                     type="high_entropy_string",

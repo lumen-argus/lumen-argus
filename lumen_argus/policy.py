@@ -5,7 +5,7 @@ from typing import List
 
 from lumen_argus.models import Finding
 
-ACTION_PRIORITY = {"block": 4, "redact": 3, "alert": 2, "log": 1}
+ACTION_PRIORITY = {"block": 4, "redact": 3, "alert": 2, "log": 1, "pass": 0}
 
 
 @dataclass
@@ -33,15 +33,18 @@ class PolicyEngine:
         if not findings:
             return ActionDecision(action="pass", reason="", findings=[])
 
-        # Assign action to each finding based on overrides
+        # Assign action to each finding based on overrides.
+        # In Community Edition, downgrade "redact" to "alert".
         for f in findings:
             if not f.action:
                 f.action = self._overrides.get(f.detector, self._default_action)
+            if f.action == "redact":
+                f.action = "alert"
 
         # Find highest-priority action
-        best_action = "log"
+        best_action = self._default_action
         best_finding = findings[0]
-        best_priority = 0
+        best_priority = ACTION_PRIORITY.get(self._default_action, 0)
 
         for f in findings:
             p = ACTION_PRIORITY.get(f.action, 0)

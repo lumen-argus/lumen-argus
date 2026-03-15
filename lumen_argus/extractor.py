@@ -130,23 +130,24 @@ class RequestExtractor:
             content = msg.get("content")
             role = msg.get("role", "")
 
-            if isinstance(content, str) and content:
-                fields.append(ScanField(
-                    path="messages[%d].content" % i,
-                    text=content,
-                ))
-            elif isinstance(content, list):
-                for j, part in enumerate(content):
-                    if isinstance(part, dict) and part.get("type") == "text":
-                        text = part.get("text", "")
-                        if text:
-                            fields.append(ScanField(
-                                path="messages[%d].content[%d]" % (i, j),
-                                text=text,
-                            ))
-
-            # Tool/function call results
-            if role == "tool":
+            if role != "tool":
+                # General content extraction (skip tool role — handled below)
+                if isinstance(content, str) and content:
+                    fields.append(ScanField(
+                        path="messages[%d].content" % i,
+                        text=content,
+                    ))
+                elif isinstance(content, list):
+                    for j, part in enumerate(content):
+                        if isinstance(part, dict) and part.get("type") == "text":
+                            text = part.get("text", "")
+                            if text:
+                                fields.append(ScanField(
+                                    path="messages[%d].content[%d]" % (i, j),
+                                    text=text,
+                                ))
+            else:
+                # Tool/function call results
                 tool_content = msg.get("content", "")
                 if isinstance(tool_content, str) and tool_content:
                     fields.append(ScanField(
