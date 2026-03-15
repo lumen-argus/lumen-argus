@@ -106,6 +106,7 @@ def main(argv=None):
     display = TerminalDisplay(no_color=args.no_color)
     audit = AuditLogger(log_dir=log_dir, retention_days=config.audit.retention_days)
     extensions = ExtensionRegistry()
+    extensions.load_plugins()
     allowlist = AllowlistMatcher(
         secrets=config.allowlist.secrets,
         pii=config.allowlist.pii,
