@@ -151,7 +151,8 @@ def main(argv=None):
             # Second signal — force exit immediately
             os._exit(1)
         shutting_down[0] = True
-        display.show_shutdown(0)
+        display.show_shutdown(server.stats.summary())
+        server.pool.close_all()
         audit.close()
         # Close the listening socket so select() unblocks
         try:
@@ -166,7 +167,8 @@ def main(argv=None):
         server.serve_forever()
     except (KeyboardInterrupt, OSError):
         if not shutting_down[0]:
-            display.show_shutdown(0)
+            display.show_shutdown(server.stats.summary())
+            server.pool.close_all()
             audit.close()
 
 

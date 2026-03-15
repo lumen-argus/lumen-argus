@@ -110,14 +110,41 @@ class TerminalDisplay:
                 error,
             ))
 
-    def show_shutdown(self, total_requests: int) -> None:
-        """Display shutdown summary."""
+    def show_shutdown(self, stats: dict = None) -> None:
+        """Display shutdown summary with optional session statistics."""
         with self._lock:
             print()
-            print("  %s — %d requests processed" % (
+            if not stats or stats.get("total_requests", 0) == 0:
+                print("  %s" % self._dim("shutdown"))
+                return
+
+            total = stats["total_requests"]
+            actions = stats.get("actions", {})
+            blocked = actions.get("block", 0)
+            alerted = actions.get("alert", 0)
+            avg_scan = stats.get("avg_scan_ms", 0)
+
+            print("  %s — %d requests | %d blocked | %d alerts | avg scan %.1fms" % (
                 self._dim("shutdown"),
-                total_requests,
+                total,
+                blocked,
+                alerted,
+                avg_scan,
             ))
+
+            # Finding type summary
+            finding_types = stats.get("finding_types", {})
+            if finding_types:
+                parts = []
+                for ftype, count in sorted(finding_types.items(), key=lambda x: -x[1]):
+                    if count > 1:
+                        parts.append("%s\u00d7%d" % (ftype, count))
+                    else:
+                        parts.append(ftype)
+                print("  %s %s" % (
+                    self._dim("findings:"),
+                    ", ".join(parts),
+                ))
 
     def _format_size(self, size_bytes: int) -> str:
         """Format byte size as human-readable (e.g. 88.3k)."""

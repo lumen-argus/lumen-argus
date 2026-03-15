@@ -5,6 +5,8 @@ Architecture follows the ClaudeTUI sniffer pattern:
 - Plain HTTP on localhost, HTTPS to upstream
 - SSE streaming passthrough via read1()
 - Full request body buffered for scanning before forwarding
+- Connection pool for upstream reuse (#12)
+- Session statistics tracking (#14)
 """
 
 import http.client
@@ -23,12 +25,11 @@ from lumen_argus.audit import AuditLogger
 from lumen_argus.display import TerminalDisplay
 from lumen_argus.models import AuditEntry, Finding, ScanResult
 from lumen_argus.pipeline import ScannerPipeline
+from lumen_argus.pool import ConnectionPool
 from lumen_argus.provider import ProviderRouter
+from lumen_argus.stats import SessionStats
 
 log = logging.getLogger("argus.proxy")
-
-# Shared SSL context — created once, reused across all connections.
-_SSL_CTX = ssl.create_default_context()
 
 # Thread-safe request counter.
 _request_counter = itertools.count(1)
@@ -70,7 +71,7 @@ class ArgusProxyHandler(http.server.BaseHTTPRequestHandler):
         self._forward()
 
     def _forward(self):
-        """Main request handling: read → scan → forward or block."""
+        """Main request handling: read -> scan -> forward or block."""
         request_id = next(_request_counter)
         server = self.server  # type: ArgusProxyServer
         t0 = time.monotonic()
@@ -85,7 +86,7 @@ class ArgusProxyHandler(http.server.BaseHTTPRequestHandler):
             if content_length > 0:
                 body = self.rfile.read(content_length)
 
-            # Detect provider and determine upstream (#1: use_ssl flag)
+            # Detect provider and determine upstream
             headers_dict = {k.lower(): v for k, v in self.headers.items()}
             host, port, use_ssl, provider = server.router.route(self.path, headers_dict)
             log.debug(
@@ -107,7 +108,7 @@ class ArgusProxyHandler(http.server.BaseHTTPRequestHandler):
             else:
                 is_streaming = False
 
-            # Scan request body (#5: oversized bodies get a finding)
+            # Scan request body
             if body and len(body) <= server.max_body_size:
                 scan_result = server.pipeline.scan(body, provider)
                 log.debug(
@@ -133,7 +134,7 @@ class ArgusProxyHandler(http.server.BaseHTTPRequestHandler):
                     % (len(body), server.max_body_size),
                 )
 
-            # Check if we should block (#2: SSE-aware block response)
+            # Check if we should block (SSE-aware block response)
             if not should_forward(scan_result):
                 if is_streaming:
                     block_body = build_sse_block_response(scan_result)
@@ -158,22 +159,20 @@ class ArgusProxyHandler(http.server.BaseHTTPRequestHandler):
                     server, request_id, provider, model,
                     scan_result, len(body), False,
                 )
+                server.stats.record(provider, len(body), scan_result)
                 return
 
-            # Forward to upstream (#1: use_ssl flag, #3: retry + timeout)
-            last_err = None
+            # Forward to upstream with retry and connection pooling.
+            # On retry after a stale-connection failure, force a fresh
+            # connection instead of pulling another potentially stale one
+            # from the pool.
+            force_fresh = False
             for attempt in range(server.retries + 1):
-                conn = None
+                if force_fresh:
+                    conn = server.pool._create_fresh(host, port, use_ssl)
+                else:
+                    conn = server.pool.get(host, port, use_ssl)
                 try:
-                    if use_ssl:
-                        conn = http.client.HTTPSConnection(
-                            host, port, context=_SSL_CTX, timeout=server.timeout,
-                        )
-                    else:
-                        conn = http.client.HTTPConnection(
-                            host, port, timeout=server.timeout,
-                        )
-
                     # Build forwarding headers
                     fwd_headers = {}
                     for key, val in self.headers.items():
@@ -206,21 +205,25 @@ class ArgusProxyHandler(http.server.BaseHTTPRequestHandler):
                     is_sse = is_streaming or "text/event-stream" in content_type
 
                     if is_sse:
-                        resp_size = self._stream_sse(resp)
+                        # SSE connections cannot be reused
+                        try:
+                            resp_size = self._stream_sse(resp)
+                        finally:
+                            conn.close()
                     else:
                         data = resp.read()
                         self.wfile.write(data)
                         resp_size = len(data)
+                        # Return non-streaming connection to pool for reuse
+                        server.pool.put(host, port, use_ssl, conn)
 
-                    conn.close()
-                    last_err = None
                     break  # success
 
                 except (ConnectionError, OSError, http.client.HTTPException) as e:
-                    last_err = e
-                    if conn:
-                        conn.close()
+                    conn.close()
                     if attempt < server.retries:
+                        force_fresh = True  # don't pull stale from pool on retry
+                        log.debug("#%d retry %d after %s", request_id, attempt + 1, e)
                         continue
                     raise
 
@@ -231,16 +234,18 @@ class ArgusProxyHandler(http.server.BaseHTTPRequestHandler):
                 (time.monotonic() - t0) * 1000, scan_result,
             )
 
-            # Audit log
+            # Audit log + stats
             self._log_audit(
                 server, request_id, provider, model,
                 scan_result, len(body), True,
             )
+            server.stats.record(provider, len(body), scan_result)
 
         except (BrokenPipeError, ConnectionResetError):
             pass  # Client disconnected
         except Exception as e:
             server.display.show_error(request_id, str(e))
+            server.stats.record(provider, len(body), scan_result)
             try:
                 error_body = json.dumps({
                     "error": {"type": "proxy_error", "message": str(e)}
@@ -314,6 +319,7 @@ class ArgusProxyServer(http.server.ThreadingHTTPServer):
         timeout: int = 30,
         retries: int = 1,
         max_body_size: int = 50 * 1024 * 1024,
+        pool_size: int = 4,
     ):
         # Hard safety invariant: never bind to 0.0.0.0
         if bind != "127.0.0.1" and bind != "localhost":
@@ -328,5 +334,9 @@ class ArgusProxyServer(http.server.ThreadingHTTPServer):
         self.timeout = timeout
         self.retries = retries
         self.max_body_size = max_body_size
+        self.pool = ConnectionPool(
+            pool_size=pool_size, timeout=timeout, idle_timeout=timeout * 2,
+        )
+        self.stats = SessionStats()
 
         super().__init__((bind, port), ArgusProxyHandler)
