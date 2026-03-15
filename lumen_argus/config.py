@@ -6,12 +6,15 @@ the config schema: mappings, sequences, scalars, comments, and quoted strings.
 No anchors, aliases, or multi-line blocks.
 """
 
+import logging
 import os
 import re
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+
+log = logging.getLogger("argus.config")
 
 
 # ---------------------------------------------------------------------------
@@ -534,6 +537,7 @@ def load_config(
             for w in _validate_config(data, str(global_path)):
                 _warn(w)
             _apply_config(config, data)
+            log.debug("loaded config from %s", global_path)
         except Exception as e:
             _warn("failed to parse %s: %s (using defaults)" % (global_path, e))
 

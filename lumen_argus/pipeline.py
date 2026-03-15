@@ -1,7 +1,10 @@
 """Scanner pipeline: orchestrates extraction, detection, and policy evaluation."""
 
+import logging
 import time
 from typing import List
+
+log = logging.getLogger("argus.pipeline")
 
 from lumen_argus.allowlist import AllowlistMatcher
 from lumen_argus.detectors import BaseDetector
@@ -65,6 +68,7 @@ class ScannerPipeline:
 
         # Extract scannable fields
         fields = self._extractor.extract(body, provider)
+        log.debug("extracted %d fields from %s request (%d bytes)", len(fields), provider, len(body))
 
         # Filter out allowlisted paths
         fields = [
@@ -93,10 +97,20 @@ class ScannerPipeline:
             fields_to_scan.append(field)
             total_text += len(field.text)
 
+        log.debug(
+            "scanning %d fields (%d chars, budget %d)",
+            len(fields_to_scan), total_text, self._max_scan_bytes,
+        )
+
         # Run all detectors
         all_findings = []  # type: List[Finding]
         for detector in self._detectors:
-            all_findings.extend(detector.scan(fields_to_scan, self._allowlist))
+            det_findings = detector.scan(fields_to_scan, self._allowlist)
+            if det_findings:
+                log.debug(
+                    "%s: %d findings", detector.__class__.__name__, len(det_findings),
+                )
+            all_findings.extend(det_findings)
 
         # Evaluate policy
         decision = self._policy.evaluate(all_findings)

@@ -11,6 +11,7 @@ import http.client
 import http.server
 import itertools
 import json
+import logging
 import ssl
 import threading
 import time
@@ -23,6 +24,8 @@ from lumen_argus.display import TerminalDisplay
 from lumen_argus.models import AuditEntry, Finding, ScanResult
 from lumen_argus.pipeline import ScannerPipeline
 from lumen_argus.provider import ProviderRouter
+
+log = logging.getLogger("argus.proxy")
 
 # Shared SSL context — created once, reused across all connections.
 _SSL_CTX = ssl.create_default_context()
@@ -85,6 +88,10 @@ class ArgusProxyHandler(http.server.BaseHTTPRequestHandler):
             # Detect provider and determine upstream (#1: use_ssl flag)
             headers_dict = {k.lower(): v for k, v in self.headers.items()}
             host, port, use_ssl, provider = server.router.route(self.path, headers_dict)
+            log.debug(
+                "#%d %s %s -> %s:%d (ssl=%s, provider=%s, %d bytes)",
+                request_id, self.command, self.path, host, port, use_ssl, provider, len(body),
+            )
 
             # Extract model from request body for display
             if body:
@@ -103,6 +110,10 @@ class ArgusProxyHandler(http.server.BaseHTTPRequestHandler):
             # Scan request body (#5: oversized bodies get a finding)
             if body and len(body) <= server.max_body_size:
                 scan_result = server.pipeline.scan(body, provider)
+                log.debug(
+                    "#%d scan: %d findings, action=%s, %.1fms",
+                    request_id, len(scan_result.findings), scan_result.action, scan_result.scan_duration_ms,
+                )
             elif len(body) > server.max_body_size:
                 scan_result = ScanResult(
                     action="pass",

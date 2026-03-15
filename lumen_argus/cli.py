@@ -1,6 +1,7 @@
 """CLI entry point: argument parsing, startup, and run loop."""
 
 import argparse
+import logging
 import os
 import signal
 import sys
@@ -44,12 +45,33 @@ def main(argv=None):
         help="Disable ANSI color output",
     )
     parser.add_argument(
+        "--log-level",
+        type=str, default="warning",
+        choices=["debug", "info", "warning", "error"],
+        help="Logging verbosity (default: warning)",
+    )
+    parser.add_argument(
         "--version", "-V",
         action="version",
         version="lumen-argus %s" % __version__,
     )
 
     args = parser.parse_args(argv)
+
+    # Configure logging — explicit handler setup instead of basicConfig()
+    # to avoid silent no-op if any import triggered basicConfig earlier.
+    log_level = getattr(logging, args.log_level.upper())
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setFormatter(logging.Formatter(
+        "  %(asctime)s [%(name)s] %(levelname)s: %(message)s",
+        datefmt="%H:%M:%S",
+    ))
+    root_logger = logging.getLogger()
+    root_logger.handlers.clear()
+    root_logger.addHandler(handler)
+    root_logger.setLevel(log_level)
+
+    log = logging.getLogger("argus.cli")
 
     # Load config
     config = load_config(config_path=args.config)
@@ -58,6 +80,18 @@ def main(argv=None):
     port = args.port or config.proxy.port
     bind = config.proxy.bind
     log_dir = args.log_dir or config.audit.log_dir
+
+    log.info("config: default_action=%s", config.default_action)
+    log.info(
+        "config: secrets=%s pii=%s proprietary=%s",
+        config.secrets.action or config.default_action,
+        config.pii.action or config.default_action,
+        config.proprietary.action or config.default_action,
+    )
+    log.info("config: allowlist secrets=%d pii=%d paths=%d",
+        len(config.allowlist.secrets), len(config.allowlist.pii), len(config.allowlist.paths),
+    )
+    log.info("config: timeout=%ds retries=%d", config.proxy.timeout, config.proxy.retries)
 
     # Build action overrides from per-detector config
     action_overrides = {}
