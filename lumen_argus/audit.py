@@ -53,8 +53,10 @@ class AuditLogger:
             self._file.flush()
 
     def close(self) -> None:
-        """Flush and close the log file."""
+        """Flush and close the log file. Safe to call multiple times."""
         with self._lock:
+            if self._file.closed:
+                return
             self._file.flush()
             self._file.close()
 

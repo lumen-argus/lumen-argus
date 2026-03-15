@@ -1,8 +1,10 @@
 """CLI entry point: argument parsing, startup, and run loop."""
 
 import argparse
+import os
 import signal
 import sys
+import threading
 
 from lumen_argus import __version__
 from lumen_argus.allowlist import AllowlistMatcher
@@ -103,25 +105,37 @@ def main(argv=None):
 
     display.show_banner(port, bind)
 
-    # Handle graceful shutdown
-    request_count = [0]
-
-    original_handler = signal.getsignal(signal.SIGINT)
+    # Handle graceful shutdown — signal handler must not call
+    # server.shutdown() directly because serve_forever() runs in the
+    # same thread, causing a deadlock.  Instead, set a flag and let
+    # the main thread break out of serve_forever() via _BaseServer
+    # internals, or simply close the socket and exit.
+    shutting_down = [False]
 
     def shutdown_handler(signum, frame):
-        display.show_shutdown(request_count[0])
+        if shutting_down[0]:
+            # Second signal — force exit immediately
+            os._exit(1)
+        shutting_down[0] = True
+        display.show_shutdown(0)
         audit.close()
-        server.shutdown()
-        sys.exit(0)
+        # Request serve_forever to stop (non-blocking flag set)
+        server._BaseServer__shutdown_request = True
+        # Close the listening socket so select() unblocks
+        try:
+            server.socket.close()
+        except Exception:
+            pass
 
     signal.signal(signal.SIGINT, shutdown_handler)
     signal.signal(signal.SIGTERM, shutdown_handler)
 
     try:
         server.serve_forever()
-    except KeyboardInterrupt:
-        display.show_shutdown(0)
-        audit.close()
+    except (KeyboardInterrupt, OSError):
+        if not shutting_down[0]:
+            display.show_shutdown(0)
+            audit.close()
 
 
 if __name__ == "__main__":
