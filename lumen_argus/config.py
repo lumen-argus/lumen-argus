@@ -449,6 +449,63 @@ def _check_unsupported_yaml(text: str, source: str) -> List[str]:
     return warnings
 
 
+_DEFAULT_CONFIG = """\
+# lumen-argus configuration
+# Docs: https://github.com/slima4/lumen-argus
+version: "1"
+
+proxy:
+  port: 8080
+  bind: "127.0.0.1"
+  timeout: 30
+  retries: 1
+
+# Global default action: log | alert | block
+default_action: alert
+
+detectors:
+  secrets:
+    enabled: true
+    action: block
+    entropy_threshold: 4.5
+
+  pii:
+    enabled: true
+    action: alert
+
+  proprietary:
+    enabled: true
+    action: alert
+
+# Never flag these
+allowlists:
+  secrets:
+    - "AKIAIOSFODNN7EXAMPLE"
+    - "sk-ant-api03-example"
+  pii:
+    - "*@example.com"
+    - "*@test.local"
+  paths:
+    - "test/**"
+    - "tests/**"
+    - "fixtures/**"
+
+audit:
+  log_dir: "~/.lumen-argus/audit"
+  retention_days: 90
+"""
+
+
+def _create_default_config(path: Path) -> None:
+    """Create a default config file on first run."""
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(_DEFAULT_CONFIG, encoding="utf-8")
+        _warn("created default config at %s" % path)
+    except OSError:
+        pass  # Non-fatal — will use in-memory defaults
+
+
 def load_config(
     config_path: Optional[str] = None,
     project_path: Optional[str] = None,
@@ -464,8 +521,10 @@ def load_config(
     """
     config = Config()
 
-    # Load global config
+    # Load global config — create default on first run
     global_path = Path(os.path.expanduser(config_path or "~/.lumen-argus/config.yaml"))
+    if not global_path.exists() and config_path is None:
+        _create_default_config(global_path)
     if global_path.exists():
         try:
             text = global_path.read_text(encoding="utf-8")
