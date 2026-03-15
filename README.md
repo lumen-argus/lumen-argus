@@ -26,10 +26,10 @@ lumen-argus sits between your AI tool and the provider, scanning every outbound 
 
 ## Quick Start
 
-**Requirements:** Python 3.8+ (zero external dependencies)
+**Requirements:** Python 3.9+ (zero external dependencies)
 
 ```bash
-# Clone and run
+# Clone and run — creates default config on first launch
 git clone https://github.com/slima4/lumen-argus.git
 cd lumen-argus
 python3 -m lumen_argus
@@ -52,6 +52,8 @@ OPENAI_BASE_URL=http://localhost:8080 your-tool
 GEMINI_BASE_URL=http://localhost:8080 your-tool
 ```
 
+Multiple sessions (including mixed providers) can share the same proxy instance.
+
 ## What It Detects
 
 ### Secrets (34 patterns + entropy analysis)
@@ -67,7 +69,7 @@ AWS keys, GitHub tokens, Anthropic/OpenAI/Google API keys, Stripe keys, Slack to
 | Credit Card | Luhn algorithm |
 | Phone (US/Intl) | Format check |
 | IP Address | Excludes private/loopback ranges |
-| IBAN | Country format |
+| IBAN | MOD-97 checksum |
 | Passport (US) | Context-required |
 
 ### Proprietary Code
@@ -77,7 +79,7 @@ AWS keys, GitHub tokens, Anthropic/OpenAI/Google API keys, Stripe keys, Slack to
 
 ## Performance
 
-Scanning overhead stays under 50ms for typical payloads (up to 100KB). Larger payloads are handled via a scan budget that prioritizes the most recent messages — where fresh file reads with potential secrets live.
+Scanning overhead stays under 50ms for typical payloads (up to 100KB). Larger payloads are handled via a scan budget that prioritizes the most recent messages — where fresh file reads with potential secrets live. Connection pooling eliminates redundant TLS handshakes for consecutive requests.
 
 | Payload Size | Median Scan Time | P95 |
 |---|---|---|
@@ -97,16 +99,21 @@ Run `python3 benchmark.py` to measure on your machine.
   #1   POST /v1/messages  opus-4-6  88.3k->1.5k  2312ms  PASS
   #2   POST /v1/messages  opus-4-6  90.1k->0.8k  1134ms  ALERT  aws_access_key (messages[4])
   #3   POST /v1/messages  opus-4-6  91.2k->2.1k  3412ms  BLOCK  private_key (tool_result[2])
+
+  shutdown — 3 requests | 1 blocked | 1 alerts | avg scan 12.3ms
+  findings: aws_access_key, private_key
 ```
 
 ## Configuration
 
-Create `~/.lumen-argus/config.yaml` (or copy `config-example.yaml`):
+A default config is created at `~/.lumen-argus/config.yaml` on first run. Edit it to customize:
 
 ```yaml
 proxy:
   port: 8080
   bind: "127.0.0.1"
+  timeout: 30       # upstream connection timeout (seconds)
+  retries: 1        # retry count on connection failure
 
 # Global default action: log | alert | block
 default_action: alert
@@ -147,18 +154,18 @@ Commit `.lumen-argus.yaml` to your repo root to enforce project-specific rules. 
 |---|---|
 | **log** | Record finding in audit log, allow request |
 | **alert** | Log + print to terminal, allow request |
-| **block** | Reject request with HTTP 403, return error to AI tool |
+| **block** | Reject request with HTTP 403 (or SSE error event for streaming) |
 
 When multiple detectors flag the same request, the highest-severity action wins: `block > alert > log`.
 
 ## Audit Log
 
-Every request produces a JSONL audit entry at `~/.lumen-argus/audit/guard-{timestamp}.jsonl` with `0600` permissions. Matched secret values are never written to disk — only masked previews (e.g., `AKIA****`).
+Every request produces a JSONL audit entry at `~/.lumen-argus/audit/guard-{timestamp}.jsonl` with `0600` permissions. Matched secret values are never written to disk — only masked previews (e.g., `AKIA****`). Old logs are automatically cleaned up based on `retention_days` (default: 90).
 
 ## CLI Options
 
 ```
-lumen-argus [--port PORT] [--config PATH] [--log-dir DIR] [--no-color] [--version]
+lumen-argus [--port PORT] [--config PATH] [--log-dir DIR] [--log-level LEVEL] [--no-color] [--version]
 ```
 
 | Flag | Default | Description |
@@ -166,7 +173,27 @@ lumen-argus [--port PORT] [--config PATH] [--log-dir DIR] [--no-color] [--versio
 | `--port`, `-p` | 8080 | Proxy port |
 | `--config`, `-c` | `~/.lumen-argus/config.yaml` | Config file path |
 | `--log-dir` | `~/.lumen-argus/audit/` | Audit log directory |
+| `--log-level` | warning | Logging verbosity: debug, info, warning, error |
 | `--no-color` | false | Disable ANSI colors |
+
+## Extensions
+
+lumen-argus supports plugins via Python entry points. Any pip package can register custom detectors:
+
+```toml
+# In your plugin's pyproject.toml
+[project.entry-points."lumen_argus.extensions"]
+my_plugin = "my_package:register"
+```
+
+```python
+# In my_package/__init__.py
+def register(registry):
+    from my_package.detectors import MyDetector
+    registry.add_detector(MyDetector())
+```
+
+Plugins are automatically discovered and loaded at startup.
 
 ## Security
 
@@ -174,6 +201,7 @@ lumen-argus [--port PORT] [--config PATH] [--log-dir DIR] [--no-color] [--versio
 - Plain HTTP on localhost, HTTPS to upstream — no TLS interception needed
 - Audit logs created with `0600` permissions
 - Matched values kept in memory only, never written to disk
+- Connection pooling scoped per-host — no auth header leakage across providers
 
 ## License
 
