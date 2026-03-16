@@ -20,8 +20,25 @@ class TestPackaging(unittest.TestCase):
             capture_output=True, text=True,
         )
         self.assertEqual(result.returncode, 0)
+        self.assertIn("serve", result.stdout)
+        self.assertIn("scan", result.stdout)
+
+    def test_serve_help(self):
+        result = subprocess.run(
+            [sys.executable, "-m", "lumen_argus", "serve", "--help"],
+            capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 0)
         self.assertIn("--port", result.stdout)
-        self.assertIn("--config", result.stdout)
+        self.assertIn("--format", result.stdout)
+
+    def test_scan_help(self):
+        result = subprocess.run(
+            [sys.executable, "-m", "lumen_argus", "scan", "--help"],
+            capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("files", result.stdout)
 
 
 if __name__ == "__main__":

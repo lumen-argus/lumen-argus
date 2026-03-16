@@ -14,6 +14,7 @@ class Finding:
     value_preview: str  # masked preview, e.g. "AKIA****"
     matched_value: str  # full match — kept in memory only, never written to disk
     action: str = ""    # resolved action for this finding
+    count: int = 1      # number of occurrences (after deduplication)
 
 
 @dataclass
@@ -63,6 +64,7 @@ class AuditEntry:
                     "location": f.location,
                     "value_preview": f.value_preview,
                     "action_taken": f.action,
+                    "count": f.count,
                 }
                 for f in self.findings
             ],

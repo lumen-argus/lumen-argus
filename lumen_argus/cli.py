@@ -11,7 +11,7 @@ from lumen_argus import __version__
 from lumen_argus.allowlist import AllowlistMatcher
 from lumen_argus.audit import AuditLogger
 from lumen_argus.config import load_config
-from lumen_argus.display import TerminalDisplay
+from lumen_argus.display import JsonDisplay, TerminalDisplay
 from lumen_argus.extensions import ExtensionRegistry
 from lumen_argus.pipeline import ScannerPipeline
 from lumen_argus.provider import ProviderRouter
@@ -25,38 +25,35 @@ def main(argv=None):
         description="AI coding tool DLP proxy — scan outbound requests for secrets, PII, and proprietary data.",
     )
     parser.add_argument(
-        "--port", "-p",
-        type=int, default=None,
-        help="Proxy port (default: 8080, or from config)",
-    )
-    parser.add_argument(
-        "--config", "-c",
-        type=str, default=None,
-        help="Path to config YAML (default: ~/.lumen-argus/config.yaml)",
-    )
-    parser.add_argument(
-        "--log-dir",
-        type=str, default=None,
-        help="Audit log directory (default: ~/.lumen-argus/audit/)",
-    )
-    parser.add_argument(
-        "--no-color",
-        action="store_true",
-        help="Disable ANSI color output",
-    )
-    parser.add_argument(
-        "--log-level",
-        type=str, default="warning",
-        choices=["debug", "info", "warning", "error"],
-        help="Logging verbosity (default: warning)",
-    )
-    parser.add_argument(
         "--version", "-V",
         action="version",
         version="lumen-argus %s" % __version__,
     )
 
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    # --- "serve" command ---
+    serve_parser = subparsers.add_parser("serve", help="Run the proxy server")
+    serve_parser.add_argument("--port", "-p", type=int, default=None, help="Proxy port (default: 8080)")
+    serve_parser.add_argument("--config", "-c", type=str, default=None, help="Config YAML path")
+    serve_parser.add_argument("--log-dir", type=str, default=None, help="Audit log directory")
+    serve_parser.add_argument("--no-color", action="store_true", help="Disable ANSI colors")
+    serve_parser.add_argument("--format", "-f", type=str, default="text", choices=["text", "json"], dest="output_format", help="Output format")
+    serve_parser.add_argument("--log-level", type=str, default="warning", choices=["debug", "info", "warning", "error"], help="Logging verbosity")
+
+    # --- "scan" command ---
+    scan_parser = subparsers.add_parser("scan", help="Scan files or stdin for secrets/PII (pre-commit hook)")
+    scan_parser.add_argument("files", nargs="*", help="Files to scan (reads stdin if none)")
+    scan_parser.add_argument("--config", "-c", type=str, default=None, help="Config YAML path")
+    scan_parser.add_argument("--format", "-f", type=str, default="text", choices=["text", "json"], dest="output_format", help="Output format")
+
     args = parser.parse_args(argv)
+
+    if args.command == "scan":
+        _run_scan(args)
+        return
+
+    # command == "serve"
 
     # Configure logging — explicit handler setup instead of basicConfig()
     # to avoid silent no-op if any import triggered basicConfig earlier.
@@ -103,7 +100,10 @@ def main(argv=None):
         action_overrides["proprietary"] = config.proprietary.action
 
     # Construct components
-    display = TerminalDisplay(no_color=args.no_color)
+    if args.output_format == "json":
+        display = JsonDisplay()
+    else:
+        display = TerminalDisplay(no_color=args.no_color)
     audit = AuditLogger(log_dir=log_dir, retention_days=config.audit.retention_days)
     extensions = ExtensionRegistry()
     extensions.load_plugins()
@@ -167,6 +167,42 @@ def main(argv=None):
     signal.signal(signal.SIGINT, shutdown_handler)
     signal.signal(signal.SIGTERM, shutdown_handler)
 
+    # SIGHUP: reload config without restarting (Unix only).
+    # Build replacement objects fully, then swap references atomically
+    # to avoid race conditions with request handler threads.
+    def reload_handler(signum, frame):
+        try:
+            new_config = load_config(config_path=args.config)
+            new_allowlist = AllowlistMatcher(
+                secrets=new_config.allowlist.secrets,
+                pii=new_config.allowlist.pii,
+                paths=new_config.allowlist.paths,
+            )
+            new_overrides = {}
+            if new_config.secrets.action:
+                new_overrides["secrets"] = new_config.secrets.action
+            if new_config.pii.action:
+                new_overrides["pii"] = new_config.pii.action
+            if new_config.proprietary.action:
+                new_overrides["proprietary"] = new_config.proprietary.action
+            from lumen_argus.policy import PolicyEngine
+            new_policy = PolicyEngine(
+                default_action=new_config.default_action,
+                action_overrides=new_overrides,
+            )
+            # Atomic swaps — each is a single reference assignment
+            server.pipeline._allowlist = new_allowlist
+            server.pipeline._policy = new_policy
+            server.timeout = new_config.proxy.timeout
+            server.retries = new_config.proxy.retries
+            log.info("config reloaded")
+            print("  [config] reloaded %s" % (args.config or "~/.lumen-argus/config.yaml"), file=sys.stderr)
+        except Exception as e:
+            print("  [config] reload failed: %s" % e, file=sys.stderr)
+
+    if hasattr(signal, "SIGHUP"):  # not available on Windows
+        signal.signal(signal.SIGHUP, reload_handler)
+
     try:
         server.serve_forever()
     except (KeyboardInterrupt, OSError):
@@ -174,6 +210,22 @@ def main(argv=None):
             display.show_shutdown(server.stats.summary())
             server.pool.close_all()
             audit.close()
+
+
+def _run_scan(args):
+    """Execute the 'scan' subcommand."""
+    from lumen_argus.scanner import scan_files, scan_text
+
+    if args.files:
+        exit_code = scan_files(args.files, config_path=args.config, output_format=args.output_format)
+    else:
+        # Read from stdin — warn if it's a terminal
+        if sys.stdin.isatty():
+            print("lumen-argus scan: reading from stdin (Ctrl+D to finish, or pass filenames)", file=sys.stderr)
+        text = sys.stdin.read()
+        exit_code = scan_text(text, config_path=args.config, output_format=args.output_format)
+
+    sys.exit(exit_code)
 
 
 if __name__ == "__main__":

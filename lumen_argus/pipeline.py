@@ -111,6 +111,11 @@ class ScannerPipeline:
                 )
             all_findings.extend(det_findings)
 
+        # Deduplicate findings — same (detector, type, matched_value) collapsed
+        # into one finding with a count. Reduces noise from repeated secrets
+        # in conversation history.
+        all_findings = self._deduplicate(all_findings)
+
         # Evaluate policy
         decision = self._policy.evaluate(all_findings)
 
@@ -121,3 +126,22 @@ class ScannerPipeline:
             scan_duration_ms=elapsed_ms,
             action=decision.action,
         )
+
+    @staticmethod
+    def _deduplicate(findings: List[Finding]) -> List[Finding]:
+        """Collapse duplicate findings into one with a count.
+
+        Same (detector, type, matched_value) → keep first occurrence, set count.
+        Creates new Finding objects to avoid mutating detector output.
+        """
+        from dataclasses import replace
+        seen = {}  # type: dict[tuple, int]
+        first = {}  # type: dict[tuple, Finding]
+        for f in findings:
+            key = (f.detector, f.type, f.matched_value)
+            if key in seen:
+                seen[key] += 1
+            else:
+                seen[key] = 1
+                first[key] = f
+        return [replace(first[k], count=c) for k, c in seen.items()]

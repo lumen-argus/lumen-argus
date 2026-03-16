@@ -29,14 +29,13 @@ lumen-argus sits between your AI tool and the provider, scanning every outbound 
 **Requirements:** Python 3.9+ (zero external dependencies)
 
 ```bash
-# Clone and run — creates default config on first launch
+# Clone and install
 git clone https://github.com/slima4/lumen-argus.git
 cd lumen-argus
-python3 -m lumen_argus
-
-# Or install as a CLI tool
 pip install -e .
-lumen-argus
+
+# Start the proxy — creates default config on first launch
+lumen-argus serve --port 8080
 ```
 
 Then point your AI tool at the proxy:
@@ -58,7 +57,7 @@ Multiple sessions (including mixed providers) can share the same proxy instance.
 
 ### Secrets (34 patterns + entropy analysis)
 
-AWS keys, GitHub tokens, Anthropic/OpenAI/Google API keys, Stripe keys, Slack tokens, JWTs, database URLs, PEM private keys, generic passwords, and more. High-entropy strings near secret-related keywords are also flagged via Shannon entropy analysis.
+AWS keys, GitHub tokens, Anthropic/OpenAI/Google API keys, Stripe keys, Slack tokens, JWTs, database URLs, PEM private keys, generic passwords, and more. High-entropy strings near secret-related keywords are also flagged via Shannon entropy analysis. Duplicate findings are automatically collapsed (e.g. `aws_access_key×47` instead of 47 separate lines).
 
 ### PII (8 patterns with validation)
 
@@ -98,11 +97,49 @@ Run `python3 benchmark.py` to measure on your machine.
 
   #1   POST /v1/messages  opus-4-6  88.3k->1.5k  2312ms  PASS
   #2   POST /v1/messages  opus-4-6  90.1k->0.8k  1134ms  ALERT  aws_access_key (messages[4])
-  #3   POST /v1/messages  opus-4-6  91.2k->2.1k  3412ms  BLOCK  private_key (tool_result[2])
+  #3   POST /v1/messages  opus-4-6  91.2k->2.1k  3412ms  BLOCK  private_key×3
 
   shutdown — 3 requests | 1 blocked | 1 alerts | avg scan 12.3ms
-  findings: aws_access_key, private_key
+  findings: aws_access_key, private_key×3
 ```
+
+## Commands
+
+### serve — Run the proxy
+
+```bash
+lumen-argus serve [--port PORT] [--config PATH] [--log-dir DIR] [--format text|json] [--log-level LEVEL] [--no-color]
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--port`, `-p` | 8080 | Proxy port |
+| `--config`, `-c` | `~/.lumen-argus/config.yaml` | Config file path |
+| `--log-dir` | `~/.lumen-argus/audit/` | Audit log directory |
+| `--format`, `-f` | text | Output format: `text` (human) or `json` (machine-readable) |
+| `--log-level` | warning | Logging verbosity: debug, info, warning, error |
+| `--no-color` | false | Disable ANSI colors |
+
+JSON format outputs one JSON line per request — useful for piping to `jq`, scripts, or log aggregation.
+
+### scan — Scan files for secrets (pre-commit hook)
+
+```bash
+# Scan specific files
+lumen-argus scan .env config.yaml
+
+# Scan stdin
+cat secrets.txt | lumen-argus scan
+
+# JSON output for CI
+lumen-argus scan --format json .env
+
+# As a git pre-commit hook
+echo 'lumen-argus scan "$@"' > .git/hooks/pre-commit
+chmod +x .git/hooks/pre-commit
+```
+
+Exit code: `0` = clean, `1` = findings detected.
 
 ## Configuration
 
@@ -112,7 +149,7 @@ A default config is created at `~/.lumen-argus/config.yaml` on first run. Edit i
 proxy:
   port: 8080
   bind: "127.0.0.1"
-  timeout: 30       # upstream connection timeout (seconds)
+  timeout: 120      # upstream connection timeout (seconds)
   retries: 1        # retry count on connection failure
 
 # Global default action: log | alert | block
@@ -135,7 +172,7 @@ detectors:
 # Never flag these
 allowlists:
   secrets:
-    - "AKIAIOSFODNN7EXAMPLE"
+    - "[REDACTED:aws_access_key_id_value]IOSFODNN7EXAMPLE"
   pii:
     - "*@example.com"
     - "*@test.local"
@@ -143,6 +180,16 @@ allowlists:
     - "test/**"
     - "fixtures/**"
 ```
+
+### Hot-Reload
+
+Send `SIGHUP` to reload config without restarting:
+
+```bash
+kill -HUP $(pgrep -f "lumen_argus")
+```
+
+Updates allowlists, action overrides, timeout, and retries. No proxy downtime.
 
 ### Project-Level Overrides
 
@@ -160,21 +207,13 @@ When multiple detectors flag the same request, the highest-severity action wins:
 
 ## Audit Log
 
-Every request produces a JSONL audit entry at `~/.lumen-argus/audit/guard-{timestamp}.jsonl` with `0600` permissions. Matched secret values are never written to disk — only masked previews (e.g., `AKIA****`). Old logs are automatically cleaned up based on `retention_days` (default: 90).
+Every request produces a JSONL audit entry at `~/.lumen-argus/audit/guard-{timestamp}.jsonl` with `0600` permissions. Matched secret values are never written to disk — only masked previews (e.g., `[REDACTED:aws_access_key_id_value]****`). Old logs are automatically cleaned up based on `retention_days` (default: 90).
 
-## CLI Options
+## Monitoring
 
-```
-lumen-argus [--port PORT] [--config PATH] [--log-dir DIR] [--log-level LEVEL] [--no-color] [--version]
-```
-
-| Flag | Default | Description |
-|---|---|---|
-| `--port`, `-p` | 8080 | Proxy port |
-| `--config`, `-c` | `~/.lumen-argus/config.yaml` | Config file path |
-| `--log-dir` | `~/.lumen-argus/audit/` | Audit log directory |
-| `--log-level` | warning | Logging verbosity: debug, info, warning, error |
-| `--no-color` | false | Disable ANSI colors |
+- **`/health`** — returns JSON with proxy status, version, and request count
+- **`--format json`** — structured JSON output for log aggregation
+- **Session stats** — on shutdown, shows request counts, action breakdown, finding types, avg scan time
 
 ## Extensions
 

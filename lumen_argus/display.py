@@ -1,5 +1,6 @@
-"""Terminal display: CLI output with ANSI colors."""
+"""Terminal display: CLI output with ANSI colors or JSON lines."""
 
+import json
 import sys
 import threading
 from typing import Optional
@@ -173,19 +174,71 @@ class TerminalDisplay:
         if not result.findings:
             return ""
 
-        # Group findings by type
-        type_counts = {}  # type: dict[str, tuple[int, str]]
-        for f in result.findings:
-            if f.type not in type_counts:
-                type_counts[f.type] = (0, f.location)
-            count, loc = type_counts[f.type]
-            type_counts[f.type] = (count + 1, loc)
-
         parts = []
-        for ftype, (count, location) in type_counts.items():
-            if count > 1:
-                parts.append("%s\u00d7%d" % (ftype, count))
+        for f in result.findings:
+            if f.count > 1:
+                parts.append("%s\u00d7%d" % (f.type, f.count))
             else:
-                parts.append("%s (%s)" % (ftype, location))
+                parts.append("%s (%s)" % (f.type, f.location))
 
         return ", ".join(parts)
+
+
+class JsonDisplay:
+    """JSON lines output for machine-readable / CI use."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+
+    def show_banner(self, port: int, bind: str = "127.0.0.1") -> None:
+        self._emit({"event": "start", "bind": bind, "port": port})
+
+    def show_request(
+        self,
+        request_id: int,
+        method: str,
+        path: str,
+        model: str,
+        req_size: int,
+        resp_size: int,
+        duration_ms: float,
+        result: ScanResult,
+    ) -> None:
+        findings = []
+        for f in result.findings:
+            entry = {
+                "detector": f.detector,
+                "type": f.type,
+                "severity": f.severity,
+                "location": f.location,
+                "action": f.action,
+            }
+            if f.count > 1:
+                entry["count"] = f.count
+            findings.append(entry)
+
+        self._emit({
+            "event": "request",
+            "request_id": request_id,
+            "method": method,
+            "path": path,
+            "model": model,
+            "req_bytes": req_size,
+            "resp_bytes": resp_size,
+            "duration_ms": round(duration_ms, 1),
+            "action": result.action,
+            "findings": findings,
+            "scan_ms": round(result.scan_duration_ms, 1),
+        })
+
+    def show_error(self, request_id: int, error: str) -> None:
+        self._emit({"event": "error", "request_id": request_id, "error": error})
+
+    def show_shutdown(self, stats: dict = None) -> None:
+        self._emit({"event": "shutdown", "stats": stats or {}})
+
+    def _emit(self, data: dict) -> None:
+        line = json.dumps(data, separators=(",", ":"))
+        with self._lock:
+            sys.stdout.write(line + "\n")
+            sys.stdout.flush()
