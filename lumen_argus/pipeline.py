@@ -43,6 +43,7 @@ class ScannerPipeline:
             action_overrides=action_overrides,
         )
         self._max_scan_bytes = max_scan_bytes
+        self._extensions = extensions
 
         # Build detector chain
         self._detectors = []  # type: List[BaseDetector]
@@ -121,11 +122,22 @@ class ScannerPipeline:
 
         elapsed_ms = (time.monotonic() - t0) * 1000
 
-        return ScanResult(
+        result = ScanResult(
             findings=decision.findings,
             scan_duration_ms=elapsed_ms,
             action=decision.action,
         )
+
+        # Fire post-scan hook for plugins (analytics, notifications, SSE)
+        if self._extensions:
+            hook = self._extensions.get_post_scan_hook()
+            if hook:
+                try:
+                    hook(result, body, provider)
+                except Exception:
+                    pass  # Never let plugin errors break the proxy
+
+        return result
 
     @staticmethod
     def _deduplicate(findings: List[Finding]) -> List[Finding]:

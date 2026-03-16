@@ -37,6 +37,8 @@ class ExtensionRegistry:
         self._detectors = []  # type: List[BaseDetector]
         self._notifiers = []  # type: list
         self._redact_hook = None  # type: Optional[ExtensionRegistry.RedactHook]
+        self._post_scan_hook = None  # type: Optional[Callable]
+        self._config_reload_hook = None  # type: Optional[Callable]
 
     def add_detector(self, detector: BaseDetector, priority: bool = False) -> None:
         """Register an additional detector.
@@ -61,6 +63,20 @@ class ExtensionRegistry:
     def get_redact_hook(self) -> "Optional[ExtensionRegistry.RedactHook]":
         """Return the registered redaction hook, or None."""
         return self._redact_hook
+
+    def set_post_scan_hook(self, hook: Callable) -> None:
+        """Register: hook(scan_result, body, provider) called after each scan."""
+        self._post_scan_hook = hook
+
+    def get_post_scan_hook(self) -> Optional[Callable]:
+        return self._post_scan_hook
+
+    def set_config_reload_hook(self, hook: Callable) -> None:
+        """Register: hook(pipeline) called after SIGHUP config reload."""
+        self._config_reload_hook = hook
+
+    def get_config_reload_hook(self) -> Optional[Callable]:
+        return self._config_reload_hook
 
     def extra_detectors(self) -> List[BaseDetector]:
         return list(self._detectors)

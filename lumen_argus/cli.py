@@ -195,6 +195,13 @@ def main(argv=None):
             server.pipeline._policy = new_policy
             server.timeout = new_config.proxy.timeout
             server.retries = new_config.proxy.retries
+            # Notify plugins of config reload
+            reload_hook = extensions.get_config_reload_hook()
+            if reload_hook:
+                try:
+                    reload_hook(server.pipeline)
+                except Exception:
+                    pass
             log.info("config reloaded")
             print("  [config] reloaded %s" % (args.config or "~/.lumen-argus/config.yaml"), file=sys.stderr)
         except Exception as e:
