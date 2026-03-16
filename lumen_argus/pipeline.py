@@ -117,8 +117,16 @@ class ScannerPipeline:
         # in conversation history.
         all_findings = self._deduplicate(all_findings)
 
-        # Evaluate policy
-        decision = self._policy.evaluate(all_findings)
+        # Evaluate policy — plugins can override via evaluate hook
+        eval_hook = self._extensions.get_evaluate_hook() if self._extensions else None
+        if eval_hook:
+            try:
+                decision = eval_hook(all_findings, self._policy)
+            except Exception:
+                log.warning("evaluate_hook raised, falling back to default policy")
+                decision = self._policy.evaluate(all_findings)
+        else:
+            decision = self._policy.evaluate(all_findings)
 
         elapsed_ms = (time.monotonic() - t0) * 1000
 

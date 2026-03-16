@@ -115,5 +115,23 @@ class TestConnectionPool(unittest.TestCase):
         pool.close_all()
 
 
+    def test_set_timeout_recycles_connections(self):
+        pool = ConnectionPool(pool_size=2, timeout=5)
+
+        conn = pool.get("127.0.0.1", self.port, False)
+        conn.request("GET", "/")
+        conn.getresponse().read()
+        pool.put("127.0.0.1", self.port, False, conn)
+
+        # Change timeout — should close all idle connections
+        pool.set_timeout(10)
+
+        # Next get should create a fresh connection (old one recycled)
+        conn2 = pool.get("127.0.0.1", self.port, False)
+        self.assertIsNot(conn, conn2)
+        conn2.close()
+        pool.close_all()
+
+
 if __name__ == "__main__":
     unittest.main()

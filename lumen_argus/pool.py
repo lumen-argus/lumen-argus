@@ -96,6 +96,12 @@ class ConnectionPool:
                 return
             conns.append((conn, time.monotonic()))
 
+    def set_timeout(self, timeout: int) -> None:
+        """Update pool timeout and recycle existing connections."""
+        with self._lock:
+            self._timeout = timeout
+        self.close_all()
+
     def close_all(self) -> None:
         """Close all idle connections in the pool."""
         with self._lock:

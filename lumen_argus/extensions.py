@@ -39,6 +39,7 @@ class ExtensionRegistry:
         self._redact_hook = None  # type: Optional[ExtensionRegistry.RedactHook]
         self._post_scan_hook = None  # type: Optional[Callable]
         self._config_reload_hook = None  # type: Optional[Callable]
+        self._evaluate_hook = None  # type: Optional[Callable]
 
     def add_detector(self, detector: BaseDetector, priority: bool = False) -> None:
         """Register an additional detector.
@@ -77,6 +78,23 @@ class ExtensionRegistry:
 
     def get_config_reload_hook(self) -> Optional[Callable]:
         return self._config_reload_hook
+
+    def set_evaluate_hook(self, hook: Callable) -> None:
+        """Register: hook(findings, policy) -> ActionDecision.
+
+        If set, called INSTEAD of PolicyEngine.evaluate() — the hook
+        fully replaces policy evaluation. The hook receives the findings
+        list and the policy instance for access to config (overrides,
+        default_action), but should NOT call policy.evaluate() because
+        Community Edition downgrades "redact" to "alert" inside it.
+
+        The hook must return an ActionDecision with action and findings.
+        On exception, falls back to default policy.evaluate().
+        """
+        self._evaluate_hook = hook
+
+    def get_evaluate_hook(self) -> Optional[Callable]:
+        return self._evaluate_hook
 
     def extra_detectors(self) -> List[BaseDetector]:
         return list(self._detectors)

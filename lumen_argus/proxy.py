@@ -405,3 +405,12 @@ class ArgusProxyServer(http.server.ThreadingHTTPServer):
         self.stats = SessionStats()
 
         super().__init__((bind, port), ArgusProxyHandler)
+
+    def update_timeout(self, timeout: int) -> None:
+        """Update request timeout for the proxy and its connection pool.
+
+        Public API for plugins to change timeout at runtime without
+        accessing private pool attributes.
+        """
+        self.timeout = timeout
+        self.pool.set_timeout(timeout)
