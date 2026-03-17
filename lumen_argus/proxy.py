@@ -107,6 +107,7 @@ class ArgusProxyHandler(http.server.BaseHTTPRequestHandler):
         body = b""
         resp_size = 0
         model = ""
+        host = ""
         scan_result = ScanResult()
 
         try:
@@ -319,6 +320,27 @@ class ArgusProxyHandler(http.server.BaseHTTPRequestHandler):
                 except Exception:
                     pass
             return
+        except ssl.SSLCertVerificationError as e:
+            msg = (
+                "TLS verification failed for %s — %s. "
+                "If behind a corporate proxy, set proxy.ca_bundle in "
+                "~/.lumen-argus/config.yaml" % (host, e)
+            )
+            log.error("#%d %s", request_id, msg)
+            server.display.show_error(request_id, msg)
+            server.stats.record(provider, len(body), scan_result)
+            try:
+                error_body = json.dumps({
+                    "error": {"type": "tls_error", "message": msg}
+                }).encode("utf-8")
+                self.send_response(502)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(error_body)))
+                self.end_headers()
+                self.wfile.write(error_body)
+            except Exception:
+                pass
+            return
         except Exception as e:
             log.error("#%d upstream error: %s", request_id, e)
             server.display.show_error(request_id, str(e))
@@ -406,6 +428,7 @@ class ArgusProxyServer(http.server.ThreadingHTTPServer):
         max_body_size: int = 50 * 1024 * 1024,
         pool_size: int = 4,
         redact_hook: object = None,
+        ssl_context=None,
     ):
         # Hard safety invariant: never bind to 0.0.0.0
         if bind != "127.0.0.1" and bind != "localhost":
@@ -423,6 +446,7 @@ class ArgusProxyServer(http.server.ThreadingHTTPServer):
         self.redact_hook = redact_hook
         self.pool = ConnectionPool(
             pool_size=pool_size, timeout=timeout, idle_timeout=timeout * 2,
+            ssl_context=ssl_context,
         )
         self.stats = SessionStats()
 

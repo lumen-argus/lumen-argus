@@ -2,6 +2,7 @@
 
 import http.client
 import logging
+import os
 import ssl
 import threading
 import time
@@ -9,11 +10,36 @@ from typing import Dict, List, Optional, Tuple
 
 log = logging.getLogger("argus.pool")
 
-# Shared SSL context — created once, reused across all connections.
-_SSL_CTX = ssl.create_default_context()
-
 # Key type: (host, port, use_ssl)
 _PoolKey = Tuple[str, int, bool]
+
+
+def build_ssl_context(ca_bundle: str = "", verify_ssl: bool = True) -> ssl.SSLContext:
+    """Build an SSL context from config.
+
+    Args:
+        ca_bundle: Path to a CA cert file or directory. Empty = system default.
+        verify_ssl: If False, disable certificate verification (dev/testing only).
+
+    Returns:
+        Configured ssl.SSLContext.
+    """
+    if not verify_ssl:
+        log.warning("TLS certificate verification is disabled — do not use in production")
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        return ctx
+
+    ctx = ssl.create_default_context()
+    if ca_bundle:
+        ca_path = os.path.expanduser(ca_bundle)
+        if os.path.isdir(ca_path):
+            ctx.load_verify_locations(capath=ca_path)
+        else:
+            ctx.load_verify_locations(cafile=ca_path)
+        log.info("loaded custom CA bundle: %s", ca_path)
+    return ctx
 
 
 class ConnectionPool:
@@ -24,16 +50,19 @@ class ConnectionPool:
     before the connection can be reused, and we don't buffer the full stream).
     """
 
-    def __init__(self, pool_size: int = 4, timeout: int = 30, idle_timeout: int = 60):
+    def __init__(self, pool_size: int = 4, timeout: int = 30, idle_timeout: int = 60,
+                 ssl_context: ssl.SSLContext = None):
         """
         Args:
             pool_size: Max idle connections per host.
             timeout: Socket timeout for connections (seconds).
             idle_timeout: Evict connections idle longer than this (seconds).
+            ssl_context: SSL context for HTTPS connections. If None, uses system default.
         """
         self._pool_size = pool_size
         self._timeout = timeout
         self._idle_timeout = idle_timeout
+        self._ssl_ctx = ssl_context or ssl.create_default_context()
         self._lock = threading.Lock()
         # pool_key -> list of (connection, last_used_timestamp)
         self._idle = {}  # type: Dict[_PoolKey, List[Tuple[http.client.HTTPConnection, float]]]
@@ -58,7 +87,7 @@ class ConnectionPool:
         # No pooled connection available — create new one
         if use_ssl:
             conn = http.client.HTTPSConnection(
-                host, port, context=_SSL_CTX, timeout=self._timeout,
+                host, port, context=self._ssl_ctx, timeout=self._timeout,
             )
         else:
             conn = http.client.HTTPConnection(
@@ -71,7 +100,7 @@ class ConnectionPool:
         """Create a new connection, bypassing the pool. Used on retry after stale failure."""
         if use_ssl:
             conn = http.client.HTTPSConnection(
-                host, port, context=_SSL_CTX, timeout=self._timeout,
+                host, port, context=self._ssl_ctx, timeout=self._timeout,
             )
         else:
             conn = http.client.HTTPConnection(

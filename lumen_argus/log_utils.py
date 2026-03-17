@@ -149,6 +149,10 @@ def config_diff(old, new):
         changes.append("proxy.retries: %d -> %d" % (old.proxy.retries, new.proxy.retries))
     if old.logging_config.file_level != new.logging_config.file_level:
         changes.append("logging.file_level: %s -> %s" % (old.logging_config.file_level, new.logging_config.file_level))
+    if old.proxy.ca_bundle != new.proxy.ca_bundle:
+        changes.append("proxy.ca_bundle: %s -> %s" % (old.proxy.ca_bundle or "(system)", new.proxy.ca_bundle or "(system)"))
+    if old.proxy.verify_ssl != new.proxy.verify_ssl:
+        changes.append("proxy.verify_ssl: %s -> %s" % (old.proxy.verify_ssl, new.proxy.verify_ssl))
     return changes
 
 

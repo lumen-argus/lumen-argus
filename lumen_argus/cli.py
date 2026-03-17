@@ -156,6 +156,13 @@ def main(argv=None):
     )
     router = ProviderRouter(upstreams=config.upstreams or None)
 
+    # Build SSL context for upstream connections
+    from lumen_argus.pool import build_ssl_context
+    ssl_context = build_ssl_context(
+        ca_bundle=config.proxy.ca_bundle,
+        verify_ssl=config.proxy.verify_ssl,
+    )
+
     # Start server
     try:
         server = ArgusProxyServer(
@@ -169,6 +176,7 @@ def main(argv=None):
             retries=config.proxy.retries,
             max_body_size=config.proxy.max_body_size,
             redact_hook=extensions.get_redact_hook(),
+            ssl_context=ssl_context,
         )
         extensions.set_proxy_server(server)
     except OSError as e:
@@ -267,6 +275,7 @@ def _do_reload(server, config_path, file_handler, console_level,
     """Reload config from disk — runs in main thread, safe for locks."""
     try:
         from lumen_argus.log_utils import config_diff
+        from lumen_argus.pool import build_ssl_context
 
         new_config = load_config(config_path=config_path)
         old = current_config[0]
@@ -297,6 +306,14 @@ def _do_reload(server, config_path, file_handler, console_level,
         )
         server.timeout = new_config.proxy.timeout
         server.retries = new_config.proxy.retries
+
+        # Rebuild SSL context if ca_bundle or verify_ssl changed
+        new_ssl_ctx = build_ssl_context(
+            ca_bundle=new_config.proxy.ca_bundle,
+            verify_ssl=new_config.proxy.verify_ssl,
+        )
+        server.pool._ssl_ctx = new_ssl_ctx
+        server.pool.close_all()
 
         new_file_level = getattr(logging, new_config.logging_config.file_level.upper())
         if file_handler.level != new_file_level:
