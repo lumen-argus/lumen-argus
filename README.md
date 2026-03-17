@@ -152,7 +152,16 @@ echo 'lumen-argus scan "$@"' > .git/hooks/pre-commit
 chmod +x .git/hooks/pre-commit
 ```
 
-Same detection engine as the proxy, same config, same allowlists. Exit code `0` = clean, `1` = findings.
+Same detection engine as the proxy, same config, same allowlists.
+
+**Exit codes:**
+
+| Code | Meaning | CI action |
+|------|---------|-----------|
+| 0 | No findings | Pass |
+| 1 | Findings with action `block` | Fail build |
+| 2 | Findings with action `alert`/`redact` | Warn (optional fail) |
+| 3 | Findings with action `log` | Informational |
 
 ### logs export — Share logs safely with support
 
