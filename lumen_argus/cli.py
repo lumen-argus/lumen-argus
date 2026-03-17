@@ -6,7 +6,6 @@ import os
 import platform
 import signal
 import sys
-import threading
 import time
 
 from lumen_argus import __version__
@@ -177,102 +176,143 @@ def main(argv=None):
     log.info("listening on http://%s:%d", bind, port)
     start_time = time.monotonic()
 
-    # Handle graceful shutdown — signal handler must not call
-    # server.shutdown() directly because serve_forever() runs in the
-    # same thread, causing a deadlock.  Instead, set a flag and let
-    # the main thread break out of serve_forever() via _BaseServer
-    # internals, or simply close the socket and exit.
+    # --- Signal-safe shutdown and reload ---
+    #
+    # Signal handlers must not acquire locks (logging, threading, I/O)
+    # because the signal may arrive while a request thread holds a lock,
+    # causing deadlock. Instead, handlers only set flags and wake the
+    # main loop. All lock-acquiring work runs in the main thread.
     shutting_down = [False]
+    reload_requested = [False]
 
     def shutdown_handler(signum, frame):
         if shutting_down[0]:
-            # Second signal — force exit immediately
-            os._exit(1)
+            os._exit(1)  # Second signal — force exit
         shutting_down[0] = True
-        uptime = time.monotonic() - start_time
-        log.info("shutdown: %d requests, uptime %.0fs", server.stats.total_requests, uptime)
-        display.show_shutdown(server.stats.summary())
-        server.pool.close_all()
-        audit.close()
-        # Close the listening socket so select() unblocks
+        # Close the listening socket to wake select() — no locks needed
         try:
             server.socket.close()
         except Exception:
             pass
 
+    def reload_handler(signum, frame):
+        reload_requested[0] = True
+        # set_wakeup_fd pipe write wakes select() automatically
+
     signal.signal(signal.SIGINT, shutdown_handler)
     signal.signal(signal.SIGTERM, shutdown_handler)
+
+    # Self-pipe trick: signal.set_wakeup_fd writes a byte to the pipe
+    # on any signal, waking select() in serve_forever() immediately
+    # (PEP 475 auto-retries select on EINTR, so without this SIGHUP
+    # would not wake the main loop until the next poll_interval).
+    wakeup_r, wakeup_w = os.pipe()
+    os.set_blocking(wakeup_r, False)
+    os.set_blocking(wakeup_w, False)
+    signal.set_wakeup_fd(wakeup_w)
+    if hasattr(signal, "SIGHUP"):
+        signal.signal(signal.SIGHUP, reload_handler)
 
     # Track current config for diff on reload
     current_config = [config]
 
-    # SIGHUP: reload config without restarting (Unix only).
-    # Build replacement objects fully, then swap references atomically
-    # to avoid race conditions with request handler threads.
-    def reload_handler(signum, frame):
-        try:
-            new_config = load_config(config_path=args.config)
-            # Log config diff
-            from lumen_argus.log_utils import config_diff
-            old = current_config[0]
-            changes = config_diff(old, new_config)
-            if changes:
-                log.info("config reloaded: %d changes", len(changes))
-                for change in changes:
-                    log.info("  %s", change)
-            current_config[0] = new_config
-            new_allowlist = AllowlistMatcher(
-                secrets=new_config.allowlist.secrets,
-                pii=new_config.allowlist.pii,
-                paths=new_config.allowlist.paths,
-            )
-            new_overrides = {}
-            if new_config.secrets.action:
-                new_overrides["secrets"] = new_config.secrets.action
-            if new_config.pii.action:
-                new_overrides["pii"] = new_config.pii.action
-            if new_config.proprietary.action:
-                new_overrides["proprietary"] = new_config.proprietary.action
-            server.pipeline.reload(
-                allowlist=new_allowlist,
-                default_action=new_config.default_action,
-                action_overrides=new_overrides,
-            )
-            server.timeout = new_config.proxy.timeout
-            server.retries = new_config.proxy.retries
-            # Update file log level if changed
-            new_file_level = getattr(logging, new_config.logging_config.file_level.upper())
-            if file_handler.level != new_file_level:
-                log.info("file log level: %s -> %s",
-                    logging.getLevelName(file_handler.level).lower(),
-                    new_config.logging_config.file_level,
-                )
-                file_handler.setLevel(new_file_level)
-                root_logger.setLevel(min(console_level, new_file_level))
-            # Notify plugins of config reload
-            reload_hook = extensions.get_config_reload_hook()
-            if reload_hook:
-                try:
-                    reload_hook(server.pipeline)
-                except Exception:
-                    pass
-            if not changes:
-                log.info("config reloaded (no changes)")
-        except Exception as e:
-            log.error("config reload failed: %s", e)
+    # Patch service_actions to handle reload in the main thread.
+    # service_actions() is called by serve_forever() on every poll
+    # cycle (~0.5s), safe for locks since it runs in the main thread.
+    _orig_service_actions = server.service_actions
 
-    if hasattr(signal, "SIGHUP"):  # not available on Windows
-        signal.signal(signal.SIGHUP, reload_handler)
+    def _service_actions():
+        _orig_service_actions()
+        # Drain the wakeup pipe
+        try:
+            os.read(wakeup_r, 1024)
+        except OSError:
+            pass
+        if reload_requested[0]:
+            reload_requested[0] = False
+            _do_reload(
+                server, args.config, file_handler, console_level,
+                root_logger, extensions, current_config, log,
+            )
+
+    server.service_actions = _service_actions
 
     try:
         server.serve_forever()
-    except (KeyboardInterrupt, OSError):
+    except KeyboardInterrupt:
+        pass
+    except OSError:
         if not shutting_down[0]:
-            uptime = time.monotonic() - start_time
-            log.info("shutdown: %d requests, uptime %.0fs", server.stats.total_requests, uptime)
-            display.show_shutdown(server.stats.summary())
-            server.pool.close_all()
-            audit.close()
+            raise
+
+    # Cleanup — runs in main thread, safe for all locks
+    uptime = time.monotonic() - start_time
+    log.info("shutdown: %d requests, uptime %.0fs", server.stats.total_requests, uptime)
+    display.show_shutdown(server.stats.summary())
+    server.pool.close_all()
+    audit.close()
+    # Close wakeup pipe
+    try:
+        os.close(wakeup_r)
+        os.close(wakeup_w)
+    except OSError:
+        pass
+
+
+def _do_reload(server, config_path, file_handler, console_level,
+               root_logger, extensions, current_config, log):
+    """Reload config from disk — runs in main thread, safe for locks."""
+    try:
+        from lumen_argus.log_utils import config_diff
+
+        new_config = load_config(config_path=config_path)
+        old = current_config[0]
+        changes = config_diff(old, new_config)
+        if changes:
+            log.info("config reloaded: %d changes", len(changes))
+            for change in changes:
+                log.info("  %s", change)
+        current_config[0] = new_config
+
+        new_allowlist = AllowlistMatcher(
+            secrets=new_config.allowlist.secrets,
+            pii=new_config.allowlist.pii,
+            paths=new_config.allowlist.paths,
+        )
+        new_overrides = {}
+        if new_config.secrets.action:
+            new_overrides["secrets"] = new_config.secrets.action
+        if new_config.pii.action:
+            new_overrides["pii"] = new_config.pii.action
+        if new_config.proprietary.action:
+            new_overrides["proprietary"] = new_config.proprietary.action
+        server.pipeline.reload(
+            allowlist=new_allowlist,
+            default_action=new_config.default_action,
+            action_overrides=new_overrides,
+        )
+        server.timeout = new_config.proxy.timeout
+        server.retries = new_config.proxy.retries
+
+        new_file_level = getattr(logging, new_config.logging_config.file_level.upper())
+        if file_handler.level != new_file_level:
+            log.info("file log level: %s -> %s",
+                logging.getLevelName(file_handler.level).lower(),
+                new_config.logging_config.file_level,
+            )
+            file_handler.setLevel(new_file_level)
+            root_logger.setLevel(min(console_level, new_file_level))
+
+        reload_hook = extensions.get_config_reload_hook()
+        if reload_hook:
+            try:
+                reload_hook(server.pipeline)
+            except Exception:
+                pass
+        if not changes:
+            log.info("config reloaded (no changes)")
+    except Exception as e:
+        log.error("config reload failed: %s", e)
 
 
 def _run_scan(args):
