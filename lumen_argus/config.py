@@ -546,7 +546,7 @@ detectors:
 # Never flag these
 allowlists:
   secrets:
-    - "AKIAEXAMPLE1234567890"
+    - "AKIAIOSFODNN7EXAMPLE"
     - "sk-ant-api03-example-key-not-real"
   pii:
     - "*@example.com"
