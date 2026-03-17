@@ -85,11 +85,24 @@ class ArgusProxyHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _handle_metrics(self):
+        """Respond to /metrics with Prometheus exposition format."""
+        server = self.server  # type: ArgusProxyServer
+        body = server.stats.prometheus_metrics().encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
     def _forward(self):
         """Main request handling: read -> scan -> forward or block."""
-        # Health check endpoint — handled locally, not forwarded
+        # Local endpoints — handled by proxy, not forwarded
         if self.path == "/health":
             self._handle_health()
+            return
+        if self.path == "/metrics":
+            self._handle_metrics()
             return
 
         request_id = next(_request_counter)

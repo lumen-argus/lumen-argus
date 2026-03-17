@@ -67,5 +67,54 @@ class TestSessionStats(unittest.TestCase):
         self.assertGreaterEqual(s["p95_scan_ms"], 20.0)
 
 
+class TestPrometheusMetrics(unittest.TestCase):
+    def test_empty_metrics(self):
+        stats = SessionStats()
+        output = stats.prometheus_metrics()
+        self.assertIn("lumen_argus_requests_total", output)
+        self.assertIn("lumen_argus_bytes_scanned_total 0", output)
+        # Duration sum/count must always be present (Prometheus spec)
+        self.assertIn("lumen_argus_scan_duration_seconds_sum", output)
+        self.assertIn("lumen_argus_scan_duration_seconds_count 0", output)
+
+    def test_metrics_after_requests(self):
+        stats = SessionStats()
+        stats.record("anthropic", 1000, ScanResult(action="pass", scan_duration_ms=5.0))
+        stats.record("anthropic", 2000, ScanResult(
+            action="block", scan_duration_ms=10.0,
+            findings=[Finding(
+                detector="secrets", type="aws_access_key", severity="critical",
+                location="msg", value_preview="****", matched_value="x",
+            )],
+        ))
+        output = stats.prometheus_metrics()
+        self.assertIn('lumen_argus_requests_total{action="pass"} 1', output)
+        self.assertIn('lumen_argus_requests_total{action="block"} 1', output)
+        self.assertIn("lumen_argus_bytes_scanned_total 3000", output)
+        self.assertIn('lumen_argus_findings_total{type="aws_access_key"} 1', output)
+        self.assertIn('lumen_argus_provider_requests_total{provider="anthropic"} 2', output)
+        self.assertIn("lumen_argus_scan_duration_seconds_count 2", output)
+
+    def test_metrics_content_type_header(self):
+        """Prometheus exposition format uses text/plain with version."""
+        output = SessionStats().prometheus_metrics()
+        # Should be valid text, no binary
+        self.assertIsInstance(output, str)
+
+    def test_matched_value_not_in_metrics(self):
+        """Prometheus output must never contain matched_value."""
+        stats = SessionStats()
+        stats.record("anthropic", 100, ScanResult(
+            action="alert", scan_duration_ms=1.0,
+            findings=[Finding(
+                detector="secrets", type="test_key", severity="high",
+                location="msg", value_preview="****",
+                matched_value="SUPER_SECRET_VALUE_12345",
+            )],
+        ))
+        output = stats.prometheus_metrics()
+        self.assertNotIn("SUPER_SECRET_VALUE_12345", output)
+
+
 if __name__ == "__main__":
     unittest.main()

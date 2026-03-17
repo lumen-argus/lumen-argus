@@ -63,3 +63,46 @@ class SessionStats:
                 "avg_scan_ms": round(avg_scan, 1),
                 "p95_scan_ms": round(p95_scan, 1),
             }
+
+    @staticmethod
+    def _escape_label(value: str) -> str:
+        """Escape a Prometheus label value."""
+        return value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+
+    def prometheus_metrics(self) -> str:
+        """Return stats in Prometheus exposition format (plain text)."""
+        with self._lock:
+            lines = []
+
+            # Request counters by action
+            lines.append("# HELP lumen_argus_requests_total Total proxied requests by action")
+            lines.append("# TYPE lumen_argus_requests_total counter")
+            for action, count in self.actions.items():
+                lines.append('lumen_argus_requests_total{action="%s"} %d' % (self._escape_label(action), count))
+
+            # Bytes scanned
+            lines.append("# HELP lumen_argus_bytes_scanned_total Total bytes scanned")
+            lines.append("# TYPE lumen_argus_bytes_scanned_total counter")
+            lines.append("lumen_argus_bytes_scanned_total %d" % self.total_bytes_scanned)
+
+            # Findings by type
+            lines.append("# HELP lumen_argus_findings_total Total findings by type")
+            lines.append("# TYPE lumen_argus_findings_total counter")
+            for ftype, count in self.finding_types.items():
+                lines.append('lumen_argus_findings_total{type="%s"} %d' % (self._escape_label(ftype), count))
+
+            # Requests by provider
+            lines.append("# HELP lumen_argus_provider_requests_total Requests by provider")
+            lines.append("# TYPE lumen_argus_provider_requests_total counter")
+            for provider, count in self.providers.items():
+                lines.append('lumen_argus_provider_requests_total{provider="%s"} %d' % (self._escape_label(provider), count))
+
+            # Scan duration
+            lines.append("# HELP lumen_argus_scan_duration_seconds Scan duration summary")
+            lines.append("# TYPE lumen_argus_scan_duration_seconds summary")
+            total_s = sum(self.scan_times_ms) / 1000.0 if self.scan_times_ms else 0.0
+            lines.append("lumen_argus_scan_duration_seconds_sum %.6f" % total_s)
+            lines.append("lumen_argus_scan_duration_seconds_count %d" % len(self.scan_times_ms))
+
+            lines.append("")  # trailing newline
+            return "\n".join(lines)
