@@ -246,6 +246,7 @@ class ProxyConfig:
     timeout: int = 120
     retries: int = 1
     max_body_size: int = 50 * 1024 * 1024  # 50MB
+    max_connections: int = 10    # max concurrent upstream connections
     ca_bundle: str = ""         # path to custom CA cert file/directory
     verify_ssl: bool = True     # set False for dev/testing only
 
@@ -315,7 +316,7 @@ _KNOWN_TOP_KEYS = {
     "license_key", "redaction", "dashboard", "analytics", "enterprise",
     "custom_detectors",
 }
-_KNOWN_PROXY_KEYS = {"port", "bind", "upstream", "timeout", "retries", "max_body_size", "ca_bundle", "verify_ssl"}
+_KNOWN_PROXY_KEYS = {"port", "bind", "upstream", "timeout", "retries", "max_body_size", "max_connections", "ca_bundle", "verify_ssl"}
 _KNOWN_DETECTOR_KEYS = {"enabled", "action", "entropy_threshold", "severity_threshold", "patterns", "types", "keywords", "file_patterns"}
 _KNOWN_AUDIT_KEYS = {"log_dir", "retention_days", "include_request_summary", "redact_findings_in_log"}
 _KNOWN_LOGGING_KEYS = {"log_dir", "file_level", "max_size_mb", "backup_count", "format", "output"}
@@ -384,6 +385,13 @@ def _validate_config(data: dict, source: str) -> List[str]:
                     warnings.append("%s: proxy.retries %d is out of range (0-5)" % (source, r))
             except (ValueError, TypeError):
                 warnings.append("%s: proxy.retries must be an integer" % source)
+        if "max_connections" in proxy:
+            try:
+                mc = int(proxy["max_connections"])
+                if mc < 1 or mc > 100:
+                    warnings.append("%s: proxy.max_connections %d is out of range (1-100)" % (source, mc))
+            except (ValueError, TypeError):
+                warnings.append("%s: proxy.max_connections must be an integer" % source)
         if "ca_bundle" in proxy:
             ca = str(proxy["ca_bundle"])
             if ca and not os.path.exists(os.path.expanduser(ca)):
@@ -713,6 +721,8 @@ def _apply_config(config: Config, data: dict) -> None:
             config.proxy.retries = int(proxy["retries"])
         if "max_body_size" in proxy:
             config.proxy.max_body_size = int(proxy["max_body_size"])
+        if "max_connections" in proxy:
+            config.proxy.max_connections = int(proxy["max_connections"])
         if "ca_bundle" in proxy:
             config.proxy.ca_bundle = str(proxy["ca_bundle"])
         if "verify_ssl" in proxy:

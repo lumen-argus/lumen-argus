@@ -224,74 +224,86 @@ class ArgusProxyHandler(http.server.BaseHTTPRequestHandler):
                 except Exception as e:
                     log.warning("#%d redaction failed: %s", request_id, e)
 
-            # Forward to upstream with retry and connection pooling.
-            # On retry after a stale-connection failure, force a fresh
-            # connection instead of pulling another potentially stale one
-            # from the pool.
-            force_fresh = False
-            for attempt in range(server.retries + 1):
-                if force_fresh:
-                    conn = server.pool._create_fresh(host, port, use_ssl)
-                else:
-                    conn = server.pool.get(host, port, use_ssl)
-                try:
-                    # Build forwarding headers
-                    fwd_headers = {}
-                    for key, val in self.headers.items():
-                        lk = key.lower()
-                        if lk in _HOP_BY_HOP:
-                            continue
-                        if lk in ("host", "accept-encoding"):
-                            continue
-                        # Recalculate Content-Length if body was modified (e.g. by redaction)
-                        if lk == "content-length":
-                            fwd_headers[key] = str(len(body))
-                            continue
-                        fwd_headers[key] = val
-                    fwd_headers["Host"] = host
+            # Backpressure: limit concurrent upstream connections.
+            # Semaphore blocks if max_connections is reached.
+            _sem_acquired = False
+            if not server._conn_semaphore.acquire(blocking=False):
+                log.warning("#%d queued — max concurrent connections reached", request_id)
+                server._conn_semaphore.acquire()
+            _sem_acquired = True
 
-                    conn.request(self.command, self.path, body, fwd_headers)
-                    resp = conn.getresponse()
-
-                    # Forward response status and headers
-                    self.send_response(resp.status)
-                    content_type = ""
-                    for hdr, val in resp.getheaders():
-                        lk = hdr.lower()
-                        if lk in _HOP_BY_HOP:
-                            continue
-                        if lk == "content-type":
-                            content_type = val
-                        if lk == "content-length" and (is_streaming or "text/event-stream" in content_type):
-                            continue
-                        self.send_header(hdr, val)
-                    self.end_headers()
-
-                    # Stream or read response body
-                    is_sse = is_streaming or "text/event-stream" in content_type
-
-                    if is_sse:
-                        # SSE connections cannot be reused
-                        try:
-                            resp_size = self._stream_sse(resp)
-                        finally:
-                            conn.close()
+            try:
+                # Forward to upstream with retry and connection pooling.
+                # On retry after a stale-connection failure, force a fresh
+                # connection instead of pulling another potentially stale one
+                # from the pool.
+                force_fresh = False
+                for attempt in range(server.retries + 1):
+                    if force_fresh:
+                        conn = server.pool._create_fresh(host, port, use_ssl)
                     else:
-                        data = resp.read()
-                        self.wfile.write(data)
-                        resp_size = len(data)
-                        # Return non-streaming connection to pool for reuse
-                        server.pool.put(host, port, use_ssl, conn)
+                        conn = server.pool.get(host, port, use_ssl)
+                    try:
+                        # Build forwarding headers
+                        fwd_headers = {}
+                        for key, val in self.headers.items():
+                            lk = key.lower()
+                            if lk in _HOP_BY_HOP:
+                                continue
+                            if lk in ("host", "accept-encoding"):
+                                continue
+                            # Recalculate Content-Length if body was modified (e.g. by redaction)
+                            if lk == "content-length":
+                                fwd_headers[key] = str(len(body))
+                                continue
+                            fwd_headers[key] = val
+                        fwd_headers["Host"] = host
 
-                    break  # success
+                        conn.request(self.command, self.path, body, fwd_headers)
+                        resp = conn.getresponse()
 
-                except (ConnectionError, OSError, http.client.HTTPException) as e:
-                    conn.close()
-                    if attempt < server.retries:
-                        force_fresh = True  # don't pull stale from pool on retry
-                        log.debug("#%d retry %d after %s", request_id, attempt + 1, e)
-                        continue
-                    raise
+                        # Forward response status and headers
+                        self.send_response(resp.status)
+                        content_type = ""
+                        for hdr, val in resp.getheaders():
+                            lk = hdr.lower()
+                            if lk in _HOP_BY_HOP:
+                                continue
+                            if lk == "content-type":
+                                content_type = val
+                            if lk == "content-length" and (is_streaming or "text/event-stream" in content_type):
+                                continue
+                            self.send_header(hdr, val)
+                        self.end_headers()
+
+                        # Stream or read response body
+                        is_sse = is_streaming or "text/event-stream" in content_type
+
+                        if is_sse:
+                            # SSE connections cannot be reused
+                            try:
+                                resp_size = self._stream_sse(resp)
+                            finally:
+                                conn.close()
+                        else:
+                            data = resp.read()
+                            self.wfile.write(data)
+                            resp_size = len(data)
+                            # Return non-streaming connection to pool for reuse
+                            server.pool.put(host, port, use_ssl, conn)
+
+                        break  # success
+
+                    except (ConnectionError, OSError, http.client.HTTPException) as e:
+                        conn.close()
+                        if attempt < server.retries:
+                            force_fresh = True  # don't pull stale from pool on retry
+                            log.debug("#%d retry %d after %s", request_id, attempt + 1, e)
+                            continue
+                        raise
+            finally:
+                if _sem_acquired:
+                    server._conn_semaphore.release()
 
             # Display request line
             server.display.show_request(
@@ -442,6 +454,7 @@ class ArgusProxyServer(http.server.ThreadingHTTPServer):
         pool_size: int = 4,
         redact_hook: object = None,
         ssl_context=None,
+        max_connections: int = 10,
     ):
         # Hard safety invariant: never bind to 0.0.0.0
         if bind != "127.0.0.1" and bind != "localhost":
@@ -457,6 +470,7 @@ class ArgusProxyServer(http.server.ThreadingHTTPServer):
         self.retries = retries
         self.max_body_size = max_body_size
         self.redact_hook = redact_hook
+        self._conn_semaphore = threading.Semaphore(max_connections)
         self.pool = ConnectionPool(
             pool_size=pool_size, timeout=timeout, idle_timeout=timeout * 2,
             ssl_context=ssl_context,

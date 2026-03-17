@@ -180,6 +180,7 @@ def main(argv=None):
             max_body_size=config.proxy.max_body_size,
             redact_hook=extensions.get_redact_hook(),
             ssl_context=ssl_context,
+            max_connections=config.proxy.max_connections,
         )
         extensions.set_proxy_server(server)
     except OSError as e:
@@ -309,6 +310,11 @@ def _do_reload(server, config_path, file_handler, console_level,
         )
         server.timeout = new_config.proxy.timeout
         server.retries = new_config.proxy.retries
+        if old.proxy.max_connections != new_config.proxy.max_connections:
+            log.warning(
+                "proxy.max_connections changed (%d -> %d) — requires restart to take effect",
+                old.proxy.max_connections, new_config.proxy.max_connections,
+            )
 
         # Rebuild SSL context if ca_bundle or verify_ssl changed
         new_ssl_ctx = build_ssl_context(
