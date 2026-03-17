@@ -453,6 +453,17 @@ def _validate_config(data: dict, source: str) -> List[str]:
                 warnings.append(
                     "%s: JSON log format requires Pro license" % source
                 )
+        if "output" in logging_sec:
+            output = str(logging_sec["output"]).lower()
+            if output not in ("file", "stdout", "both"):
+                warnings.append(
+                    "%s: logging.output '%s' is not valid (expected: file, stdout, both)"
+                    % (source, output)
+                )
+            elif output in ("stdout", "both"):
+                warnings.append(
+                    "%s: logging.output '%s' requires Pro license" % (source, output)
+                )
 
     # Validate allowlists section
     al = data.get("allowlists", {})
