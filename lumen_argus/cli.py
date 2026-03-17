@@ -46,6 +46,7 @@ def main(argv=None):
     # --- "scan" command ---
     scan_parser = subparsers.add_parser("scan", help="Scan files or stdin for secrets/PII (pre-commit hook)")
     scan_parser.add_argument("files", nargs="*", help="Files to scan (reads stdin if none)")
+    scan_parser.add_argument("--diff", nargs="?", const="", default=None, metavar="REF", help="Scan git diff only (staged changes by default, or diff against REF)")
     scan_parser.add_argument("--config", "-c", type=str, default=None, help="Config YAML path")
     scan_parser.add_argument("--format", "-f", type=str, default="text", choices=["text", "json"], dest="output_format", help="Output format")
 
@@ -338,9 +339,11 @@ def _do_reload(server, config_path, file_handler, console_level,
 
 def _run_scan(args):
     """Execute the 'scan' subcommand."""
-    from lumen_argus.scanner import scan_files, scan_text
+    from lumen_argus.scanner import scan_diff, scan_files, scan_text
 
-    if args.files:
+    if args.diff is not None:
+        exit_code = scan_diff(ref=args.diff or None, config_path=args.config, output_format=args.output_format)
+    elif args.files:
         exit_code = scan_files(args.files, config_path=args.config, output_format=args.output_format)
     else:
         # Read from stdin — warn if it's a terminal

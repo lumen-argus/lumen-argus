@@ -10,9 +10,11 @@ Exit codes:
 """
 
 import json
+import re
+import subprocess
 import sys
 from dataclasses import replace
-from typing import List
+from typing import Dict, List, Optional
 
 from lumen_argus.allowlist import AllowlistMatcher
 from lumen_argus.config import load_config
@@ -206,3 +208,133 @@ def scan_files(files: List[str], config_path: str = None, output_format: str = "
                     )
 
     return exit_code
+
+
+# Unified diff header: "+++ b/path"
+_DIFF_FILE_RE = re.compile(r"^\+\+\+ b/(.+)$")
+_BINARY_FILE_RE = re.compile(r"^Binary files .+ and b/(.+) differ$")
+
+
+def _parse_diff(diff_text: str) -> Dict[str, str]:
+    """Parse unified diff into {filename: added_lines_text}.
+
+    Only collects added lines (lines starting with '+', excluding
+    the '+++ b/...' header). Deleted lines are ignored since secrets
+    in removed code are no longer a risk.
+    """
+    files = {}  # type: Dict[str, str]
+    current_file = None
+    lines = []  # type: List[str]
+
+    for line in diff_text.splitlines():
+        m = _DIFF_FILE_RE.match(line)
+        if m:
+            if current_file and lines:
+                files[current_file] = "\n".join(lines)
+            current_file = m.group(1)
+            lines = []
+            continue
+        bm = _BINARY_FILE_RE.match(line)
+        if bm:
+            print("lumen-argus: skipped binary file %s" % bm.group(1), file=sys.stderr)
+            continue
+        if current_file and line.startswith("+") and not line.startswith("+++"):
+            lines.append(line[1:])  # strip the leading '+'
+
+    if current_file and lines:
+        files[current_file] = "\n".join(lines)
+
+    return files
+
+
+def scan_diff(
+    ref: Optional[str] = None,
+    config_path: Optional[str] = None,
+    output_format: str = "text",
+) -> int:
+    """Scan git diff for secrets/PII/proprietary content.
+
+    Args:
+        ref: Git ref to diff against (e.g. 'main', 'HEAD~3').
+             If None, scans staged changes (git diff --cached).
+        config_path: Path to config file.
+        output_format: 'text' or 'json'.
+
+    Returns:
+        Exit code: 0=clean, 1=block findings, 2=alert/redact only, 3=log only.
+    """
+    cmd = ["git", "diff", "--cached", "-U0"]
+    if ref:
+        cmd = ["git", "diff", ref, "-U0"]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+    except FileNotFoundError:
+        print("lumen-argus: git not found — --diff requires git", file=sys.stderr)
+        return 1
+    except subprocess.TimeoutExpired:
+        print("lumen-argus: git diff timed out", file=sys.stderr)
+        return 1
+
+    if result.returncode != 0:
+        stderr = result.stderr.strip()
+        if stderr:
+            print("lumen-argus: git diff failed: %s" % stderr, file=sys.stderr)
+        return 1
+
+    diff_text = result.stdout
+    if not diff_text.strip():
+        if output_format == "json":
+            print(json.dumps({"status": "clean", "findings": []}))
+        return 0
+
+    file_texts = _parse_diff(diff_text)
+    if not file_texts:
+        if output_format == "json":
+            print(json.dumps({"status": "clean", "findings": []}))
+        return 0
+
+    config = load_config(config_path=config_path)
+    allowlist = _build_allowlist(config)
+    detectors = _build_detectors(config)
+    exit_code = 0
+
+    for filepath, text in file_texts.items():
+        if allowlist.is_allowed_path(filepath):
+            continue
+
+        fields = [ScanField(path=filepath, text=text, source_filename=filepath)]
+        all_findings = []  # type: List[Finding]
+        for det in detectors:
+            all_findings.extend(det.scan(fields, allowlist))
+
+        findings = _deduplicate(all_findings)
+
+        if findings:
+            file_exit = _resolve_exit_code(findings, config)
+            if exit_code == 0 or file_exit < exit_code:
+                exit_code = file_exit
+
+            if output_format == "json":
+                print(json.dumps({
+                    "file": filepath,
+                    "count": len(findings),
+                    "exit_code": file_exit,
+                    "findings": [
+                        {
+                            "detector": f.detector,
+                            "type": f.type,
+                            "severity": f.severity,
+                            "location": f.location,
+                            "count": f.count,
+                        }
+                        for f in findings
+                    ],
+                }))
+            else:
+                print("lumen-argus: %s — %d finding(s)" % (filepath, len(findings)), file=sys.stderr)
+                for f in findings:
+                    count_str = " (\u00d7%d)" % f.count if f.count > 1 else ""
+                    print(
+                        "  [%s] %s: %s%s" % (f.severity.upper(), f.detector, f.type, count_str),
+                        file=sys.stderr,
+                    )
