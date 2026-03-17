@@ -51,6 +51,17 @@ class TestSanitizeLogLine(unittest.TestCase):
         # Directory path should be stripped
         self.assertNotIn("/home/alice/", result)
 
+    def test_bare_absolute_path_stripped(self):
+        line = "user home is /home/alice"
+        result = sanitize_log_line(line)
+        self.assertNotIn("/home/alice", result)
+        self.assertIn("alice", result)  # basename preserved
+
+    def test_tilde_path_stripped(self):
+        line = "config at ~/.lumen-argus/config.yaml"
+        result = sanitize_log_line(line)
+        self.assertNotIn("~/.lumen-argus/", result)
+
     def test_extra_hosts_preserved(self):
         line = "forwarding to custom.ai.internal.com:443"
         result = sanitize_log_line(line, extra_hosts={"custom.ai.internal.com"})

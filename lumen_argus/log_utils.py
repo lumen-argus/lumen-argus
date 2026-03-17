@@ -85,7 +85,8 @@ _PROVIDER_HOSTS = _build_provider_hosts()
 # Regex patterns for sanitization
 _IP_RE = re.compile(r"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b")
 _HOST_RE = re.compile(r"\b([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}\b")
-_PATH_RE = re.compile(r"(?<!\w)(/[\w./-]+/)([\w.-]+)")
+# Match absolute paths: /dir/dir/file or /dir/file or ~/dir/file
+_PATH_RE = re.compile(r"(?<!\w)(~?/[\w./-]+)")
 
 
 def sanitize_log_line(line, extra_hosts=None):
@@ -113,7 +114,7 @@ def sanitize_log_line(line, extra_hosts=None):
     line = _HOST_RE.sub(replace_host, line)
 
     # Replace file paths with basename only (keep the filename)
-    line = _PATH_RE.sub(lambda m: m.group(2), line)
+    line = _PATH_RE.sub(lambda m: os.path.basename(m.group(1)) or "[PATH]", line)
     return line
 
 

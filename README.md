@@ -198,7 +198,7 @@ detectors:
 # Never flag these
 allowlists:
   secrets:
-    - "[REDACTED:aws_access_key_id_value]IOSFODNN7EXAMPLE"
+    - "[REDACTED:aws_access_key_id_value]EXAMPLE1234567890"
   pii:
     - "*@example.com"
     - "*@test.local"
