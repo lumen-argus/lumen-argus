@@ -47,6 +47,8 @@ def main(argv=None):
     scan_parser = subparsers.add_parser("scan", help="Scan files or stdin for secrets/PII (pre-commit hook)")
     scan_parser.add_argument("files", nargs="*", help="Files to scan (reads stdin if none)")
     scan_parser.add_argument("--diff", nargs="?", const="", default=None, metavar="REF", help="Scan git diff only (staged changes by default, or diff against REF)")
+    scan_parser.add_argument("--baseline", type=str, default=None, metavar="FILE", help="Ignore findings in baseline file")
+    scan_parser.add_argument("--create-baseline", type=str, default=None, metavar="FILE", help="Save current findings as baseline")
     scan_parser.add_argument("--config", "-c", type=str, default=None, help="Config YAML path")
     scan_parser.add_argument("--format", "-f", type=str, default="text", choices=["text", "json"], dest="output_format", help="Output format")
 
@@ -342,9 +344,14 @@ def _run_scan(args):
     from lumen_argus.scanner import scan_diff, scan_files, scan_text
 
     if args.diff is not None:
+        if args.baseline or args.create_baseline:
+            print("lumen-argus: --baseline/--create-baseline not supported with --diff", file=sys.stderr)
         exit_code = scan_diff(ref=args.diff or None, config_path=args.config, output_format=args.output_format)
     elif args.files:
-        exit_code = scan_files(args.files, config_path=args.config, output_format=args.output_format)
+        exit_code = scan_files(
+            args.files, config_path=args.config, output_format=args.output_format,
+            baseline_path=args.baseline, create_baseline_path=args.create_baseline,
+        )
     else:
         # Read from stdin — warn if it's a terminal
         if sys.stdin.isatty():

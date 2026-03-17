@@ -147,15 +147,25 @@ def scan_text(
     return exit_code
 
 
-def scan_files(files: List[str], config_path: str = None, output_format: str = "text") -> int:
+def scan_files(
+    files: List[str],
+    config_path: str = None,
+    output_format: str = "text",
+    baseline_path: str = None,
+    create_baseline_path: str = None,
+) -> int:
     """Scan one or more files.
 
     Returns:
         Exit code: 0=clean, 1=block findings, 2=alert only, 3=log only.
     """
+    from lumen_argus.baseline import filter_baseline, load_baseline, save_baseline
+
     config = load_config(config_path=config_path)
     allowlist = _build_allowlist(config)
     detectors = _build_detectors(config)
+    baseline = load_baseline(baseline_path) if baseline_path else set()
+    all_file_findings = {}  # type: Dict[str, List[Finding]]
     exit_code = 0
 
     for filepath in files:
@@ -176,9 +186,16 @@ def scan_files(files: List[str], config_path: str = None, output_format: str = "
 
         findings = _deduplicate(all_findings)
 
+        # Collect all findings for create-baseline before filtering
+        if create_baseline_path and findings:
+            all_file_findings[filepath] = list(findings)
+
+        # Filter out baseline findings
+        if baseline:
+            findings = filter_baseline(findings, filepath, baseline)
+
         if findings:
             file_exit = _resolve_exit_code(findings, config)
-            # Keep highest severity (lowest exit code, but never downgrade)
             if exit_code == 0 or file_exit < exit_code:
                 exit_code = file_exit
 
@@ -206,6 +223,9 @@ def scan_files(files: List[str], config_path: str = None, output_format: str = "
                         "  [%s] %s: %s%s" % (f.severity.upper(), f.detector, f.type, count_str),
                         file=sys.stderr,
                     )
+
+    if create_baseline_path:
+        save_baseline(create_baseline_path, all_file_findings)
 
     return exit_code
 
