@@ -329,10 +329,12 @@ class Config:
 _VALID_ACTIONS = {"log", "alert", "redact", "block"}
 
 _KNOWN_TOP_KEYS = {
+    # Community keys
     "version", "proxy", "default_action", "detectors",
-    "allowlists", "audit", "logging", "notifications", "custom_rules",
-    # Pro/Enterprise extension keys (read by lumen-argus-pro plugin)
-    "license_key", "redaction", "dashboard", "analytics", "enterprise",
+    "allowlists", "audit", "logging", "custom_rules",
+    "dashboard", "analytics",
+    # Pro/Enterprise extension keys
+    "license_key", "redaction", "notifications", "enterprise",
     "custom_detectors",
 }
 _KNOWN_PROXY_KEYS = {"port", "bind", "upstream", "timeout", "retries", "max_body_size", "max_connections", "drain_timeout", "ca_bundle", "verify_ssl"}

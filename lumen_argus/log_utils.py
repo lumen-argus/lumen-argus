@@ -157,6 +157,22 @@ def config_diff(old, new):
         changes.append("proxy.ca_bundle: %s -> %s" % (old.proxy.ca_bundle or "(system)", new.proxy.ca_bundle or "(system)"))
     if old.proxy.verify_ssl != new.proxy.verify_ssl:
         changes.append("proxy.verify_ssl: %s -> %s" % (old.proxy.verify_ssl, new.proxy.verify_ssl))
+    # Dashboard (requires restart)
+    if old.dashboard.enabled != new.dashboard.enabled:
+        changes.append("dashboard.enabled: %s -> %s (restart required)" % (old.dashboard.enabled, new.dashboard.enabled))
+    if old.dashboard.port != new.dashboard.port:
+        changes.append("dashboard.port: %d -> %d (restart required)" % (old.dashboard.port, new.dashboard.port))
+    if old.dashboard.bind != new.dashboard.bind:
+        changes.append("dashboard.bind: %s -> %s (restart required)" % (old.dashboard.bind, new.dashboard.bind))
+    if old.dashboard.password != new.dashboard.password:
+        changes.append("dashboard.password: changed (restart required)")
+    # Analytics (requires restart)
+    if old.analytics.enabled != new.analytics.enabled:
+        changes.append("analytics.enabled: %s -> %s (restart required)" % (old.analytics.enabled, new.analytics.enabled))
+    if old.analytics.db_path != new.analytics.db_path:
+        changes.append("analytics.db_path: changed (restart required)")
+    if old.analytics.retention_days != new.analytics.retention_days:
+        changes.append("analytics.retention_days: %d -> %d (restart required)" % (old.analytics.retention_days, new.analytics.retention_days))
     return changes
 
 
