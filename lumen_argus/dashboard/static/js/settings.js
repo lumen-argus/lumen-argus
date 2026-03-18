@@ -1,41 +1,66 @@
 /* settings.js — config display, license input, log download */
 function loadSettings(){
-  fetch('/api/v1/config').then(function(r){return r.json()}).then(function(cfg){
+  Promise.all([
+    fetch('/api/v1/config').then(function(r){return r.json()}),
+    fetch('/api/v1/status').then(function(r){return r.json()})
+  ]).then(function(results){
+    var cfg=results[0],status=results[1];
     var el=document.getElementById('settings-content');el.replaceChildren();
+    var tier=status.tier||'community';
+    var proActive=tier==='pro';
 
-    /* License key input */
+    /* License section */
     var licGrp=document.createElement('div');licGrp.className='setting-group';
     var lh=document.createElement('h3');lh.textContent='License';licGrp.appendChild(lh);
-    var licRow=document.createElement('div');licRow.className='form-row';
-    var licLbl=document.createElement('label');licLbl.textContent='Key';
-    var licInput=document.createElement('input');licInput.type='text';licInput.id='license-key-input';
-    licInput.placeholder='Enter Pro license key';licInput.style.flex='1';
-    var licBtn=document.createElement('div');licBtn.className='btn btn-primary btn-sm';licBtn.textContent='Activate';
-    licBtn.addEventListener('click',function(){
-      var key=document.getElementById('license-key-input').value.trim();
-      if(!key)return;
-      fetch('/api/v1/license',{method:'POST',headers:csrfHeaders({'Content-Type':'application/json'}),
-        body:JSON.stringify({key:key})}).then(function(r){return r.json()}).then(function(res){
-        var msg=document.getElementById('license-result');
-        msg.textContent=res.message||res.error||'Done';
-        msg.style.color=res.error?'var(--critical)':'var(--accent)';
-        msg.style.display='block';
-      }).catch(function(e){
-        var msg=document.getElementById('license-result');
-        msg.textContent='Failed: '+e.message;msg.style.color='var(--critical)';msg.style.display='block';
-      });
-    });
-    licRow.appendChild(licLbl);licRow.appendChild(licInput);licRow.appendChild(licBtn);
-    licGrp.appendChild(licRow);
-    var licResult=document.createElement('div');licResult.id='license-result';
-    licResult.style.cssText='font-family:var(--font-data);font-size:.78rem;margin-top:6px;display:none';
-    licGrp.appendChild(licResult);
 
-    var trialRow=document.createElement('div');trialRow.style.marginTop='10px';
-    var trialLink=document.createElement('a');trialLink.href='https://lumen-argus.com/trial';
-    trialLink.target='_blank';trialLink.className='btn btn-sm';trialLink.textContent='Start Free Trial';
-    trialRow.appendChild(trialLink);
-    licGrp.appendChild(trialRow);
+    /* Show current tier */
+    var tierRow=document.createElement('div');tierRow.className='setting-row';
+    var tierKey=document.createElement('div');tierKey.className='setting-key';tierKey.textContent='Tier';
+    var tierVal=document.createElement('div');tierVal.className='setting-val';
+    tierVal.textContent=proActive?'Pro':'Community';
+    tierVal.classList.add(proActive?'enabled':'disabled');
+    tierRow.appendChild(tierKey);tierRow.appendChild(tierVal);licGrp.appendChild(tierRow);
+
+    if(proActive&&status.pro_version){
+      var verRow=document.createElement('div');verRow.className='setting-row';
+      var verKey=document.createElement('div');verKey.className='setting-key';verKey.textContent='Pro version';
+      var verVal=document.createElement('div');verVal.className='setting-val';verVal.textContent=status.pro_version;
+      verRow.appendChild(verKey);verRow.appendChild(verVal);licGrp.appendChild(verRow);
+    }
+
+    if(!proActive){
+      /* License key input — only show when Pro is not active */
+      var licRow=document.createElement('div');licRow.className='form-row';licRow.style.marginTop='12px';
+      var licLbl=document.createElement('label');licLbl.textContent='Key';
+      var licInput=document.createElement('input');licInput.type='text';licInput.id='license-key-input';
+      licInput.placeholder='Enter license key';licInput.style.flex='1';
+      var licBtn=document.createElement('div');licBtn.className='btn btn-primary btn-sm';licBtn.textContent='Activate';
+      licBtn.addEventListener('click',function(){
+        var key=document.getElementById('license-key-input').value.trim();
+        if(!key)return;
+        fetch('/api/v1/license',{method:'POST',headers:csrfHeaders({'Content-Type':'application/json'}),
+          body:JSON.stringify({key:key})}).then(function(r){return r.json()}).then(function(res){
+          var msg=document.getElementById('license-result');
+          msg.textContent=res.message||res.error||'Done';
+          msg.style.color=res.error?'var(--critical)':'var(--accent)';
+          msg.style.display='block';
+        }).catch(function(e){
+          var msg=document.getElementById('license-result');
+          msg.textContent='Failed: '+e.message;msg.style.color='var(--critical)';msg.style.display='block';
+        });
+      });
+      licRow.appendChild(licLbl);licRow.appendChild(licInput);licRow.appendChild(licBtn);
+      licGrp.appendChild(licRow);
+      var licResult=document.createElement('div');licResult.id='license-result';
+      licResult.style.cssText='font-family:var(--font-data);font-size:.78rem;margin-top:6px;display:none';
+      licGrp.appendChild(licResult);
+
+      var trialRow=document.createElement('div');trialRow.style.marginTop='10px';
+      var trialLink=document.createElement('a');trialLink.href='https://lumen-argus.com/trial';
+      trialLink.target='_blank';trialLink.className='btn btn-sm';trialLink.textContent='Start Free Trial';
+      trialRow.appendChild(trialLink);
+      licGrp.appendChild(trialRow);
+    }
     el.appendChild(licGrp);
 
     /* Read-only config sections */

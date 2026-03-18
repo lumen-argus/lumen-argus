@@ -48,7 +48,8 @@ def _json_response(status: int, data) -> tuple:
 
 
 def handle_community_api(path: str, method: str, body: bytes,
-                         store, audit_reader=None, config=None) -> tuple:
+                         store, audit_reader=None, config=None,
+                         extensions=None) -> tuple:
     """Handle a community API request.
 
     Returns (status_code, response_body_bytes).
@@ -59,7 +60,7 @@ def handle_community_api(path: str, method: str, body: bytes,
 
     if method == "GET":
         if path == "/api/v1/status":
-            return _handle_status(store)
+            return _handle_status(store, extensions)
 
         if path == "/api/v1/findings":
             return _handle_findings_list(params, store)
@@ -114,13 +115,21 @@ def handle_community_api(path: str, method: str, body: bytes,
 
 # --- Handler implementations ---
 
-def _handle_status(store) -> tuple:
+def _handle_status(store, extensions=None) -> tuple:
     uptime = time.monotonic() - _start_time
+    plugins = extensions.loaded_plugins() if extensions else []
+    pro_active = any(name == "pro" for name, _ in plugins)
+    pro_version = ""
+    for name, ver in plugins:
+        if name == "pro":
+            pro_version = ver
     data = {
         "status": "operational",
         "version": __version__,
         "uptime_seconds": round(uptime, 1),
         "total_findings": store.get_total_count() if store else 0,
+        "tier": "pro" if pro_active else "community",
+        "pro_version": pro_version,
     }
     return _json_response(200, data)
 

@@ -318,6 +318,7 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
         status, response_body = handle_community_api(
             self.path, method, body, store,
             audit_reader=audit_reader, config=self.server.config,
+            extensions=self.server.extensions,
         )
         self._send_raw(status, "application/json", response_body)
 
