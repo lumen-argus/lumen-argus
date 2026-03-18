@@ -281,6 +281,21 @@ class LoggingConfig:
 
 
 @dataclass
+class DashboardConfig:
+    enabled: bool = True
+    port: int = 8081
+    bind: str = "127.0.0.1"
+    password: str = ""
+
+
+@dataclass
+class AnalyticsConfig:
+    enabled: bool = True  # active when dashboard is enabled
+    db_path: str = "~/.lumen-argus/analytics.db"
+    retention_days: int = 365
+
+
+@dataclass
 class CustomRuleConfig:
     name: str = ""
     pattern: str = ""          # raw regex string
@@ -303,6 +318,8 @@ class Config:
     logging_config: LoggingConfig = field(default_factory=LoggingConfig)
     custom_rules: List["CustomRuleConfig"] = field(default_factory=list)
     upstreams: Dict[str, str] = field(default_factory=dict)
+    dashboard: DashboardConfig = field(default_factory=DashboardConfig)
+    analytics: AnalyticsConfig = field(default_factory=AnalyticsConfig)
 
 
 # ---------------------------------------------------------------------------
@@ -323,6 +340,8 @@ _KNOWN_DETECTOR_KEYS = {"enabled", "action", "entropy_threshold", "severity_thre
 _KNOWN_AUDIT_KEYS = {"log_dir", "retention_days", "include_request_summary", "redact_findings_in_log"}
 _KNOWN_LOGGING_KEYS = {"log_dir", "file_level", "max_size_mb", "backup_count", "format", "output"}
 _KNOWN_CUSTOM_RULE_KEYS = {"name", "pattern", "severity", "action", "detector"}
+_KNOWN_DASHBOARD_KEYS = {"enabled", "port", "bind", "password"}
+_KNOWN_ANALYTICS_KEYS = {"enabled", "db_path", "retention_days"}
 _VALID_SEVERITIES = {"critical", "high", "warning", "info"}
 
 
@@ -544,6 +563,41 @@ def _validate_config(data: dict, source: str) -> List[str]:
                         "%s: custom_rules[%d].action '%s' is not valid (expected: %s)"
                         % (source, i, act, ", ".join(sorted(_VALID_ACTIONS)))
                     )
+
+    # Validate dashboard section
+    dashboard = data.get("dashboard", {})
+    if isinstance(dashboard, dict):
+        for key in dashboard:
+            if key not in _KNOWN_DASHBOARD_KEYS:
+                warnings.append("%s: unknown key 'dashboard.%s'" % (source, key))
+        if "port" in dashboard:
+            try:
+                port = int(dashboard["port"])
+                if port < 1 or port > 65535:
+                    warnings.append("%s: dashboard.port %d is out of range (1-65535)" % (source, port))
+            except (ValueError, TypeError):
+                warnings.append("%s: dashboard.port must be an integer" % source)
+        if "bind" in dashboard:
+            bind = str(dashboard["bind"])
+            if bind not in ("127.0.0.1", "localhost"):
+                warnings.append(
+                    "%s: dashboard.bind '%s' is not allowed (must be 127.0.0.1 or localhost)"
+                    % (source, bind)
+                )
+
+    # Validate analytics section
+    analytics = data.get("analytics", {})
+    if isinstance(analytics, dict):
+        for key in analytics:
+            if key not in _KNOWN_ANALYTICS_KEYS:
+                warnings.append("%s: unknown key 'analytics.%s'" % (source, key))
+        if "retention_days" in analytics:
+            try:
+                days = int(analytics["retention_days"])
+                if days < 1:
+                    warnings.append("%s: analytics.retention_days must be positive" % source)
+            except (ValueError, TypeError):
+                warnings.append("%s: analytics.retention_days must be an integer" % source)
 
     # Validate allowlists section
     al = data.get("allowlists", {})
@@ -790,6 +844,28 @@ def _apply_config(config: Config, data: dict) -> None:
             config.logging_config.max_size_mb = int(logging_sec["max_size_mb"])
         if "backup_count" in logging_sec:
             config.logging_config.backup_count = int(logging_sec["backup_count"])
+
+    # Dashboard
+    dashboard = data.get("dashboard", {})
+    if isinstance(dashboard, dict):
+        if "enabled" in dashboard:
+            config.dashboard.enabled = bool(dashboard["enabled"])
+        if "port" in dashboard:
+            config.dashboard.port = int(dashboard["port"])
+        if "bind" in dashboard:
+            config.dashboard.bind = str(dashboard["bind"])
+        if "password" in dashboard:
+            config.dashboard.password = str(dashboard["password"])
+
+    # Analytics
+    analytics = data.get("analytics", {})
+    if isinstance(analytics, dict):
+        if "enabled" in analytics:
+            config.analytics.enabled = bool(analytics["enabled"])
+        if "db_path" in analytics:
+            config.analytics.db_path = str(analytics["db_path"])
+        if "retention_days" in analytics:
+            config.analytics.retention_days = int(analytics["retention_days"])
 
     # Custom rules
     rules = data.get("custom_rules", [])

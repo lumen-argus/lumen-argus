@@ -191,6 +191,43 @@ def main(argv=None):
     log.info("listening on http://%s:%d", bind, port)
     start_time = time.monotonic()
 
+    # --- Dashboard and analytics ---
+    dashboard_server = None
+    if config.dashboard.enabled:
+        from lumen_argus.analytics.store import AnalyticsStore
+        from lumen_argus.dashboard.audit_reader import AuditReader
+        from lumen_argus.dashboard.server import start_dashboard
+        from lumen_argus.dashboard.sse import SSEBroadcaster
+
+        # Create analytics store (or use plugin-provided one)
+        analytics_store = extensions.get_analytics_store()
+        if analytics_store is None and config.analytics.enabled:
+            analytics_store = AnalyticsStore(db_path=config.analytics.db_path)
+            extensions.set_analytics_store(analytics_store)
+            analytics_store.start_cleanup_scheduler(config.analytics.retention_days)
+
+        # Create SSE broadcaster
+        sse_broadcaster = SSEBroadcaster()
+
+        # Create audit reader (use CLI-overridden log dir, same as AuditLogger)
+        audit_reader = AuditReader(log_dir=audit_log_dir)
+
+        # Dashboard password from config or env
+        dash_password = config.dashboard.password
+
+        dashboard_server = start_dashboard(
+            bind=config.dashboard.bind,
+            port=config.dashboard.port,
+            analytics_store=analytics_store,
+            extensions=extensions,
+            password=dash_password,
+            audit_reader=audit_reader,
+            sse_broadcaster=sse_broadcaster,
+            config=config,
+        )
+        if dashboard_server:
+            log.info("dashboard: http://%s:%d", config.dashboard.bind, config.dashboard.port)
+
     # --- Signal-safe shutdown and reload ---
     #
     # Signal handlers must not acquire locks (logging, threading, I/O)

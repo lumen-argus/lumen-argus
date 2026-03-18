@@ -166,6 +166,15 @@ class ScannerPipeline:
             action=decision.action,
         )
 
+        # Record findings in analytics store (community dashboard)
+        if result.findings and self._extensions:
+            store = self._extensions.get_analytics_store()
+            if store:
+                try:
+                    store.record_findings(result.findings, provider=provider)
+                except Exception:
+                    log.warning("analytics store record_findings failed", exc_info=False)
+
         # Fire post-scan hook for plugins (analytics, notifications, SSE)
         if self._extensions:
             hook = self._extensions.get_post_scan_hook()

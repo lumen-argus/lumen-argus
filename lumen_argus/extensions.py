@@ -42,6 +42,12 @@ class ExtensionRegistry:
         self._pre_request_hook = None  # type: Optional[Callable]
         self._proxy_server = None  # type: Optional[object]
         self._loaded_plugins = []  # type: List[tuple]
+        # Dashboard extension hooks
+        self._dashboard_pages = []  # type: list
+        self._dashboard_css = []  # type: List[str]
+        self._dashboard_api_handler = None  # type: Optional[Callable]
+        self._analytics_store = None  # type: Optional[object]
+        self._auth_providers = []  # type: list
 
     def add_detector(self, detector: BaseDetector, priority: bool = False) -> None:
         """Register an additional detector.
@@ -117,6 +123,65 @@ class ExtensionRegistry:
 
     def extra_notifiers(self) -> list:
         return list(self._notifiers)
+
+    # --- Dashboard extension hooks ---
+
+    def register_dashboard_pages(self, pages: list) -> None:
+        """Register additional dashboard pages from a plugin.
+
+        Each page is a dict:
+          {"name": "notifications", "label": "Notifications",
+           "js": "<JS source>", "order": 55}
+
+        Pages whose name matches a locked community placeholder unlock it.
+        New names create entirely new pages.
+        """
+        self._dashboard_pages.extend(pages)
+
+    def get_dashboard_pages(self) -> list:
+        """Return list of plugin-registered pages."""
+        return list(self._dashboard_pages)
+
+    def register_dashboard_css(self, css: str) -> None:
+        """Register additional CSS from a plugin (injected after community CSS)."""
+        self._dashboard_css.append(css)
+
+    def get_dashboard_css(self) -> List[str]:
+        """Return list of plugin-registered CSS strings."""
+        return list(self._dashboard_css)
+
+    def register_dashboard_api(self, handler: Callable) -> None:
+        """Register a plugin API handler.
+
+        Signature: handler(path, method, body, store, audit_reader) -> (status, body) or None
+        Return None to fall through to community handler.
+        """
+        self._dashboard_api_handler = handler
+
+    def get_dashboard_api_handler(self) -> Optional[Callable]:
+        """Return plugin-provided API handler, or None."""
+        return self._dashboard_api_handler
+
+    def set_analytics_store(self, store: object) -> None:
+        """Set a plugin-provided analytics store (Pro passes its extended store)."""
+        self._analytics_store = store
+
+    def get_analytics_store(self) -> Optional[object]:
+        """Return plugin-provided analytics store, or None (use community default)."""
+        return self._analytics_store
+
+    def register_auth_provider(self, provider: object) -> None:
+        """Register an authentication provider (Django auth backend pattern).
+
+        Providers are tried in order after the built-in session check.
+        Provider interface: provider.authenticate(headers) -> dict or None
+        Return dict: {"user_id": "...", "roles": [...], "provider": "..."}
+        """
+        self._auth_providers.append(provider)
+
+    def get_auth_providers(self) -> list:
+        """Return list of registered auth providers."""
+        return list(self._auth_providers)
 
     def loaded_plugins(self) -> List[tuple]:
         """Return list of (name, version) for loaded plugins."""

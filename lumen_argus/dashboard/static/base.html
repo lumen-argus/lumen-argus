@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>lumen-argus</title>
+<style>
+{{STYLE}}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <svg class="logo" viewBox="0 0 36 36"><circle class="logo-ring" cx="18" cy="18" r="16"/>
+    <path class="logo-shield" d="M18 6 L28 12 L28 20 Q28 28 18 32 Q8 28 8 20 L8 12 Z" opacity=".15"/>
+    <path class="logo-shield" d="M18 10 L25 14 L25 20 Q25 26 18 29 Q11 26 11 20 L11 14 Z"/></svg>
+    <h1>lumen<span>-argus</span></h1>
+  </div>
+  <div class="hdr-right">
+    <div class="pulse"><div class="pulse-dot"></div><span id="hdr-status">connecting...</span></div>
+    <div class="meta-tag" id="hdr-version">v-.-.-</div>
+    <div class="meta-tag" id="hdr-uptime">--</div>
+    <div class="meta-tag" id="live-toggle" style="cursor:pointer;user-select:none" title="Toggle between real-time SSE and 5s polling">
+      <span class="live-dot" id="live-dot"></span><span id="live-label">5s</span>
+    </div>
+  </div>
+</header>
+<nav id="nav"></nav>
+<div class="shell">
+<div class="page active" id="page-dashboard">
+  <div class="sh"><h2>Severity overview</h2><span class="count" id="total-badge">--</span></div>
+  <div class="cards" id="cards"></div>
+  <div class="mid-row">
+    <div class="panel"><div class="sh"><h2>30-day trend</h2></div>
+      <div class="chart-wrap"><svg id="chart" viewBox="0 0 600 130" preserveAspectRatio="none"></svg></div></div>
+    <div class="panel"><div class="sh"><h2>Top detectors</h2></div>
+      <div class="det-list" id="det-list"></div></div>
+    <div class="panel"><div class="sh"><h2>By provider</h2></div>
+      <div class="det-list" id="prov-list"></div></div>
+  </div>
+  <div class="sh"><h2>Recent findings</h2><span class="count" id="dash-showing"></span></div>
+  <div class="table-wrap"><table><thead><tr>
+    <th>Time</th><th>Detector</th><th>Type</th><th>Severity</th><th>Action</th><th>Location</th>
+  </tr></thead><tbody id="dash-tbody"></tbody></table>
+  <div class="pager" id="dash-pager"></div></div>
+</div>
+<div class="page" id="page-findings">
+  <div class="sh"><h2>All findings</h2><span class="count" id="find-total"></span>
+    <div style="display:flex;gap:6px">
+      <div class="col-btn on" id="export-csv" style="cursor:pointer">Export CSV</div>
+      <div class="col-btn" id="export-json" style="cursor:pointer">Export JSON</div>
+    </div></div>
+  <div class="filter-bar">
+    <label>Severity</label><select id="f-sev"><option value="">All</option>
+      <option value="critical">Critical</option><option value="high">High</option>
+      <option value="warning">Warning</option><option value="info">Info</option></select>
+    <label>Detector</label><select id="f-det"><option value="">All</option></select>
+    <label>Provider</label><select id="f-prov"><option value="">All</option></select>
+  </div>
+  <div class="col-toggle" id="col-toggle"></div>
+  <div class="findings-layout">
+    <div class="table-wrap"><table id="find-table"><thead><tr id="find-thead"></tr></thead>
+      <tbody id="find-tbody"></tbody></table>
+      <div class="pager" id="find-pager"></div></div>
+    <div class="detail-panel" id="detail-panel">
+      <div class="sh"><h2>Finding detail</h2><div class="btn btn-sm btn-cancel" id="detail-panel-close">Close</div></div>
+      <div class="detail-grid" id="detail-grid"></div>
+    </div>
+  </div>
+</div>
+<div class="page" id="page-audit">
+  <div class="sh"><h2>Audit log</h2><span class="count" id="audit-total"></span>
+    <div style="display:flex;gap:6px">
+      <div class="col-btn on" id="audit-export-csv" style="cursor:pointer">Export CSV</div>
+      <div class="col-btn" id="audit-export-json" style="cursor:pointer">Export JSON</div>
+    </div></div>
+  <div class="filter-bar">
+    <label>Action</label><select id="a-action"><option value="">All</option>
+      <option value="pass">Pass</option><option value="alert">Alert</option>
+      <option value="block">Block</option></select>
+    <label>Provider</label><select id="a-prov"><option value="">All</option></select>
+    <label>Search</label><input id="a-search" placeholder="endpoint or model" style="max-width:200px">
+  </div>
+  <div class="findings-layout" id="audit-layout">
+    <div class="table-wrap"><table><thead><tr>
+      <th>Time</th><th>ID</th><th>Provider</th><th>Model</th><th>Endpoint</th>
+      <th>Action</th><th>Findings</th><th>Scan ms</th><th>Size</th>
+    </tr></thead><tbody id="audit-tbody"></tbody></table>
+    <div class="pager" id="audit-pager"></div></div>
+    <div class="detail-panel" id="audit-detail">
+      <div class="sh"><h2>Request detail</h2><div class="btn btn-sm btn-cancel" id="audit-detail-close">Close</div></div>
+      <div class="detail-grid" id="audit-detail-grid"></div>
+      <div id="audit-detail-findings"></div>
+    </div>
+  </div>
+</div>
+<div class="page" id="page-settings">
+  <div class="sh"><h2>Configuration</h2></div>
+  <div id="settings-content"></div>
+</div>
+</div>
+<script>
+{{SCRIPT}}
+</script>
+</body>
+</html>

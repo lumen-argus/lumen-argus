@@ -45,5 +45,8 @@ Homepage = "https://github.com/slima4/lumen-argus"
 [tool.setuptools.packages.find]
 include = ["lumen_argus*"]
 
+[tool.setuptools.package-data]
+"lumen_argus.dashboard" = ["static/**/*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
