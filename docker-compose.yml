@@ -1,0 +1,41 @@
+# lumen-argus — AI code DLP proxy with dashboard
+#
+# Quick start:
+#   docker compose up -d
+#
+# Point Claude Code at the proxy:
+#   ANTHROPIC_BASE_URL=http://localhost:8080 claude
+#
+# Open the dashboard:
+#   http://localhost:8081
+#
+# Custom config:
+#   1. Create config.yaml in this directory
+#   2. Uncomment the config volume mount below
+#   3. docker compose up -d
+#
+# Upgrading:
+#   docker compose pull        # or: docker compose build
+#   docker compose up -d       # recreates container, data volume preserved
+#
+# Data (audit logs, analytics DB) is stored in the argus-data volume
+# and survives container rebuilds. To reset: docker volume rm lumen-argus_argus-data
+
+services:
+  lumen-argus:
+    build: .
+    ports:
+      - "8080:8080"   # proxy
+      - "8081:8081"   # dashboard
+    volumes:
+      # Persist audit logs and analytics DB across upgrades
+      - argus-data:/home/argus/.lumen-argus
+      # Uncomment to use a custom config (create config.yaml first):
+      # - ./config.yaml:/home/argus/.lumen-argus/config.yaml:ro
+    environment:
+      # Set a dashboard password (optional, empty = open access)
+      - LUMEN_ARGUS_DASHBOARD_PASSWORD=
+    restart: unless-stopped
+
+volumes:
+  argus-data:
