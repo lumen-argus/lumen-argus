@@ -80,6 +80,38 @@ class MyDetector(BaseDetector):
 | `set_evaluate_hook(hook)` | `hook(findings, policy) -> ActionDecision` | Replaces default policy evaluation |
 | `set_config_reload_hook(hook)` | `hook(pipeline)` | After SIGHUP config reload |
 | `set_redact_hook(hook)` | `hook(body, findings) -> bytes` | When action is "redact" |
+| `set_health_hook(hook)` | `hook() -> dict` | Merged into `/health` JSON response (no auth, for container probes) |
+| `set_metrics_hook(hook)` | `hook() -> str` | Prometheus text lines appended to `/metrics` response |
+| `set_trace_request_hook(hook)` | `hook(method, path) -> context manager` | Wraps full request lifecycle for OTel tracing |
+
+### Observability Hooks
+
+**Health** (`/health` on proxy port 8080):
+```python
+registry.set_health_hook(lambda: {"license": "valid", "channels_active": 3})
+# Response: {"status": "ok", "uptime": 3600, "requests": 42, "license": "valid", ...}
+```
+
+**Metrics** (`/metrics` on proxy port 8080):
+```python
+registry.set_metrics_hook(lambda: "argus_notifications_total 42\nargus_license_days 180\n")
+# Appended to community Prometheus metrics
+```
+
+**Tracing** (OpenTelemetry):
+```python
+from opentelemetry import trace
+tracer = trace.get_tracer("lumen-argus-pro")
+registry.set_trace_request_hook(
+    lambda method, path: tracer.start_as_current_span(
+        "proxy.request", attributes={"http.method": method, "http.path": path}
+    )
+)
+# Community sets span attributes: provider, body.size, findings.count, action, scan.duration_ms
+# Pro detector/redaction/notification spans auto-parent via OTel context propagation
+```
+
+All observability hooks are fully guarded — exceptions never break requests.
 
 ### Notification Hooks
 

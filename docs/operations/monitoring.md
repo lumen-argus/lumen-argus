@@ -10,11 +10,14 @@ curl http://localhost:8080/health
 {
   "status": "ok",
   "version": "0.1.0",
+  "uptime": 3600.1,
   "requests": 42
 }
 ```
 
-Use for load balancer health checks or uptime monitoring.
+No authentication required — designed for container orchestrator probes (Kubernetes liveness/readiness, ECS health checks, Docker HEALTHCHECK).
+
+Pro extends the response via `set_health_hook()` with license status, notification channel health, and analytics metrics.
 
 ## Prometheus Metrics
 
@@ -110,3 +113,19 @@ The terminal display shows a detailed breakdown:
   shutdown — 51 requests | 2 blocked | 7 alerts | avg scan 12.3ms
   findings: aws_access_key x15, email x8, private_key x3
 ```
+
+## OpenTelemetry Tracing (Pro)
+
+Pro adds distributed tracing via the `set_trace_request_hook()` extension. Community code creates the root span and sets key attributes:
+
+| Attribute | Set by | When |
+|-----------|--------|------|
+| `http.method` | Pro (hook args) | Span creation |
+| `http.path` | Pro (hook args) | Span creation |
+| `provider` | Community | After routing |
+| `body.size` | Community | After routing |
+| `findings.count` | Community | After scan |
+| `action` | Community | After scan |
+| `scan.duration_ms` | Community | After scan |
+
+Pro's detector, redaction, and notification spans automatically nest under the root span via OTel context propagation. All tracing hooks are fully guarded — exceptions never break requests.

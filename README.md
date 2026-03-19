@@ -268,9 +268,11 @@ Highest-severity action wins: `block > redact > alert > log`.
 
 | Endpoint | Format | Description |
 |----------|--------|-------------|
-| `/health` | JSON | Proxy status, uptime, request count |
-| `/metrics` | Prometheus | Requests by action, findings by type, scan duration |
+| `/health` | JSON | Proxy status, uptime, request count (Pro extends with license/analytics) |
+| `/metrics` | Prometheus | Requests by action, findings by type, scan duration (Pro extends with notification stats) |
 | `--format json` | JSONL | Structured output for log aggregation |
+
+Pro adds OpenTelemetry tracing across the full request lifecycle — detector, redaction, and notification spans nest under a root `proxy.request` span.
 
 ## Docker
 
@@ -320,6 +322,7 @@ Upgrade to Pro for advanced features:
 - **Unlimited channels** — free tier allows 1 channel of any type
 - **Dashboard CRUD** — Rules, Patterns, Allowlists pages
 - **Compliance reporting** — audit exports, analytics
+- **OpenTelemetry tracing** — full request lifecycle spans with provider, findings, action attributes
 
 ```bash
 # Activate Pro — same package, just add a license key
