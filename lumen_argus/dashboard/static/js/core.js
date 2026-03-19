@@ -51,7 +51,7 @@ function _ensureNavTab(name, label, order) {
   var tabs = nav.querySelectorAll('.nav-tab');
   var inserted = false;
   for (var i = 0; i < tabs.length; i++) {
-    var tabOrder = parseInt(tabs[i].getAttribute('data-order') || '99');
+    var tabOrder = Number.parseInt(tabs[i].getAttribute('data-order') || '99');
     if ((order || 99) < tabOrder) {
       nav.insertBefore(tab, tabs[i]);
       inserted = true;
@@ -190,7 +190,7 @@ function renderPager(containerId,currentPage,totalItems,perPage,onPageChange,onP
   [10,15,25,50,100].forEach(function(n){
     var opt=document.createElement('option');opt.value=String(n);opt.textContent=String(n);
     if(n===perPage)opt.selected=true;sizeSel.appendChild(opt);});
-  sizeSel.addEventListener('change',function(){onPerPageChange(parseInt(sizeSel.value))});
+  sizeSel.addEventListener('change',function(){onPerPageChange(Number.parseInt(sizeSel.value))});
   sizeWrap.appendChild(sizeLbl);sizeWrap.appendChild(sizeSel);
   el.appendChild(sizeWrap);
   if(totalPages>1){

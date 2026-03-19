@@ -100,7 +100,7 @@ class SecretsDetector(BaseDetector):
             for match in pat.pattern.finditer(merged):
                 value = match.group(1) if match.lastindex else match.group(0)
 
-                if allowlist.is_allowed_secret(value):
+                if allowlist and allowlist.is_allowed_secret(value):
                     continue
 
                 if pat.needs_entropy and shannon_entropy(value) < self._entropy_threshold:
@@ -138,7 +138,7 @@ class SecretsDetector(BaseDetector):
             context = merged_lower[start:end]
 
             if any(kw in context for kw in SECRET_PROXIMITY_KEYWORDS):
-                if allowlist.is_allowed_secret(token):
+                if allowlist and allowlist.is_allowed_secret(token):
                     continue
                 findings.append(
                     Finding(

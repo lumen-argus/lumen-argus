@@ -290,7 +290,7 @@ document.getElementById('notif-save').addEventListener('click',function(){
       errEl.textContent='Invalid JSON in headers';errEl.style.display='block';return;}}
   if(config.to_addrs&&typeof config.to_addrs==='string'){
     config.to_addrs=config.to_addrs.split(',').map(function(a){return a.trim()}).filter(Boolean);}
-  if(config.smtp_port)config.smtp_port=parseInt(config.smtp_port)||587;
+  if(config.smtp_port)config.smtp_port=Number.parseInt(config.smtp_port)||587;
   var payload={name:name,type:chType,config:config,min_severity:minSev,enabled:enabled};
   var url='/api/v1/notifications/channels';var method='POST';
   if(editingChannelId){url+='/'+editingChannelId;method='PUT';}

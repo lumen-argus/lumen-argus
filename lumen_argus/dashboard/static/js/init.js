@@ -64,13 +64,13 @@ async function loadData(){try{
   if(stats.by_detector){
     var detSel=document.getElementById('f-det'),curVal=detSel.value;
     while(detSel.options.length>1)detSel.removeChild(detSel.lastChild);
-    Object.keys(stats.by_detector).sort().forEach(function(d){var opt=document.createElement('option');
+    Object.keys(stats.by_detector).sort(function(a,b){return a.localeCompare(b)}).forEach(function(d){var opt=document.createElement('option');
       opt.value=d;opt.textContent=d;detSel.appendChild(opt);});
     detSel.value=curVal;}
   if(stats.by_provider){
     var provSel=document.getElementById('f-prov'),curProv=provSel.value;
     while(provSel.options.length>1)provSel.removeChild(provSel.lastChild);
-    Object.keys(stats.by_provider).sort().forEach(function(p){var opt=document.createElement('option');
+    Object.keys(stats.by_provider).sort(function(a,b){return a.localeCompare(b)}).forEach(function(p){var opt=document.createElement('option');
       opt.value=p;opt.textContent=p;provSel.appendChild(opt);});
     provSel.value=curProv;}
   var findingsActive=document.getElementById('page-findings').classList.contains('active');

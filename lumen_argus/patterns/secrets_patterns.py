@@ -22,7 +22,7 @@ SECRETS_PATTERNS = (
     ),
     SecretPattern(
         "aws_secret_key",
-        re.compile(r"(?i)(?:aws[_\s]*secret[_\s]*(?:access[_\s]*)?key)\s*[:=]\s*['\"]?([A-Za-z0-9/+=]{40})['\"]?"),
+        re.compile(r"(?i)(?:aws[_\s]{0,10}secret[_\s]{0,10}(?:access[_\s]{0,10})?key)\s*[:=]\s*['\"]?([A-Za-z0-9/+=]{40})['\"]?"),
         "critical",
         False,
     ),
@@ -40,7 +40,7 @@ SECRETS_PATTERNS = (
     ),
     SecretPattern(
         "azure_subscription_key",
-        re.compile(r"(?i)(?:azure|subscription)[_\s]*key\s*[:=]\s*['\"][0-9a-f]{32}['\"]"),
+        re.compile(r"(?i)(?:azure|subscription)[_\s]{0,10}key\s*[:=]\s*['\"][0-9a-f]{32}['\"]"),
         "high",
         False,
     ),
@@ -161,7 +161,7 @@ SECRETS_PATTERNS = (
     # --- Infrastructure ---
     SecretPattern(
         "heroku_api_key",
-        re.compile(r"(?i)heroku\s*[_\s]*api[_\s]*key\s*[:=]\s*['\"]?[0-9a-f\-]{36}['\"]?"),
+        re.compile(r"(?i)heroku\s*[_\s]{0,10}api[_\s]{0,10}key\s*[:=]\s*['\"]?[0-9a-f\-]{36}['\"]?"),
         "critical",
         False,
     ),
@@ -173,7 +173,7 @@ SECRETS_PATTERNS = (
     ),
     SecretPattern(
         "terraform_cloud_token",
-        re.compile(r"(?i)(?:terraform|tfe)[_\s]*token\s*[:=]\s*['\"][A-Za-z0-9.]{14,}['\"]"),
+        re.compile(r"(?i)(?:terraform|tfe)[_\s]{0,10}token\s*[:=]\s*['\"][A-Za-z0-9.]{14,}['\"]"),
         "high",
         True,
     ),
@@ -185,13 +185,13 @@ SECRETS_PATTERNS = (
     ),
     SecretPattern(
         "datadog_api_key",
-        re.compile(r"(?i)(?:datadog|dd)[_\s]*(?:api[_\s]*)?key\s*[:=]\s*['\"]?[0-9a-f]{32}['\"]?"),
+        re.compile(r"(?i)(?:datadog|dd)[_\s]{0,10}(?:api[_\s]{0,10})?key\s*[:=]\s*['\"]?[0-9a-f]{32}['\"]?"),
         "high",
         False,
     ),
     SecretPattern(
         "pagerduty_key",
-        re.compile(r"(?i)pagerduty[_\s]*(?:api[_\s]*)?key\s*[:=]\s*['\"][A-Za-z0-9+/=]{20,}['\"]"),
+        re.compile(r"(?i)pagerduty[_\s]{0,10}(?:api[_\s]{0,10})?key\s*[:=]\s*['\"][A-Za-z0-9+/=]{20,}['\"]"),
         "high",
         True,
     ),

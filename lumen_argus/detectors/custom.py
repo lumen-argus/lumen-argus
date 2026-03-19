@@ -45,7 +45,7 @@ class CustomDetector(BaseDetector):
                 value = match.group(1) if match.lastindex else match.group(0)
                 if not value:
                     continue
-                if allowlist.is_allowed_secret(value):
+                if allowlist and allowlist.is_allowed_secret(value):
                     continue
                 field_idx = _find_field(match.start(), boundaries)
                 findings.append(

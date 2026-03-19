@@ -76,7 +76,7 @@ class PIIDetector(BaseDetector):
                 if pat.validator is not None and not pat.validator(value):
                     continue
 
-                if allowlist.is_allowed_pii(value):
+                if allowlist and allowlist.is_allowed_pii(value):
                     continue
 
                 field_idx = _find_field(match.start(), boundaries)
