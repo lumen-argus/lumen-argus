@@ -284,6 +284,68 @@ h1 .accent::after{
 }
 .pro-feat .check{color:var(--accent);font-weight:700;flex-shrink:0}
 
+/* ═══ COMPARE ═══ */
+.compare-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px;max-width:900px;margin:0 auto}
+@media(max-width:768px){.compare-grid{grid-template-columns:1fr}}
+.compare-col{
+  border-radius:14px;border:1px solid var(--border);
+  background:var(--bg-card);display:flex;flex-direction:column;
+  transition:all .3s;
+}
+.compare-col:hover{border-color:var(--border);box-shadow:0 8px 32px rgba(0,0,0,.2)}
+.compare-col.pro{
+  border-color:var(--accent-dim);
+  box-shadow:0 0 0 1px var(--accent-dim),0 8px 32px rgba(0,212,170,.08);
+  position:relative;
+}
+.compare-col.pro::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:2px;
+  background:linear-gradient(90deg,var(--accent),#00a884);border-radius:14px 14px 0 0;
+}
+.compare-header{
+  padding:28px 28px 20px;text-align:center;
+  border-bottom:1px solid var(--border);
+}
+.compare-tier{
+  font-size:1.2rem;font-weight:700;margin-bottom:6px;
+  display:flex;align-items:center;justify-content:center;gap:10px;
+}
+.pro-badge-sm{
+  font-family:var(--font-mono);font-size:.58rem;
+  padding:3px 8px;border-radius:3px;letter-spacing:.08em;
+  background:linear-gradient(135deg,var(--accent),#00a884);color:var(--bg);
+  font-weight:700;
+}
+.compare-price{font-size:1.8rem;font-weight:700;font-family:var(--font-mono);margin-bottom:2px}
+.compare-col.pro .compare-price{color:var(--accent)}
+.compare-price-note{font-size:.78rem;color:var(--text-muted)}
+.compare-body{padding:20px 28px;flex:1}
+.compare-category{
+  font-family:var(--font-mono);font-size:.68rem;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--text-muted);
+  margin:18px 0 8px;padding-top:12px;
+  border-top:1px solid var(--border);
+}
+.compare-category:first-child{border-top:none;margin-top:0;padding-top:0}
+.compare-item{
+  font-size:.84rem;color:var(--text);padding:4px 0;
+  display:flex;align-items:center;gap:8px;
+}
+.compare-item.dim{color:var(--text-muted)}
+.check-yes,.check-no{
+  width:16px;height:16px;border-radius:50%;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+}
+.check-yes{background:var(--accent-dim)}
+.check-yes::after{
+  content:'';width:6px;height:6px;border-radius:50%;background:var(--accent);
+}
+.check-no{background:var(--bg-elevated);border:1px solid var(--border)}
+.check-no::after{
+  content:'';width:8px;height:1px;background:var(--text-muted);
+}
+.compare-footer{padding:20px 28px;border-top:1px solid var(--border)}
+
 /* ═══ CTA BOTTOM ═══ */
 .cta-bottom{text-align:center;padding:80px 0 120px}
 .cta-bottom h2{font-size:clamp(1.8rem,4vw,2.6rem);font-weight:700;margin-bottom:12px}
@@ -552,29 +614,125 @@ footer a{color:var(--text-dim)}
 </div>
 </section>
 
-<!-- ═══ PRO ═══ -->
-<section>
+<!-- ═══ COMPARE ═══ -->
+<section id="compare">
 <div class="container">
-  <div class="pro-section">
-    <div class="pro-badge">PRO</div>
-    <h2 class="section-title">Advanced protection for teams</h2>
-    <p style="color:var(--text-dim);max-width:500px;margin-bottom:8px">Same package, just add a license key. All data preserved.</p>
+  <div class="section-label">Plans</div>
+  <h2 class="section-title">Community vs Pro</h2>
+  <p class="section-desc">Community is production-ready. Pro adds depth for teams and compliance.</p>
 
-    <div class="pro-features">
-      <div class="pro-feat"><span class="check">+</span> Redaction &mdash; replace secrets instead of blocking</div>
-      <div class="pro-feat"><span class="check">+</span> 1,600+ detection patterns (AI-generated, curated)</div>
-      <div class="pro-feat"><span class="check">+</span> NLP-based PII detection beyond regex</div>
-      <div class="pro-feat"><span class="check">+</span> Unlimited notification channels</div>
-      <div class="pro-feat"><span class="check">+</span> Circuit breakers, retry, deduplication</div>
-      <div class="pro-feat"><span class="check">+</span> Dashboard: Rules, Patterns, Allowlists pages</div>
-      <div class="pro-feat"><span class="check">+</span> Compliance reporting and analytics</div>
-      <div class="pro-feat"><span class="check">+</span> Priority support</div>
+  <div class="compare-grid">
+    <!-- Community column -->
+    <div class="compare-col">
+      <div class="compare-header">
+        <div class="compare-tier">Community</div>
+        <div class="compare-price">Free</div>
+        <div class="compare-price-note">MIT open source</div>
+      </div>
+      <div class="compare-body">
+        <div class="compare-category">Detection</div>
+        <div class="compare-item"><span class="check-yes"></span>34+ secret patterns</div>
+        <div class="compare-item"><span class="check-yes"></span>Shannon entropy analysis</div>
+        <div class="compare-item"><span class="check-yes"></span>8 PII validators (Luhn, SSN, IBAN)</div>
+        <div class="compare-item"><span class="check-yes"></span>Proprietary code detection</div>
+        <div class="compare-item"><span class="check-yes"></span>Custom regex rules (unlimited)</div>
+        <div class="compare-item dim"><span class="check-no"></span>1,600+ AI-curated patterns</div>
+        <div class="compare-item dim"><span class="check-no"></span>NLP-based PII detection</div>
+
+        <div class="compare-category">Actions</div>
+        <div class="compare-item"><span class="check-yes"></span>Block, alert, log</div>
+        <div class="compare-item dim"><span class="check-no"></span>Redaction (replace in-body)</div>
+
+        <div class="compare-category">Dashboard</div>
+        <div class="compare-item"><span class="check-yes"></span>Stats, charts, trends</div>
+        <div class="compare-item"><span class="check-yes"></span>Findings table with filters</div>
+        <div class="compare-item"><span class="check-yes"></span>Audit log viewer</div>
+        <div class="compare-item"><span class="check-yes"></span>Settings + license activation</div>
+        <div class="compare-item dim"><span class="check-no"></span>Rules editor</div>
+        <div class="compare-item dim"><span class="check-no"></span>Pattern browser (1,600+)</div>
+        <div class="compare-item dim"><span class="check-no"></span>Allowlist manager</div>
+
+        <div class="compare-category">Notifications</div>
+        <div class="compare-item"><span class="check-yes"></span>1 channel (any type)</div>
+        <div class="compare-item"><span class="check-yes"></span>All 7 channel types</div>
+        <div class="compare-item dim"><span class="check-no"></span>Unlimited channels</div>
+        <div class="compare-item dim"><span class="check-no"></span>Circuit breakers + retry</div>
+        <div class="compare-item dim"><span class="check-no"></span>Dispatch history</div>
+
+        <div class="compare-category">Observability</div>
+        <div class="compare-item"><span class="check-yes"></span>/health endpoint</div>
+        <div class="compare-item"><span class="check-yes"></span>Prometheus /metrics</div>
+        <div class="compare-item"><span class="check-yes"></span>JSON structured output</div>
+        <div class="compare-item dim"><span class="check-no"></span>OpenTelemetry tracing</div>
+
+        <div class="compare-category">Operations</div>
+        <div class="compare-item"><span class="check-yes"></span>YAML config + hot-reload</div>
+        <div class="compare-item"><span class="check-yes"></span>Pre-commit scanner</div>
+        <div class="compare-item"><span class="check-yes"></span>Docker + CI ready</div>
+        <div class="compare-item"><span class="check-yes"></span>Audit logs (0600 perms)</div>
+        <div class="compare-item dim"><span class="check-no"></span>Compliance reporting</div>
+        <div class="compare-item dim"><span class="check-no"></span>Priority support</div>
+      </div>
+      <div class="compare-footer">
+        <a href="https://github.com/slima4/lumen-argus" class="btn btn-ghost" style="width:100%;justify-content:center">Get Started</a>
+      </div>
     </div>
 
-    <div style="margin-top:32px">
-      <div class="step-code" style="display:inline-block;font-size:.82rem">
-        <span class="t-dim">export</span> LUMEN_ARGUS_LICENSE_KEY=eyJ...<br>
-        lumen-argus serve  <span class="t-dim"># Pro features activate instantly</span>
+    <!-- Pro column -->
+    <div class="compare-col pro">
+      <div class="compare-header">
+        <div class="compare-tier">Pro<span class="pro-badge-sm">RECOMMENDED</span></div>
+        <div class="compare-price">License</div>
+        <div class="compare-price-note">Same package, just add a key</div>
+      </div>
+      <div class="compare-body">
+        <div class="compare-category">Detection</div>
+        <div class="compare-item"><span class="check-yes"></span>34+ secret patterns</div>
+        <div class="compare-item"><span class="check-yes"></span>Shannon entropy analysis</div>
+        <div class="compare-item"><span class="check-yes"></span>8 PII validators (Luhn, SSN, IBAN)</div>
+        <div class="compare-item"><span class="check-yes"></span>Proprietary code detection</div>
+        <div class="compare-item"><span class="check-yes"></span>Custom regex rules (unlimited)</div>
+        <div class="compare-item"><span class="check-yes"></span>1,600+ AI-curated patterns</div>
+        <div class="compare-item"><span class="check-yes"></span>NLP-based PII detection</div>
+
+        <div class="compare-category">Actions</div>
+        <div class="compare-item"><span class="check-yes"></span>Block, alert, log</div>
+        <div class="compare-item"><span class="check-yes"></span>Redaction (replace in-body)</div>
+
+        <div class="compare-category">Dashboard</div>
+        <div class="compare-item"><span class="check-yes"></span>Stats, charts, trends</div>
+        <div class="compare-item"><span class="check-yes"></span>Findings table with filters</div>
+        <div class="compare-item"><span class="check-yes"></span>Audit log viewer</div>
+        <div class="compare-item"><span class="check-yes"></span>Settings + license activation</div>
+        <div class="compare-item"><span class="check-yes"></span>Rules editor</div>
+        <div class="compare-item"><span class="check-yes"></span>Pattern browser (1,600+)</div>
+        <div class="compare-item"><span class="check-yes"></span>Allowlist manager</div>
+
+        <div class="compare-category">Notifications</div>
+        <div class="compare-item"><span class="check-yes"></span>All 7 channel types</div>
+        <div class="compare-item"><span class="check-yes"></span>Unlimited channels</div>
+        <div class="compare-item"><span class="check-yes"></span>Circuit breakers + retry</div>
+        <div class="compare-item"><span class="check-yes"></span>Deduplication + cooldown</div>
+        <div class="compare-item"><span class="check-yes"></span>Dispatch history</div>
+
+        <div class="compare-category">Observability</div>
+        <div class="compare-item"><span class="check-yes"></span>/health + Pro enrichment</div>
+        <div class="compare-item"><span class="check-yes"></span>Prometheus + Pro metrics</div>
+        <div class="compare-item"><span class="check-yes"></span>JSON structured output</div>
+        <div class="compare-item"><span class="check-yes"></span>OpenTelemetry tracing</div>
+
+        <div class="compare-category">Operations</div>
+        <div class="compare-item"><span class="check-yes"></span>YAML config + hot-reload</div>
+        <div class="compare-item"><span class="check-yes"></span>Pre-commit scanner</div>
+        <div class="compare-item"><span class="check-yes"></span>Docker + CI ready</div>
+        <div class="compare-item"><span class="check-yes"></span>Audit logs (0600 perms)</div>
+        <div class="compare-item"><span class="check-yes"></span>Compliance reporting</div>
+        <div class="compare-item"><span class="check-yes"></span>Priority support</div>
+      </div>
+      <div class="compare-footer">
+        <div class="step-code" style="font-size:.75rem;text-align:left;width:100%;margin-bottom:12px">
+          <span class="t-dim">export</span> LUMEN_ARGUS_LICENSE_KEY=eyJ...<br>lumen-argus serve
+        </div>
       </div>
     </div>
   </div>
@@ -613,7 +771,7 @@ footer a{color:var(--text-dim)}
       if(e.isIntersecting){e.target.classList.add('animate');observer.unobserve(e.target);}
     });
   },{threshold:0.15});
-  document.querySelectorAll('.feature-card,.step,.det-card,.notif-ch').forEach(function(el){observer.observe(el);});
+  document.querySelectorAll('.feature-card,.step,.det-card,.notif-ch,.compare-col').forEach(function(el){observer.observe(el);});
 
   // Animate performance bars on scroll
   var perfObs = new IntersectionObserver(function(entries){
