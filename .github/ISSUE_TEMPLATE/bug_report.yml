@@ -1,0 +1,78 @@
+name: Bug Report
+description: Report a bug in lumen-argus
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Please fill out the sections below.
+
+        **Security vulnerabilities**: Do NOT use this form. See [SECURITY.md](https://github.com/slima4/lumen-argus/blob/main/SECURITY.md).
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What happened? What did you expect?
+      placeholder: "When I run lumen-argus serve with notifications configured, ..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: Minimal steps to reproduce the issue.
+      placeholder: |
+        1. Add notification channel to config.yaml
+        2. Start proxy: lumen-argus serve
+        3. Send a request with a secret
+        4. Check dashboard — notification not sent
+    validations:
+      required: true
+
+  - type: textarea
+    id: config
+    attributes:
+      label: Configuration
+      description: Relevant parts of your config.yaml (remove secrets).
+      render: yaml
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Relevant log output. Use `lumen-argus logs export --sanitize` for safe sharing.
+      render: text
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: Installation method
+      options:
+        - pip install lumen-argus (PyPI)
+        - pip install -e . (source)
+        - Docker
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `lumen-argus --version`
+      placeholder: "0.1.0"
+    validations:
+      required: true
+
+  - type: input
+    id: python
+    attributes:
+      label: Python version
+      placeholder: "3.12.0"
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: "macOS 15.3 / Ubuntu 24.04 / Docker"
