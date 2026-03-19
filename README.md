@@ -1,5 +1,7 @@
 # lumen-argus
 
+[![tests](https://github.com/slima4/lumen-argus/actions/workflows/test.yml/badge.svg)](https://github.com/slima4/lumen-argus/actions/workflows/test.yml)
+
 **AI coding tool DLP proxy** — scan outbound requests for secrets, PII, and proprietary data before they reach AI providers.
 
 ```

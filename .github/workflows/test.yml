@@ -6,6 +6,15 @@ on:
   pull_request:
     branches: [main]
 
+# Cancel in-progress runs on new push to same branch/PR
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Minimal permissions — read-only by default
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ${{ matrix.os }}
