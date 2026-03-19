@@ -441,5 +441,131 @@ class TestExtensionHooks(unittest.TestCase):
         self.assertIsNotNone(reg.get_notifier_builder())
 
 
+class TestConfigValidation(unittest.TestCase):
+    """Test config validation warns on unknown notification keys."""
+
+    def test_unknown_notification_key_warns(self):
+        from lumen_argus.config import _validate_config
+        data = {
+            "notifications": [
+                {"name": "test", "type": "webhook", "unknown_key": "value"},
+            ],
+        }
+        warnings = _validate_config(data, "test")
+        self.assertTrue(any("unknown key" in w and "unknown_key" in w for w in warnings))
+
+    def test_missing_name_warns(self):
+        from lumen_argus.config import _validate_config
+        data = {"notifications": [{"type": "webhook"}]}
+        warnings = _validate_config(data, "test")
+        self.assertTrue(any("missing required 'name'" in w for w in warnings))
+
+    def test_missing_type_warns(self):
+        from lumen_argus.config import _validate_config
+        data = {"notifications": [{"name": "test"}]}
+        warnings = _validate_config(data, "test")
+        self.assertTrue(any("missing required 'type'" in w for w in warnings))
+
+    def test_valid_notification_no_warnings(self):
+        from lumen_argus.config import _validate_config
+        data = {
+            "notifications": [
+                {"name": "test", "type": "webhook", "url": "https://example.com"},
+            ],
+        }
+        warnings = _validate_config(data, "test")
+        notif_warnings = [w for w in warnings if "notifications" in w]
+        self.assertEqual(notif_warnings, [])
+
+
+class TestPipelineDispatch(unittest.TestCase):
+    """Test that pipeline dispatches findings via extensions.get_dispatcher()."""
+
+    def test_dispatch_called_with_findings(self):
+        from lumen_argus.extensions import ExtensionRegistry
+        from lumen_argus.pipeline import ScannerPipeline
+        from lumen_argus.models import Finding
+
+        dispatched = []
+
+        class MockDispatcher:
+            def dispatch(self, findings, provider="", model=""):
+                dispatched.append((findings, provider))
+
+        ext = ExtensionRegistry()
+        ext.set_dispatcher(MockDispatcher())
+
+        pipeline = ScannerPipeline(
+            default_action="alert",
+            action_overrides={},
+            allowlist=None,
+            entropy_threshold=4.5,
+            extensions=ext,
+        )
+
+        # Scan a body with a known secret to trigger findings
+        body = b'{"messages":[{"role":"user","content":"AKIAIOSFODNN7EXAMPLE aws key"}]}'
+        result = pipeline.scan(body, provider="anthropic")
+
+        if result.findings:
+            self.assertTrue(len(dispatched) > 0)
+            self.assertEqual(dispatched[0][1], "anthropic")
+
+    def test_none_dispatcher_graceful(self):
+        """Pipeline works fine when no dispatcher is set."""
+        from lumen_argus.extensions import ExtensionRegistry
+        from lumen_argus.pipeline import ScannerPipeline
+
+        ext = ExtensionRegistry()
+        # No dispatcher set
+
+        pipeline = ScannerPipeline(
+            default_action="alert",
+            action_overrides={},
+            allowlist=None,
+            entropy_threshold=4.5,
+            extensions=ext,
+        )
+
+        body = b'{"messages":[{"role":"user","content":"hello"}]}'
+        result = pipeline.scan(body, provider="anthropic")
+        # Should not raise
+        self.assertIsNotNone(result)
+
+
+class TestToAddrsReconciliation(unittest.TestCase):
+    """Test that to_addrs string is split to list during YAML reconciliation."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+        self.db_path = os.path.join(self.tmpdir, "test.db")
+        self.store = AnalyticsStore(db_path=self.db_path)
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def test_to_addrs_comma_string_split(self):
+        self.store.reconcile_yaml_channels([{
+            "name": "email-test",
+            "type": "email",
+            "smtp_host": "mail.com",
+            "to_addrs": "a@x.com, b@x.com, c@x.com",
+        }])
+        ch = self.store.list_notification_channels()[0]
+        self.assertIsInstance(ch["config"]["to_addrs"], list)
+        self.assertEqual(ch["config"]["to_addrs"], ["a@x.com", "b@x.com", "c@x.com"])
+
+    def test_to_addrs_list_unchanged(self):
+        self.store.reconcile_yaml_channels([{
+            "name": "email-test",
+            "type": "email",
+            "smtp_host": "mail.com",
+            "to_addrs": ["a@x.com", "b@x.com"],
+        }])
+        ch = self.store.list_notification_channels()[0]
+        self.assertEqual(ch["config"]["to_addrs"], ["a@x.com", "b@x.com"])
+
+
 if __name__ == "__main__":
     unittest.main()
