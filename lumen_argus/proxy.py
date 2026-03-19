@@ -72,13 +72,27 @@ class ArgusProxyHandler(http.server.BaseHTTPRequestHandler):
         self._forward()
 
     def _handle_health(self):
-        """Respond to /health endpoint with proxy status."""
+        """Respond to /health endpoint with proxy status.
+
+        No auth required — designed for container orchestrator probes
+        (Kubernetes liveness/readiness, ECS, Docker HEALTHCHECK).
+        Fast: no DB queries, no file reads.
+        """
         server = self.server  # type: ArgusProxyServer
-        body = json.dumps({
+        data = {
             "status": "ok",
             "version": __import__("lumen_argus").__version__,
+            "uptime": round(time.monotonic() - server.start_time, 1),
             "requests": server.stats.total_requests,
-        }).encode("utf-8")
+        }
+        # Let Pro extend with license/notification/analytics health
+        health_hook = server.extensions.get_health_hook() if server.extensions else None
+        if health_hook:
+            try:
+                data.update(health_hook())
+            except Exception:
+                pass
+        body = json.dumps(data).encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
@@ -492,6 +506,8 @@ class ArgusProxyServer(http.server.ThreadingHTTPServer):
             ssl_context=ssl_context,
         )
         self.stats = SessionStats()
+        self.start_time = time.monotonic()
+        self.extensions = None  # set by cli.py after creation
 
         super().__init__((bind, port), ArgusProxyHandler)
 

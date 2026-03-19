@@ -54,6 +54,7 @@ class ExtensionRegistry:
         self._notifier_builder = None  # type: Optional[Callable]
         self._dispatcher = None  # type: Optional[object]
         self._channel_limit = 1  # type: Optional[int]  (None = unlimited)
+        self._health_hook = None  # type: Optional[Callable]
 
     def add_detector(self, detector: BaseDetector, priority: bool = False) -> None:
         """Register an additional detector.
@@ -254,6 +255,14 @@ class ExtensionRegistry:
     def get_channel_limit(self) -> Optional[int]:
         """Return channel limit. None=unlimited, int=max channels."""
         return self._channel_limit
+
+    def set_health_hook(self, hook: Callable) -> None:
+        """Register: hook() -> dict merged into /health response.
+        Pro uses this to add license, notification, analytics health."""
+        self._health_hook = hook
+
+    def get_health_hook(self) -> Optional[Callable]:
+        return self._health_hook
 
     def loaded_plugins(self) -> List[tuple]:
         """Return list of (name, version) for loaded plugins."""

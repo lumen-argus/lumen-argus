@@ -184,6 +184,7 @@ def main(argv=None):
             max_connections=config.proxy.max_connections,
         )
         extensions.set_proxy_server(server)
+        server.extensions = extensions
     except OSError as e:
         print("Error: Could not bind to %s:%d — %s" % (bind, port, e), file=sys.stderr)
         sys.exit(1)
