@@ -56,6 +56,7 @@ class ExtensionRegistry:
         self._channel_limit = 1  # type: Optional[int]  (None = unlimited)
         self._health_hook = None  # type: Optional[Callable]
         self._metrics_hook = None  # type: Optional[Callable]
+        self._trace_request_hook = None  # type: Optional[Callable]
 
     def add_detector(self, detector: BaseDetector, priority: bool = False) -> None:
         """Register an additional detector.
@@ -271,6 +272,15 @@ class ExtensionRegistry:
 
     def get_metrics_hook(self) -> Optional[Callable]:
         return self._metrics_hook
+
+    def set_trace_request_hook(self, hook: Callable) -> None:
+        """Register: hook(provider, method, path) -> context manager.
+        Wraps the full request lifecycle. Pro uses this to create an OTel
+        root span that parents detector/redaction/notification spans."""
+        self._trace_request_hook = hook
+
+    def get_trace_request_hook(self) -> Optional[Callable]:
+        return self._trace_request_hook
 
     def loaded_plugins(self) -> List[tuple]:
         """Return list of (name, version) for loaded plugins."""

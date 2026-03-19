@@ -134,15 +134,23 @@ class ArgusProxyHandler(http.server.BaseHTTPRequestHandler):
         request_id = next(_request_counter)
         server = self.server  # type: ArgusProxyServer
 
+        # OTel trace span wraps the full request lifecycle
+        trace_hook = server.extensions.get_trace_request_hook() if server.extensions else None
+        trace_ctx = trace_hook(self.command, self.path) if trace_hook else None
+
         with server._active_lock:
             server._active_requests += 1
         try:
-            self._do_forward(request_id, server)
+            if trace_ctx:
+                with trace_ctx as span:
+                    self._do_forward(request_id, server, span)
+            else:
+                self._do_forward(request_id, server, None)
         finally:
             with server._active_lock:
                 server._active_requests -= 1
 
-    def _do_forward(self, request_id, server):
+    def _do_forward(self, request_id, server, span=None):
         """Inner forwarding logic — separated for active request tracking."""
         # Pre-request hook — sets correlation ID before any logging
         pre_hook = server.pipeline._extensions.get_pre_request_hook() if server.pipeline._extensions else None
@@ -194,6 +202,12 @@ class ArgusProxyHandler(http.server.BaseHTTPRequestHandler):
                     "#%d scan: %d findings, action=%s, %.1fms",
                     request_id, len(scan_result.findings), scan_result.action, scan_result.scan_duration_ms,
                 )
+                # Enrich trace span with scan results
+                if span and hasattr(span, "set_attribute"):
+                    span.set_attribute("provider", provider)
+                    span.set_attribute("findings.count", len(scan_result.findings))
+                    span.set_attribute("action", scan_result.action)
+                    span.set_attribute("scan.duration_ms", scan_result.scan_duration_ms)
                 # Block/redact always logged at INFO for the file log
                 if scan_result.action in ("block", "redact") and scan_result.findings:
                     types = ", ".join(f.type for f in scan_result.findings)
