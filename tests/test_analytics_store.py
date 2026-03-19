@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from unittest import mock
 
-from lumen_argus.analytics.store import AnalyticsStore, _COMMUNITY_SCHEMA_VERSION
+from lumen_argus.analytics.store import AnalyticsStore
 from lumen_argus.models import Finding
 
 
@@ -61,40 +61,6 @@ class TestAnalyticsStore(unittest.TestCase):
         conn = self.store._connect()
         mode = conn.execute("PRAGMA journal_mode").fetchone()[0]
         self.assertEqual(mode, "wal")
-
-    # ── Schema version ────────────────────────────────────────────
-
-    def test_schema_version_populated(self):
-        """schema_version table should contain the community version."""
-        conn = self.store._connect()
-        row = conn.execute(
-            "SELECT version, description FROM schema_version WHERE version = ?",
-            (_COMMUNITY_SCHEMA_VERSION,),
-        ).fetchone()
-        self.assertIsNotNone(row)
-        self.assertEqual(row["version"], _COMMUNITY_SCHEMA_VERSION)
-        self.assertEqual(row["description"], "notification channels table")
-
-    def test_schema_version_applied_at_is_iso(self):
-        """applied_at should be an ISO 8601 timestamp."""
-        conn = self.store._connect()
-        row = conn.execute(
-            "SELECT applied_at FROM schema_version WHERE version = ?",
-            (_COMMUNITY_SCHEMA_VERSION,),
-        ).fetchone()
-        self.assertIsNotNone(row)
-        self.assertTrue(row["applied_at"].endswith("Z"))
-
-    def test_schema_version_not_duplicated_on_reinit(self):
-        """Re-initializing should not duplicate the schema_version row."""
-        # Create a second store pointing at the same DB
-        store2 = AnalyticsStore(db_path=self.db_path)
-        conn = store2._connect()
-        count = conn.execute(
-            "SELECT COUNT(*) FROM schema_version WHERE version = ?",
-            (_COMMUNITY_SCHEMA_VERSION,),
-        ).fetchone()[0]
-        self.assertEqual(count, 1)
 
     # ── record_findings ───────────────────────────────────────────
 

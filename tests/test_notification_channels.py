@@ -29,16 +29,6 @@ class TestNotificationChannelsCRUD(unittest.TestCase):
         conn.close()
         self.assertIn("notification_channels", tables)
 
-    def test_schema_version_2(self):
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
-        row = conn.execute(
-            "SELECT * FROM schema_version WHERE version = 2"
-        ).fetchone()
-        conn.close()
-        self.assertIsNotNone(row)
-        self.assertEqual(row["description"], "notification channels table")
-
     def test_create_channel(self):
         ch = self.store.create_notification_channel({
             "name": "test-webhook",

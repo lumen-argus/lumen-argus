@@ -62,8 +62,6 @@ CREATE TABLE IF NOT EXISTS notification_channels (
 );
 """
 
-_COMMUNITY_SCHEMA_VERSION = 2
-
 
 class AnalyticsStore:
     """Thread-safe SQLite store for finding history and trend queries.
@@ -85,28 +83,7 @@ class AnalyticsStore:
         db_dir.mkdir(parents=True, exist_ok=True)
         with self._connect() as conn:
             conn.executescript(_SCHEMA)
-            # Record v1 if not present
-            existing_v1 = conn.execute(
-                "SELECT version FROM schema_version WHERE version = 1",
-            ).fetchone()
-            now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-            if not existing_v1:
-                conn.execute(
-                    "INSERT INTO schema_version (version, description, applied_at) "
-                    "VALUES (?, ?, ?)",
-                    (1, "community findings table", now),
-                )
-            # Migration v1 → v2: notification channels table
-            existing_v2 = conn.execute(
-                "SELECT version FROM schema_version WHERE version = 2",
-            ).fetchone()
-            if not existing_v2:
-                conn.executescript(_NOTIFICATION_SCHEMA)
-                conn.execute(
-                    "INSERT INTO schema_version (version, description, applied_at) "
-                    "VALUES (?, ?, ?)",
-                    (2, "notification channels table", now),
-                )
+            conn.executescript(_NOTIFICATION_SCHEMA)
         # Secure file permissions — same 0o600 as audit JSONL files
         try:
             os.chmod(self._db_path, 0o600)

@@ -46,7 +46,7 @@ class TestCommunityOnly(unittest.TestCase):
         ).fetchall()}
         conn.close()
         self.assertIn("findings", tables)
-        self.assertIn("schema_version", tables)
+        self.assertIn("notification_channels", tables)
 
     def test_community_store_records_and_retrieves(self):
         store = AnalyticsStore(db_path=self.db_path)
@@ -71,15 +71,6 @@ class TestCommunityOnly(unittest.TestCase):
         mode = os.stat(self.db_path).st_mode & 0o777
         self.assertEqual(mode, 0o600)
 
-    def test_schema_version_recorded(self):
-        store = AnalyticsStore(db_path=self.db_path)
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
-        row = conn.execute("SELECT * FROM schema_version WHERE version = 1").fetchone()
-        conn.close()
-        self.assertIsNotNone(row)
-        self.assertEqual(row["description"], "community findings table")
-
     def test_extension_registry_community_only(self):
         """Registry works without any plugins registered."""
         reg = ExtensionRegistry()
@@ -89,15 +80,6 @@ class TestCommunityOnly(unittest.TestCase):
         self.assertEqual(reg.get_dashboard_pages(), [])
         self.assertEqual(reg.get_dashboard_css(), [])
         self.assertEqual(reg.get_auth_providers(), [])
-
-    def test_schema_version_not_duplicated_on_reinit(self):
-        """Re-creating AnalyticsStore on same DB doesn't duplicate schema_version."""
-        store1 = AnalyticsStore(db_path=self.db_path)
-        store2 = AnalyticsStore(db_path=self.db_path)
-        conn = sqlite3.connect(self.db_path)
-        count = conn.execute("SELECT COUNT(*) FROM schema_version WHERE version = 1").fetchone()[0]
-        conn.close()
-        self.assertEqual(count, 1)
 
     def test_findings_survive_store_reinit(self):
         """Findings persist across AnalyticsStore re-initialization."""
