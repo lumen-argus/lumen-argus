@@ -320,6 +320,7 @@ class Config:
     upstreams: Dict[str, str] = field(default_factory=dict)
     dashboard: DashboardConfig = field(default_factory=DashboardConfig)
     analytics: AnalyticsConfig = field(default_factory=AnalyticsConfig)
+    notifications: List[dict] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -564,6 +565,31 @@ def _validate_config(data: dict, source: str) -> List[str]:
                     warnings.append(
                         "%s: custom_rules[%d].action '%s' is not valid (expected: %s)"
                         % (source, i, act, ", ".join(sorted(_VALID_ACTIONS)))
+                    )
+
+    # Validate notifications section
+    notifications = data.get("notifications", [])
+    if isinstance(notifications, list):
+        _known_notif_keys = {
+            "name", "type", "url", "headers", "webhook_url",
+            "smtp_host", "smtp_port", "from_addr", "to_addrs",
+            "username", "password", "use_tls", "channel",
+            "routing_key", "api_key", "team", "project_key",
+            "api_token", "email", "issue_type",
+            "events", "min_severity", "enabled",
+        }
+        for i, notif in enumerate(notifications):
+            if not isinstance(notif, dict):
+                warnings.append("%s: notifications[%d] must be a mapping" % (source, i))
+                continue
+            if "name" not in notif or not notif["name"]:
+                warnings.append("%s: notifications[%d] missing required 'name'" % (source, i))
+            if "type" not in notif or not notif["type"]:
+                warnings.append("%s: notifications[%d] missing required 'type'" % (source, i))
+            for key in notif:
+                if key not in _known_notif_keys:
+                    warnings.append(
+                        "%s: unknown key 'notifications[%d].%s'" % (source, i, key)
                     )
 
     # Validate dashboard section
@@ -891,6 +917,11 @@ def _apply_config(config: Config, data: dict) -> None:
                 action=str(rule.get("action", "")),
                 detector=str(rule.get("detector", "custom")),
             ))
+
+    # Notifications (optional — reconciled to DB on startup)
+    notifications = data.get("notifications", [])
+    if isinstance(notifications, list):
+        config.notifications = [n for n in notifications if isinstance(n, dict)]
 
 
 def _apply_project_config(config: Config, data: dict) -> None:

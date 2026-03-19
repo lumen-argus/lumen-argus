@@ -175,7 +175,16 @@ class ScannerPipeline:
                 except Exception:
                     log.warning("analytics store record_findings failed", exc_info=False)
 
-        # Fire post-scan hook for plugins (analytics, notifications, SSE)
+        # Dispatch notifications for findings
+        if result.findings and self._extensions:
+            dispatcher = self._extensions.get_dispatcher()
+            if dispatcher:
+                try:
+                    dispatcher.dispatch(result.findings, provider=provider)
+                except Exception:
+                    log.warning("notification dispatch failed", exc_info=False)
+
+        # Fire post-scan hook for plugins (analytics, SSE, etc.)
         if self._extensions:
             hook = self._extensions.get_post_scan_hook()
             if hook:

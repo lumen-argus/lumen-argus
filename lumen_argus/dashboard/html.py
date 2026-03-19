@@ -29,6 +29,7 @@ _JS_MODULES = [
     "js/findings.js",
     "js/audit.js",
     "js/settings.js",
+    "js/notifications.js",
     "js/init.js",
 ]
 

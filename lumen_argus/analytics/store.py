@@ -7,6 +7,7 @@ for retention enforcement.
 sqlite3 is Python stdlib — zero external dependencies.
 """
 
+import json
 import logging
 import os
 import sqlite3
@@ -44,7 +45,22 @@ CREATE TABLE IF NOT EXISTS schema_version (
 );
 """
 
-_COMMUNITY_SCHEMA_VERSION = 1
+_NOTIFICATION_SCHEMA = """\
+CREATE TABLE IF NOT EXISTS notification_channels (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    type TEXT NOT NULL,
+    config TEXT NOT NULL DEFAULT '{}',
+    enabled INTEGER NOT NULL DEFAULT 1,
+    source TEXT NOT NULL DEFAULT 'dashboard',
+    events TEXT NOT NULL DEFAULT '["block","alert"]',
+    min_severity TEXT NOT NULL DEFAULT 'warning',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+"""
+
+_COMMUNITY_SCHEMA_VERSION = 2
 
 
 class AnalyticsStore:
@@ -65,20 +81,29 @@ class AnalyticsStore:
         """Create the database and schema if they don't exist."""
         db_dir = Path(self._db_path).parent
         db_dir.mkdir(parents=True, exist_ok=True)
-        new_db = not os.path.exists(self._db_path)
         with self._connect() as conn:
             conn.executescript(_SCHEMA)
-            # Record schema version if not present
-            existing = conn.execute(
-                "SELECT version FROM schema_version WHERE version = ?",
-                (_COMMUNITY_SCHEMA_VERSION,),
+            # Record v1 if not present
+            existing_v1 = conn.execute(
+                "SELECT version FROM schema_version WHERE version = 1",
             ).fetchone()
-            if not existing:
-                now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            if not existing_v1:
                 conn.execute(
                     "INSERT INTO schema_version (version, description, applied_at) "
                     "VALUES (?, ?, ?)",
-                    (_COMMUNITY_SCHEMA_VERSION, "community findings table", now),
+                    (1, "community findings table", now),
+                )
+            # Migration v1 → v2: notification channels table
+            existing_v2 = conn.execute(
+                "SELECT version FROM schema_version WHERE version = 2",
+            ).fetchone()
+            if not existing_v2:
+                conn.executescript(_NOTIFICATION_SCHEMA)
+                conn.execute(
+                    "INSERT INTO schema_version (version, description, applied_at) "
+                    "VALUES (?, ?, ?)",
+                    (2, "notification channels table", now),
                 )
         # Secure file permissions — same 0o600 as audit JSONL files
         try:
@@ -306,3 +331,273 @@ class AnalyticsStore:
 
         t = threading.Thread(target=_cleanup_loop, daemon=True, name="analytics-cleanup")
         t.start()
+
+    # --- Notification channels ---
+
+    def _now(self) -> str:
+        return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    def _parse_channel_row(self, row: sqlite3.Row) -> dict:
+        """Convert a DB row to a dict with parsed JSON fields."""
+        d = dict(row)
+        for key in ("config", "events"):
+            if key in d and isinstance(d[key], str):
+                try:
+                    d[key] = json.loads(d[key])
+                except (json.JSONDecodeError, ValueError):
+                    d[key] = {} if key == "config" else []
+        d["enabled"] = bool(d.get("enabled", 1))
+        return d
+
+    def list_notification_channels(self, source: Optional[str] = None) -> list:
+        """Return all channels, optionally filtered by source."""
+        query = ("SELECT * FROM notification_channels"
+                 + (" WHERE source = ?" if source else "")
+                 + " ORDER BY id")
+        params = [source] if source else []
+        with self._connect() as conn:
+            rows = conn.execute(query, params).fetchall()
+        return [self._parse_channel_row(r) for r in rows]
+
+    def get_notification_channel(self, channel_id: int) -> Optional[dict]:
+        """Return a single channel by ID (with full config)."""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM notification_channels WHERE id = ?",
+                (channel_id,),
+            ).fetchone()
+        return self._parse_channel_row(row) if row else None
+
+    def count_notification_channels(self) -> int:
+        """Return total channel count (for limit enforcement)."""
+        with self._connect() as conn:
+            return conn.execute(
+                "SELECT COUNT(*) FROM notification_channels",
+            ).fetchone()[0]
+
+    def create_notification_channel(
+        self, data: dict, channel_limit: "Optional[int]" = None,
+    ) -> dict:
+        """Create a channel. Raises ValueError on validation failure.
+
+        channel_limit: if set, count check + insert runs under the same
+        lock to prevent race conditions on concurrent creates.
+        """
+        name = data.get("name", "").strip()
+        if not name:
+            raise ValueError("name is required")
+        ch_type = data.get("type", "").strip()
+        if not ch_type:
+            raise ValueError("type is required")
+
+        config = data.get("config", {})
+        if isinstance(config, str):
+            config = json.loads(config)
+        events = data.get("events", ["block", "alert"])
+        if isinstance(events, str):
+            events = json.loads(events)
+
+        now = self._now()
+        with self._lock:
+            with self._connect() as conn:
+                # Atomic limit check under the same lock as insert
+                if channel_limit is not None:
+                    current = conn.execute(
+                        "SELECT COUNT(*) FROM notification_channels"
+                    ).fetchone()[0]
+                    if current >= channel_limit:
+                        raise ValueError("channel_limit_reached")
+                try:
+                    conn.execute(
+                        "INSERT INTO notification_channels "
+                        "(name, type, config, enabled, source, events, "
+                        "min_severity, created_at, updated_at) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        (
+                            name,
+                            ch_type,
+                            json.dumps(config),
+                            1 if data.get("enabled", True) else 0,
+                            data.get("source", "dashboard"),
+                            json.dumps(events),
+                            data.get("min_severity", "warning"),
+                            now,
+                            now,
+                        ),
+                    )
+                    channel_id = conn.execute(
+                        "SELECT last_insert_rowid()"
+                    ).fetchone()[0]
+                except sqlite3.IntegrityError:
+                    raise ValueError("channel name '%s' already exists" % name)
+
+        return self.get_notification_channel(channel_id)
+
+    def update_notification_channel(
+        self, channel_id: int, data: dict
+    ) -> Optional[dict]:
+        """Update channel fields. Only updates provided keys."""
+        updates = []  # type: List[str]
+        params = []  # type: list
+        for key in ("name", "type", "min_severity", "source"):
+            if key in data:
+                updates.append("%s = ?" % key)
+                params.append(data[key])
+        if "enabled" in data:
+            updates.append("enabled = ?")
+            params.append(1 if data["enabled"] else 0)
+        if "config" in data:
+            config = data["config"]
+            if isinstance(config, str):
+                config = json.loads(config)
+            updates.append("config = ?")
+            params.append(json.dumps(config))
+        if "events" in data:
+            events = data["events"]
+            if isinstance(events, str):
+                events = json.loads(events)
+            updates.append("events = ?")
+            params.append(json.dumps(events))
+
+        if not updates:
+            return self.get_notification_channel(channel_id)
+
+        updates.append("updated_at = ?")
+        params.append(self._now())
+        params.append(channel_id)
+
+        with self._lock:
+            with self._connect() as conn:
+                try:
+                    cursor = conn.execute(
+                        "UPDATE notification_channels SET %s WHERE id = ?"
+                        % ", ".join(updates),
+                        params,
+                    )
+                except sqlite3.IntegrityError:
+                    raise ValueError(
+                        "channel name '%s' already exists" % data.get("name", "")
+                    )
+                if cursor.rowcount == 0:
+                    return None
+
+        return self.get_notification_channel(channel_id)
+
+    def delete_notification_channel(self, channel_id: int) -> bool:
+        """Delete a channel by ID. Returns True if deleted."""
+        with self._lock:
+            with self._connect() as conn:
+                cursor = conn.execute(
+                    "DELETE FROM notification_channels WHERE id = ?",
+                    (channel_id,),
+                )
+                return cursor.rowcount > 0
+
+    def bulk_update_channels(self, ids: list, action: str) -> int:
+        """Bulk enable/disable/delete. Returns count affected."""
+        if not ids:
+            return 0
+        placeholders = ",".join("?" for _ in ids)
+        with self._lock:
+            with self._connect() as conn:
+                if action == "delete":
+                    # Only delete dashboard-managed channels
+                    cursor = conn.execute(
+                        "DELETE FROM notification_channels "
+                        "WHERE id IN (%s) AND source = 'dashboard'" % placeholders,
+                        ids,
+                    )
+                elif action in ("enable", "disable"):
+                    enabled = 1 if action == "enable" else 0
+                    cursor = conn.execute(
+                        "UPDATE notification_channels SET enabled = ?, updated_at = ? "
+                        "WHERE id IN (%s)" % placeholders,
+                        [enabled, self._now()] + ids,
+                    )
+                else:
+                    return 0
+                return cursor.rowcount
+
+    def reconcile_yaml_channels(
+        self, yaml_channels: list, channel_limit: Optional[int] = None,
+    ) -> dict:
+        """Kubernetes-style declarative reconciliation of YAML channels.
+
+        YAML is fully authoritative for source='yaml' channels: all fields
+        (including enabled) overwrite DB values on every reconcile.
+
+        channel_limit: max total channels (None = unlimited). Only blocks
+        new creates — existing YAML channels are always updated.
+        """
+        result = {"created": [], "updated": [], "deleted": []}  # type: dict
+
+        # Build lookup of YAML channels by name
+        yaml_by_name = {}
+        for ch in yaml_channels:
+            if not isinstance(ch, dict):
+                continue
+            name = ch.get("name", "")
+            if name:
+                yaml_by_name[name] = ch
+
+        # Get current DB state
+        db_yaml = {
+            ch["name"]: ch
+            for ch in self.list_notification_channels(source="yaml")
+        }
+        db_dashboard_names = {
+            ch["name"]
+            for ch in self.list_notification_channels(source="dashboard")
+        }
+        current_total = self.count_notification_channels()
+
+        # Delete YAML channels no longer in config
+        for name, db_ch in db_yaml.items():
+            if name not in yaml_by_name:
+                self.delete_notification_channel(db_ch["id"])
+                current_total -= 1
+                result["deleted"].append(name)
+
+        # Create or update YAML channels
+        for name, yaml_ch in yaml_by_name.items():
+            # Skip if name collides with a dashboard-managed channel
+            if name in db_dashboard_names:
+                log.warning(
+                    "notification channel '%s' in config conflicts with "
+                    "dashboard-managed channel — skipping", name,
+                )
+                continue
+
+            ch_type = yaml_ch.get("type", "")
+            # Build config from all keys except top-level ones
+            _top_keys = {"name", "type", "events", "min_severity", "enabled"}
+            config = {k: v for k, v in yaml_ch.items() if k not in _top_keys}
+
+            channel_data = {
+                "name": name,
+                "type": ch_type,
+                "config": config,
+                "source": "yaml",
+                "events": yaml_ch.get("events", ["block", "alert"]),
+                "min_severity": yaml_ch.get("min_severity", "warning"),
+                "enabled": yaml_ch.get("enabled", True),
+            }
+
+            if name in db_yaml:
+                # Update existing — always allowed (already counts toward limit)
+                self.update_notification_channel(db_yaml[name]["id"], channel_data)
+                result["updated"].append(name)
+            else:
+                # New create — check limit
+                if channel_limit is not None and current_total >= channel_limit:
+                    log.warning(
+                        "notification channel '%s' skipped — "
+                        "channel limit reached (%d)",
+                        name, channel_limit,
+                    )
+                    continue
+                self.create_notification_channel(channel_data)
+                current_total += 1
+                result["created"].append(name)
+
+        return result

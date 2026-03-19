@@ -49,6 +49,11 @@ class ExtensionRegistry:
         self._analytics_store = None  # type: Optional[object]
         self._auth_providers = []  # type: list
         self._sse_broadcaster = None  # type: Optional[object]
+        # Notification channel hooks
+        self._channel_types = {}  # type: dict
+        self._notifier_builder = None  # type: Optional[Callable]
+        self._dispatcher = None  # type: Optional[object]
+        self._channel_limit = 1  # type: Optional[int]  (None = unlimited)
 
     def add_detector(self, detector: BaseDetector, priority: bool = False) -> None:
         """Register an additional detector.
@@ -212,6 +217,43 @@ class ExtensionRegistry:
     def get_auth_providers(self) -> list:
         """Return list of registered auth providers."""
         return list(self._auth_providers)
+
+    # --- Notification channel hooks ---
+
+    def register_channel_types(self, types: dict) -> None:
+        """Register notification channel types from a plugin.
+
+        Pro calls this to register all channel types (webhook, email,
+        slack, teams, pagerduty, opsgenie, jira). Without Pro, no types
+        are available and the dashboard shows "install from PyPI".
+        """
+        self._channel_types.update(types)
+
+    def get_channel_types(self) -> dict:
+        """Return all registered channel types. Empty if Pro not loaded."""
+        return dict(self._channel_types)
+
+    def set_notifier_builder(self, builder: Callable) -> None:
+        """Register a notifier factory: builder(channel_dict) -> notifier or None."""
+        self._notifier_builder = builder
+
+    def get_notifier_builder(self) -> Optional[Callable]:
+        return self._notifier_builder
+
+    def set_dispatcher(self, dispatcher: object) -> None:
+        """Set the notification dispatcher (Pro creates and registers this)."""
+        self._dispatcher = dispatcher
+
+    def get_dispatcher(self) -> Optional[object]:
+        return self._dispatcher
+
+    def set_channel_limit(self, limit: Optional[int]) -> None:
+        """Set notification channel limit. None=unlimited, 1=freemium default."""
+        self._channel_limit = limit
+
+    def get_channel_limit(self) -> Optional[int]:
+        """Return channel limit. None=unlimited, int=max channels."""
+        return self._channel_limit
 
     def loaded_plugins(self) -> List[tuple]:
         """Return list of (name, version) for loaded plugins."""

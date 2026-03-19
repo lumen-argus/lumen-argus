@@ -81,6 +81,21 @@ class MyDetector(BaseDetector):
 | `set_config_reload_hook(hook)` | `hook(pipeline)` | After SIGHUP config reload |
 | `set_redact_hook(hook)` | `hook(body, findings) -> bytes` | When action is "redact" |
 
+### Notification Hooks
+
+| Hook | Signature | Description |
+|------|-----------|-------------|
+| `register_channel_types(types)` | `types: dict` | Register channel type definitions (label + fields) for the dashboard dropdown |
+| `set_notifier_builder(builder)` | `builder(channel_dict) -> notifier` | Factory that builds notifier instances from DB channel rows |
+| `set_dispatcher(dispatcher)` | `dispatcher.dispatch(findings, provider)` | Set the notification dispatcher (Pro adds circuit breakers, async, dedup) |
+| `set_channel_limit(limit)` | `limit: int or None` | Set max channels (`None` = unlimited, `1` = freemium default) |
+
+Community provides the DB schema (`notification_channels` table), CRUD API, and dashboard UI. Pro registers channel types, notifier builder, dispatcher, and channel limit. Without Pro, the Notifications page shows YAML-configured channels as read-only with a dispatch warning.
+
+**YAML reconciliation:** Channels defined in `config.yaml` are reconciled to SQLite on startup and SIGHUP (Kubernetes-style). YAML is fully authoritative — all fields including `enabled` overwrite DB values. Dashboard-managed channels are never touched by the reconciler.
+
+**Freemium model:** 1 channel of any type without license, unlimited with Pro. Channel limit is enforced atomically (count + insert under the same lock).
+
 ### Server Access
 
 ```python
@@ -96,19 +111,25 @@ Extend the community dashboard without replacing it:
 def register(registry):
     # Add pages (unlock locked placeholders or create new ones)
     registry.register_dashboard_pages([
-        {"name": "notifications", "label": "Notifications",
-         "js": "registerPage('notifications', 'Notifications', {loadFn: loadNotif, html: _pageHtml_notifications});",
-         "html": "<div class='sh'><h2>Notification Channels</h2></div>",
-         "order": 55},
+        {"name": "rules", "label": "Rules",
+         "js": "registerPage('rules', 'Rules', {loadFn: loadRules, html: _pageHtml_rules});",
+         "html": "<div class='sh'><h2>Detection Rules</h2></div>",
+         "order": 25},
     ])
+
+    # Register notification channel types and dispatcher
+    registry.register_channel_types({"slack": {"label": "Slack", "fields": {...}}})
+    registry.set_notifier_builder(my_builder)
+    registry.set_dispatcher(my_dispatcher)
+    registry.set_channel_limit(None)  # unlimited with Pro license
 
     # Add CSS (injected after community CSS)
     registry.register_dashboard_css(".pro-badge { color: gold; }")
 
     # Add API handler (called before community handler)
     def my_api(path, method, body, store, audit_reader):
-        if path == "/api/v1/notifications":
-            return 200, json.dumps({"channels": []}).encode()
+        if path == "/api/v1/rules":
+            return 200, json.dumps({"rules": []}).encode()
         return None  # fall through to community
     registry.register_dashboard_api(my_api)
 

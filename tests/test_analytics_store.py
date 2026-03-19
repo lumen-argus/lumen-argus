@@ -73,7 +73,7 @@ class TestAnalyticsStore(unittest.TestCase):
         ).fetchone()
         self.assertIsNotNone(row)
         self.assertEqual(row["version"], _COMMUNITY_SCHEMA_VERSION)
-        self.assertEqual(row["description"], "community findings table")
+        self.assertEqual(row["description"], "notification channels table")
 
     def test_schema_version_applied_at_is_iso(self):
         """applied_at should be an ISO 8601 timestamp."""

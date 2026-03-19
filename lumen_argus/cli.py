@@ -232,6 +232,26 @@ def main(argv=None):
         if dashboard_server:
             log.info("dashboard: http://%s:%d", dash_bind, config.dashboard.port)
 
+        # Reconcile YAML notification channels to DB
+        if analytics_store and config.notifications:
+            limit = extensions.get_channel_limit()
+            result = analytics_store.reconcile_yaml_channels(
+                config.notifications, channel_limit=limit,
+            )
+            for action_name in ("created", "updated", "deleted"):
+                if result[action_name]:
+                    log.info("notification channels %s from config: %s",
+                             action_name, ", ".join(result[action_name]))
+            # Warn if channels exist but no dispatcher (source install)
+            if not extensions.get_dispatcher():
+                count = analytics_store.count_notification_channels()
+                if count > 0:
+                    log.warning(
+                        "%d notification channel(s) configured but dispatch "
+                        "unavailable — install from PyPI: pip install lumen-argus",
+                        count,
+                    )
+
     # --- Signal-safe shutdown and reload ---
     #
     # Signal handlers must not acquire locks (logging, threading, I/O)
@@ -379,12 +399,31 @@ def _do_reload(server, config_path, file_handler, console_level,
             file_handler.setLevel(new_file_level)
             root_logger.setLevel(min(console_level, new_file_level))
 
+        # Run Pro reload hook first — it may update channel limit, dispatcher, etc.
         reload_hook = extensions.get_config_reload_hook()
         if reload_hook:
             try:
                 reload_hook(server.pipeline)
             except Exception:
                 pass
+
+        # Re-reconcile YAML notification channels (after Pro hook updates limit)
+        analytics_store = extensions.get_analytics_store()
+        if analytics_store:
+            limit = extensions.get_channel_limit()
+            notif_result = analytics_store.reconcile_yaml_channels(
+                new_config.notifications, channel_limit=limit,
+            )
+            for action_name in ("created", "updated", "deleted"):
+                if notif_result[action_name]:
+                    log.info("notification channels %s from config: %s",
+                             action_name, ", ".join(notif_result[action_name]))
+            dispatcher = extensions.get_dispatcher()
+            if dispatcher and hasattr(dispatcher, "rebuild"):
+                try:
+                    dispatcher.rebuild()
+                except Exception:
+                    log.warning("dispatcher rebuild failed on SIGHUP", exc_info=True)
         if not changes:
             log.info("config reloaded (no changes)")
     except Exception as e:

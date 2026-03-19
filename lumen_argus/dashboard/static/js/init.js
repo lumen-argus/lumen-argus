@@ -14,8 +14,7 @@ registerPage('patterns', 'Patterns', {locked: true, order: 35,
   proDescription: 'Browse and toggle 1,600+ secret detection patterns. Filter by category, confidence level, and enable/disable individual patterns.'});
 registerPage('allowlists', 'Allowlists', {locked: true, order: 45,
   proDescription: 'Manage allowlist entries for secrets, PII, and file paths. Test patterns against recent findings before adding.'});
-registerPage('notifications', 'Notifications', {locked: true, order: 55,
-  proDescription: 'Configure alerting to Slack, Teams, PagerDuty, Email, and webhooks. 5 notification channel types with retry, backoff, and deduplication.'});
+registerPage('notifications', 'Notifications', {order: 55, loadFn: loadNotifications});
 
 /* Export helpers */
 function exportFindings(fmt){

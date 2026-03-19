@@ -245,6 +245,14 @@ analytics:
   db_path: "~/.lumen-argus/analytics.db"
   retention_days: 365
 
+# Notification channels (IaC-managed, reconciled to DB on startup/SIGHUP)
+# notifications:
+#   - name: production-alerts
+#     type: webhook
+#     url: "https://hooks.slack.com/services/T00/B00/xxx"
+#     events: [block, alert]
+#     min_severity: high
+
 # Custom detection patterns (unlimited)
 custom_rules:
   - name: internal_api_token
@@ -255,6 +263,30 @@ custom_rules:
     pattern: "postgres://staging[^\\s]+"
     severity: high
 ```
+
+### Notification Channels
+
+Configure alerting via YAML (IaC-managed) or the dashboard (interactive). YAML channels are reconciled to SQLite on startup and SIGHUP using Kubernetes-style declarative reconciliation — YAML is fully authoritative.
+
+```yaml
+notifications:
+  - name: production-alerts
+    type: webhook
+    url: "https://hooks.slack.com/services/T00/B00/xxx"
+    events: [block, alert]
+    min_severity: high
+  - name: security-team
+    type: email
+    smtp_host: "smtp.company.com"
+    from_addr: "argus@company.com"
+    to_addrs: "security@company.com"
+    events: [block]
+    min_severity: critical
+```
+
+**Freemium model:** 1 channel of any type without a Pro license, unlimited with Pro. All 7 channel types (webhook, email, Slack, Teams, PagerDuty, OpsGenie, Jira) are available — Pro provides the dispatch implementations.
+
+YAML channels appear as read-only cards in the dashboard with a `YAML` badge. Dashboard-managed channels support full CRUD (add, edit, test, toggle, delete).
 
 ### Custom Rules
 
@@ -364,15 +396,13 @@ dashboard:
   # password: "optional-password"  # or set LUMEN_ARGUS_DASHBOARD_PASSWORD env var
 ```
 
-**Community pages:** Dashboard (stats, trend charts, recent findings), Findings (paginated table with filters, detail panel, CSV/JSON export), Audit (log viewer with search), Settings (config display, license activation, log download).
+**Community pages:** Dashboard (stats, trend charts, recent findings), Findings (paginated table with filters, detail panel, CSV/JSON export), Audit (log viewer with search), Settings (config display, license activation, log download), Notifications (channel management with freemium model).
 
-**Pro pages (locked):** Rules, Patterns, Allowlists, Notifications — shown with upgrade prompts. Unlocked automatically when a Pro license is active.
+**Pro pages (locked):** Rules, Patterns, Allowlists — shown with upgrade prompts. Unlocked automatically when a Pro license is active.
 
 The dashboard uses an SQLite analytics store (`~/.lumen-argus/analytics.db`) to persist findings across restarts. Data survives upgrades and license transitions.
 
 ### Dashboard API
-
-All community API endpoints are read-only:
 
 | Endpoint | Description |
 |---|---|
@@ -388,6 +418,12 @@ All community API endpoints are read-only:
 | `GET /api/v1/logs/download` | Sanitized log download |
 | `GET /api/v1/live` | SSE real-time feed |
 | `POST /api/v1/license` | Activate license key |
+| `GET /api/v1/notifications/types` | Available channel types + limit |
+| `GET /api/v1/notifications/channels` | List channels (masked config) |
+| `POST /api/v1/notifications/channels` | Create channel (limit enforced) |
+| `PUT /api/v1/notifications/channels/:id` | Update channel |
+| `DELETE /api/v1/notifications/channels/:id` | Delete channel |
+| `POST /api/v1/notifications/channels/:id/test` | Send test notification |
 
 ## Docker
 

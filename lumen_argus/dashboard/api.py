@@ -16,11 +16,15 @@ log = logging.getLogger("argus.dashboard.api")
 
 # Pro endpoint prefixes — return 402 when Pro is not installed
 _PRO_ENDPOINTS = (
-    "/api/v1/notifications",
     "/api/v1/rules",
     "/api/v1/patterns",
     "/api/v1/allowlist",
 )
+
+_SENSITIVE_FIELDS = frozenset({
+    "webhook_url", "routing_key", "password", "url",
+    "username", "api_key", "token", "api_token",
+})
 
 # Start time for uptime calculation
 _start_time = time.monotonic()
@@ -91,6 +95,13 @@ def handle_community_api(path: str, method: str, body: bytes,
     if method == "POST":
         if path == "/api/v1/license":
             return _handle_license_activation(body)
+
+    # --- Notification endpoints (community-handled) ---
+
+    if path.startswith("/api/v1/notifications"):
+        result = _handle_notifications(path, method, body, store, extensions)
+        if result is not None:
+            return result
 
     # --- Tier gating: known Pro paths return 402 ---
 
@@ -270,3 +281,210 @@ def _handle_license_activation(body: bytes) -> tuple:
         "message": "License key saved. Restart the proxy to activate.",
         "path": license_path,
     })
+
+
+# --- Notification channel handlers ---
+
+def _mask_channel(channel: dict) -> dict:
+    """Mask sensitive fields in channel config for API responses."""
+    ch = dict(channel)
+    config = ch.get("config", {})
+    if isinstance(config, str):
+        config = json.loads(config)
+    masked = dict(config)
+    for key in _SENSITIVE_FIELDS:
+        if key in masked and masked[key]:
+            val = str(masked[key])
+            masked[key] = val[:4] + "****" + val[-4:] if len(val) > 8 else "****"
+    ch["config_masked"] = masked
+    ch.pop("config", None)
+    return ch
+
+
+def _rebuild_dispatcher(extensions):
+    """Rebuild the notification dispatcher after channel CRUD."""
+    dispatcher = extensions.get_dispatcher() if extensions else None
+    if dispatcher and hasattr(dispatcher, "rebuild"):
+        try:
+            dispatcher.rebuild()
+        except Exception as e:
+            log.warning("dispatcher rebuild failed: %s", e)
+
+
+def _handle_notifications(path, method, body, store, extensions):
+    """Community notification API — CRUD, types, test, batch."""
+
+    # GET /api/v1/notifications/types
+    if path == "/api/v1/notifications/types" and method == "GET":
+        types = extensions.get_channel_types() if extensions else {}
+        limit = extensions.get_channel_limit() if extensions else 1
+        count = store.count_notification_channels() if store else 0
+        return _json_response(200, {
+            "types": types,
+            "channel_limit": limit,
+            "channel_count": count,
+        })
+
+    # No channel types registered — Pro not loaded (source install)
+    # Still return DB channels (from YAML reconciliation) so users can see them
+    if not extensions or not extensions.get_channel_types():
+        if method == "GET" and path == "/api/v1/notifications/channels":
+            channels = []
+            count = 0
+            if store:
+                channels = [_mask_channel(ch) for ch in store.list_notification_channels()]
+                count = len(channels)
+            return _json_response(200, {
+                "channels": channels,
+                "channel_limit": 1,
+                "channel_count": count,
+                "notifications_unavailable": True,
+                "message": "Notification dispatch requires the published package. "
+                           "Install from PyPI: pip install lumen-argus",
+            })
+        return None  # fall through for unknown paths
+
+    if not store:
+        return _json_response(503, {"error": "analytics store not available"})
+
+    # GET /api/v1/notifications/channels
+    if path == "/api/v1/notifications/channels" and method == "GET":
+        channels = store.list_notification_channels()
+        safe = [_mask_channel(ch) for ch in channels]
+        limit = extensions.get_channel_limit()
+        return _json_response(200, {
+            "channels": safe,
+            "channel_limit": limit,
+            "channel_count": len(channels),
+        })
+
+    # POST /api/v1/notifications/channels
+    if path == "/api/v1/notifications/channels" and method == "POST":
+        try:
+            data = json.loads(body)
+        except (json.JSONDecodeError, ValueError):
+            return _json_response(400, {"error": "invalid JSON"})
+        if not isinstance(data, dict):
+            return _json_response(400, {"error": "invalid JSON"})
+        # Validate channel type
+        allowed_types = extensions.get_channel_types()
+        if data.get("type") not in allowed_types:
+            return _json_response(400, {"error": "unknown channel type"})
+        # Create with atomic limit check (count + insert under same lock)
+        limit = extensions.get_channel_limit()
+        try:
+            channel = store.create_notification_channel(
+                data, channel_limit=limit,
+            )
+        except ValueError as e:
+            err = str(e)
+            if err == "channel_limit_reached":
+                count = store.count_notification_channels()
+                return _json_response(409, {
+                    "error": "channel_limit_reached",
+                    "message": "Free tier allows %d channel(s). "
+                               "Upgrade to Pro for unlimited." % (limit or 0),
+                    "limit": limit,
+                    "count": count,
+                })
+            return _json_response(400, {"error": err})
+        _rebuild_dispatcher(extensions)
+        return _json_response(201, _mask_channel(channel))
+
+    # POST /api/v1/notifications/channels/batch
+    if path == "/api/v1/notifications/channels/batch" and method == "POST":
+        try:
+            data = json.loads(body)
+        except (json.JSONDecodeError, ValueError):
+            return _json_response(400, {"error": "invalid JSON"})
+        action = data.get("action", "")
+        raw_ids = data.get("ids", [])
+        if not isinstance(raw_ids, list):
+            return _json_response(400, {"error": "ids must be a list"})
+        ids = []
+        for i in raw_ids:
+            if isinstance(i, int):
+                ids.append(i)
+        if action not in ("enable", "disable", "delete") or not ids or len(ids) > 100:
+            return _json_response(400, {"error": "invalid batch action"})
+        count = store.bulk_update_channels(ids, action)
+        _rebuild_dispatcher(extensions)
+        return _json_response(200, {"affected": count})
+
+    # Routes with channel ID: /api/v1/notifications/channels/:id[/test]
+    parts = path.rstrip("/").split("/")
+    # /api/v1/notifications/channels/:id → 6 parts
+    # /api/v1/notifications/channels/:id/test → 7 parts
+    if (len(parts) in (6, 7)
+            and parts[4] == "channels"
+            and parts[5].isdigit()):
+        channel_id = int(parts[5])
+        sub = parts[6] if len(parts) == 7 else None
+
+        # POST /api/v1/notifications/channels/:id/test
+        if sub == "test" and method == "POST":
+            return _handle_notification_test(channel_id, store, extensions)
+
+        # GET /api/v1/notifications/channels/:id
+        # Returns full unmasked config — needed for edit form pre-population.
+        # Protected by dashboard auth (password/session when configured).
+        if method == "GET" and sub is None:
+            channel = store.get_notification_channel(channel_id)
+            if not channel:
+                return _json_response(404, {"error": "not found"})
+            return _json_response(200, channel)
+
+        # PUT /api/v1/notifications/channels/:id
+        if method == "PUT" and sub is None:
+            try:
+                data = json.loads(body)
+            except (json.JSONDecodeError, ValueError):
+                return _json_response(400, {"error": "invalid JSON"})
+            if not isinstance(data, dict):
+                return _json_response(400, {"error": "invalid JSON"})
+            try:
+                result = store.update_notification_channel(channel_id, data)
+            except ValueError as e:
+                return _json_response(400, {"error": str(e)})
+            if result is None:
+                return _json_response(404, {"error": "not found"})
+            _rebuild_dispatcher(extensions)
+            return _json_response(200, _mask_channel(result))
+
+        # DELETE /api/v1/notifications/channels/:id
+        if method == "DELETE" and sub is None:
+            if store.delete_notification_channel(channel_id):
+                _rebuild_dispatcher(extensions)
+                return _json_response(200, {"deleted": channel_id})
+            return _json_response(404, {"error": "not found"})
+
+    return None  # fall through to Pro handler for extended endpoints
+
+
+def _handle_notification_test(channel_id, store, extensions):
+    """POST /api/v1/notifications/channels/:id/test"""
+    channel = store.get_notification_channel(channel_id)
+    if not channel:
+        return _json_response(404, {"error": "not found"})
+
+    builder = extensions.get_notifier_builder() if extensions else None
+    if not builder:
+        return _json_response(400, {
+            "error": "notifications_unavailable",
+            "message": "Install from PyPI: pip install lumen-argus",
+        })
+
+    notifier = builder(channel)
+    if not notifier:
+        return _json_response(400, {"error": "invalid channel configuration"})
+
+    from lumen_argus.models import Finding
+    test_finding = Finding(
+        detector="test", type="test_notification", severity="info",
+        location="test", value_preview="****", matched_value="", action="alert",
+    )
+    try:
+        notifier.notify([test_finding], provider="lumen-argus", model="test")
+        return _json_response(200, {"status": "sent", "channel_id": channel_id})
+    except Exception as e:
+        return _json_response(502, {"status": "failed", "error": str(e)})

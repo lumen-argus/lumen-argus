@@ -584,11 +584,11 @@ class TestTierGating(unittest.TestCase):
         cls.server.shutdown()
         shutil.rmtree(cls.tmpdir, ignore_errors=True)
 
-    def test_post_notifications_returns_402(self):
-        status, _, body = _post(self.port, "/api/v1/notifications", body=b"{}")
-        self.assertEqual(status, 402)
-        data = json.loads(body)
-        self.assertEqual(data["error"], "pro_required")
+    def test_post_notifications_channels_without_pro(self):
+        """POST to notifications/channels without Pro returns 404 (no types registered)."""
+        status, _, body = _post(self.port, "/api/v1/notifications/channels", body=b'{"type":"webhook","name":"test"}')
+        # Without Pro, no channel types registered — falls through to 404
+        self.assertIn(status, (400, 404))
 
     def test_put_rules_returns_402(self):
         status, _, body = _put(self.port, "/api/v1/rules/1", body=b"{}")
@@ -1035,7 +1035,8 @@ class TestCommunityAPIDirect(unittest.TestCase):
         self.assertEqual(data["error"], "not_found")
 
     def test_pro_endpoint_post_returns_402(self):
-        for path in ("/api/v1/notifications", "/api/v1/rules",
+        # Notifications are now community-handled, not in _PRO_ENDPOINTS
+        for path in ("/api/v1/rules",
                      "/api/v1/patterns", "/api/v1/allowlist"):
             status, body = handle_community_api(path, "POST", b"{}", None)
             data = json.loads(body)
