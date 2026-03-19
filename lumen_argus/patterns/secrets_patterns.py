@@ -22,7 +22,9 @@ SECRETS_PATTERNS = (
     ),
     SecretPattern(
         "aws_secret_key",
-        re.compile(r"(?i)(?:aws[_\s]{0,10}secret[_\s]{0,10}(?:access[_\s]{0,10})?key)\s*[:=]\s*['\"]?([A-Za-z0-9/+=]{40})['\"]?"),
+        re.compile(
+            r"(?i)(?:aws[_\s]{0,10}secret[_\s]{0,10}(?:access[_\s]{0,10})?key)\s*[:=]\s*['\"]?([A-Za-z0-9/+=]{40})['\"]?"
+        ),
         "critical",
         False,
     ),
