@@ -179,6 +179,7 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
 
         # Pages redirect to login
         from urllib.parse import quote
+
         next_url = self.path
         self.send_response(302)
         self.send_header("Location", "/login?next=%s" % quote(next_url))
@@ -212,15 +213,15 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
 
     def _serve_login(self) -> None:
         from urllib.parse import parse_qs, urlparse, quote
+
         query = urlparse(self.path).query
         params = parse_qs(query)
         next_url = params.get("next", ["/"])[0]
-        if (not next_url.startswith("/")
-                or next_url.startswith("//")
-                or (len(next_url) > 1 and next_url[1] in "/\\")):
+        if not next_url.startswith("/") or next_url.startswith("//") or (len(next_url) > 1 and next_url[1] in "/\\"):
             next_url = "/"
         html = _LOGIN_HTML.replace(
-            'value="/"', 'value="%s"' % quote(next_url, safe="/"),
+            'value="/"',
+            'value="%s"' % quote(next_url, safe="/"),
         )
         body = html.encode("utf-8")
         self.send_response(200)
@@ -234,6 +235,7 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
         body = self.rfile.read(content_length).decode("utf-8", errors="replace")
 
         from urllib.parse import unquote_plus
+
         password = ""
         next_url = "/"
         for pair in body.split("&"):
@@ -242,16 +244,20 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
             elif pair.startswith("next="):
                 next_url = unquote_plus(pair[5:])
 
-        if (not next_url.startswith("/")
-                or next_url.startswith("//")
-                or (len(next_url) > 1 and next_url[1] in "/\\")
-                or "\r" in next_url or "\n" in next_url):
+        if (
+            not next_url.startswith("/")
+            or next_url.startswith("//")
+            or (len(next_url) > 1 and next_url[1] in "/\\")
+            or "\r" in next_url
+            or "\n" in next_url
+        ):
             next_url = "/"
 
         if secrets.compare_digest(password, self.server.password):
             session_id = self.server.create_session()
             csrf_token = secrets.token_hex(32)
             from urllib.parse import quote
+
             self.send_response(302)
             self.send_header("Location", quote(next_url, safe="/"))
             self.send_header(
@@ -265,6 +271,7 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
         else:
             from urllib.parse import quote
+
             fail_url = "/login?error=1"
             if next_url and next_url != "/":
                 fail_url += "&next=%s" % quote(next_url)
@@ -328,8 +335,12 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
 
         # Fall through to community handler
         status, response_body = handle_community_api(
-            self.path, method, body, store,
-            audit_reader=audit_reader, config=self.server.config,
+            self.path,
+            method,
+            body,
+            store,
+            audit_reader=audit_reader,
+            config=self.server.config,
             extensions=self.server.extensions,
             request_user=request_user,
         )
@@ -381,6 +392,7 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
             path, query = path.split("?", 1)
 
         from urllib.parse import unquote_plus
+
         params = {}
         for part in query.split("&"):
             if "=" in part:
@@ -400,8 +412,11 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
             detector = params.get("detector", "") or None
             provider = params.get("provider", "") or None
             findings, _ = store.get_findings_page(
-                limit=10000, offset=0, severity=severity,
-                detector=detector, provider=provider,
+                limit=10000,
+                offset=0,
+                severity=severity,
+                detector=detector,
+                provider=provider,
             )
 
             if fmt == "json":
@@ -421,8 +436,11 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
             provider = params.get("provider", "") or None
             search = params.get("search", "") or None
             entries, _ = audit_reader.read_entries(
-                limit=10000, offset=0, action=action,
-                provider=provider, search=search,
+                limit=10000,
+                offset=0,
+                action=action,
+                provider=provider,
+                search=search,
             )
 
             if fmt == "json":
@@ -434,8 +452,17 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
 
     @staticmethod
     def _findings_to_csv(findings: list) -> bytes:
-        cols = ["id", "timestamp", "detector", "finding_type", "severity",
-                "location", "action_taken", "provider", "model"]
+        cols = [
+            "id",
+            "timestamp",
+            "detector",
+            "finding_type",
+            "severity",
+            "location",
+            "action_taken",
+            "provider",
+            "model",
+        ]
         lines = [",".join(cols)]
         for f in findings:
             row = []
@@ -449,8 +476,17 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
 
     @staticmethod
     def _audit_to_csv(entries: list) -> bytes:
-        cols = ["timestamp", "request_id", "provider", "model", "endpoint",
-                "action", "finding_count", "scan_duration_ms", "request_size_bytes"]
+        cols = [
+            "timestamp",
+            "request_id",
+            "provider",
+            "model",
+            "endpoint",
+            "action",
+            "finding_count",
+            "scan_duration_ms",
+            "request_size_bytes",
+        ]
         lines = [",".join(cols)]
         for e in entries:
             row = []
@@ -466,6 +502,7 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
 
     def _handle_logs_download(self) -> None:
         from lumen_argus.log_utils import sanitize_log_line
+
         config = self.server.config
         if not config:
             self._send_json(404, {"error": "config not available"})
@@ -489,8 +526,7 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
         content = "".join(lines)
         body = content.encode("utf-8")
         now = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        self._send_download(body, "text/plain; charset=utf-8",
-                            "lumen-argus-logs-%s.txt" % now)
+        self._send_download(body, "text/plain; charset=utf-8", "lumen-argus-logs-%s.txt" % now)
 
     # --- Dashboard HTML ---
 
@@ -502,8 +538,8 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
         # Inject plugin CSS before </style>
         extra_css = self.server.extensions.get_dashboard_css()
         if extra_css:
-            css_block = '\n'.join(extra_css)
-            html = html.replace('</style>', css_block + '\n</style>')
+            css_block = "\n".join(extra_css)
+            html = html.replace("</style>", css_block + "\n</style>")
 
         # Inject plugin page JS before </body>
         extra_pages = self.server.extensions.get_dashboard_pages()
@@ -511,14 +547,15 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
             js_blocks = []
             for page in extra_pages:
                 parts = []
-                if page.get('html'):
+                if page.get("html"):
                     # Pass HTML template as a JS variable for registerPage() to use
                     import json as _json
-                    var_name = '_pageHtml_%s' % page['name']
-                    parts.append('<script>var %s=%s;</script>' % (var_name, _json.dumps(page['html'])))
-                parts.append('<script>\n%s\n</script>' % page['js'])
-                js_blocks.append('\n'.join(parts))
-            html = html.replace('</body>', '\n'.join(js_blocks) + '\n</body>')
+
+                    var_name = "_pageHtml_%s" % page["name"]
+                    parts.append("<script>var %s=%s;</script>" % (var_name, _json.dumps(page["html"])))
+                parts.append("<script>\n%s\n</script>" % page["js"])
+                js_blocks.append("\n".join(parts))
+            html = html.replace("</body>", "\n".join(js_blocks) + "\n</body>")
 
         body = html.encode("utf-8")
         self.send_response(200)
@@ -550,8 +587,7 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
     def _send_download(self, body: bytes, content_type: str, filename: str) -> None:
         self.send_response(200)
         self.send_header("Content-Type", content_type)
-        self.send_header("Content-Disposition",
-                         'attachment; filename="%s"' % filename)
+        self.send_header("Content-Disposition", 'attachment; filename="%s"' % filename)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
@@ -566,6 +602,7 @@ class DashboardServer(http.server.ThreadingHTTPServer):
     def handle_error(self, request, client_address):
         """Suppress ConnectionResetError from SSE client disconnections."""
         import sys
+
         exc_type = sys.exc_info()[0]
         if exc_type in (ConnectionResetError, BrokenPipeError, ConnectionAbortedError):
             return
@@ -598,8 +635,7 @@ class DashboardServer(http.server.ThreadingHTTPServer):
         session_id = secrets.token_hex(32)
         now = time.monotonic()
         with self._session_lock:
-            expired = [k for k, t in self._sessions.items()
-                       if now - t > _SESSION_TIMEOUT]
+            expired = [k for k, t in self._sessions.items() if now - t > _SESSION_TIMEOUT]
             for k in expired:
                 del self._sessions[k]
             self._sessions[session_id] = now
@@ -637,9 +673,14 @@ def start_dashboard(
     for attempt in range(2):
         try:
             server = DashboardServer(
-                bind, port, analytics_store, extensions,
-                password=password, audit_reader=audit_reader,
-                sse_broadcaster=sse_broadcaster, config=config,
+                bind,
+                port,
+                analytics_store,
+                extensions,
+                password=password,
+                audit_reader=audit_reader,
+                sse_broadcaster=sse_broadcaster,
+                config=config,
             )
             thread = threading.Thread(
                 target=server.serve_forever,
@@ -659,6 +700,8 @@ def start_dashboard(
             else:
                 log.warning(
                     "dashboard unavailable — failed to bind to %s:%d: %s",
-                    bind, port, e,
+                    bind,
+                    port,
+                    e,
                 )
                 return None

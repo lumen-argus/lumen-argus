@@ -78,9 +78,7 @@ class AuditLogger:
             if not m:
                 continue
             try:
-                file_date = datetime.strptime(m.group(1), "%Y%m%d").replace(
-                    tzinfo=timezone.utc
-                )
+                file_date = datetime.strptime(m.group(1), "%Y%m%d").replace(tzinfo=timezone.utc)
                 age_days = (now - file_date).days
                 if age_days > self._retention_days:
                     entry.unlink()

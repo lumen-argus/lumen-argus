@@ -120,21 +120,25 @@ def scan_text(
     exit_code = _resolve_exit_code(findings, config)
 
     if output_format == "json":
-        print(json.dumps({
-            "status": "findings",
-            "count": len(findings),
-            "exit_code": exit_code,
-            "findings": [
+        print(
+            json.dumps(
                 {
-                    "detector": f.detector,
-                    "type": f.type,
-                    "severity": f.severity,
-                    "location": f.location,
-                    "count": f.count,
+                    "status": "findings",
+                    "count": len(findings),
+                    "exit_code": exit_code,
+                    "findings": [
+                        {
+                            "detector": f.detector,
+                            "type": f.type,
+                            "severity": f.severity,
+                            "location": f.location,
+                            "count": f.count,
+                        }
+                        for f in findings
+                    ],
                 }
-                for f in findings
-            ],
-        }))
+            )
+        )
     else:
         print("lumen-argus: %d finding(s) detected" % len(findings), file=sys.stderr)
         for f in findings:
@@ -200,21 +204,25 @@ def scan_files(
                 exit_code = file_exit
 
             if output_format == "json":
-                print(json.dumps({
-                    "file": filepath,
-                    "count": len(findings),
-                    "exit_code": file_exit,
-                    "findings": [
+                print(
+                    json.dumps(
                         {
-                            "detector": f.detector,
-                            "type": f.type,
-                            "severity": f.severity,
-                            "location": f.location,
-                            "count": f.count,
+                            "file": filepath,
+                            "count": len(findings),
+                            "exit_code": file_exit,
+                            "findings": [
+                                {
+                                    "detector": f.detector,
+                                    "type": f.type,
+                                    "severity": f.severity,
+                                    "location": f.location,
+                                    "count": f.count,
+                                }
+                                for f in findings
+                            ],
                         }
-                        for f in findings
-                    ],
-                }))
+                    )
+                )
             else:
                 print("lumen-argus: %s — %d finding(s)" % (filepath, len(findings)), file=sys.stderr)
                 for f in findings:
@@ -342,21 +350,25 @@ def scan_diff(
                 exit_code = file_exit
 
             if output_format == "json":
-                print(json.dumps({
-                    "file": filepath,
-                    "count": len(findings),
-                    "exit_code": file_exit,
-                    "findings": [
+                print(
+                    json.dumps(
                         {
-                            "detector": f.detector,
-                            "type": f.type,
-                            "severity": f.severity,
-                            "location": f.location,
-                            "count": f.count,
+                            "file": filepath,
+                            "count": len(findings),
+                            "exit_code": file_exit,
+                            "findings": [
+                                {
+                                    "detector": f.detector,
+                                    "type": f.type,
+                                    "severity": f.severity,
+                                    "location": f.location,
+                                    "count": f.count,
+                                }
+                                for f in findings
+                            ],
                         }
-                        for f in findings
-                    ],
-                }))
+                    )
+                )
             else:
                 print("lumen-argus: %s — %d finding(s)" % (filepath, len(findings)), file=sys.stderr)
                 for f in findings:

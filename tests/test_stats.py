@@ -28,10 +28,22 @@ class TestSessionStats(unittest.TestCase):
             action="alert",
             scan_duration_ms=10.0,
             findings=[
-                Finding(detector="secrets", type="aws_access_key", severity="critical",
-                        location="msg[0]", value_preview="AKIA****", matched_value="x"),
-                Finding(detector="pii", type="email", severity="warning",
-                        location="msg[1]", value_preview="john****", matched_value="x"),
+                Finding(
+                    detector="secrets",
+                    type="aws_access_key",
+                    severity="critical",
+                    location="msg[0]",
+                    value_preview="AKIA****",
+                    matched_value="x",
+                ),
+                Finding(
+                    detector="pii",
+                    type="email",
+                    severity="warning",
+                    location="msg[1]",
+                    value_preview="john****",
+                    matched_value="x",
+                ),
             ],
         )
         stats.record("anthropic", 5000, result)
@@ -80,13 +92,24 @@ class TestPrometheusMetrics(unittest.TestCase):
     def test_metrics_after_requests(self):
         stats = SessionStats()
         stats.record("anthropic", 1000, ScanResult(action="pass", scan_duration_ms=5.0))
-        stats.record("anthropic", 2000, ScanResult(
-            action="block", scan_duration_ms=10.0,
-            findings=[Finding(
-                detector="secrets", type="aws_access_key", severity="critical",
-                location="msg", value_preview="****", matched_value="x",
-            )],
-        ))
+        stats.record(
+            "anthropic",
+            2000,
+            ScanResult(
+                action="block",
+                scan_duration_ms=10.0,
+                findings=[
+                    Finding(
+                        detector="secrets",
+                        type="aws_access_key",
+                        severity="critical",
+                        location="msg",
+                        value_preview="****",
+                        matched_value="x",
+                    )
+                ],
+            ),
+        )
         output = stats.prometheus_metrics()
         self.assertIn('lumen_argus_requests_total{action="pass"} 1', output)
         self.assertIn('lumen_argus_requests_total{action="block"} 1', output)
@@ -104,14 +127,24 @@ class TestPrometheusMetrics(unittest.TestCase):
     def test_matched_value_not_in_metrics(self):
         """Prometheus output must never contain matched_value."""
         stats = SessionStats()
-        stats.record("anthropic", 100, ScanResult(
-            action="alert", scan_duration_ms=1.0,
-            findings=[Finding(
-                detector="secrets", type="test_key", severity="high",
-                location="msg", value_preview="****",
-                matched_value="SUPER_SECRET_VALUE_12345",
-            )],
-        ))
+        stats.record(
+            "anthropic",
+            100,
+            ScanResult(
+                action="alert",
+                scan_duration_ms=1.0,
+                findings=[
+                    Finding(
+                        detector="secrets",
+                        type="test_key",
+                        severity="high",
+                        location="msg",
+                        value_preview="****",
+                        matched_value="SUPER_SECRET_VALUE_12345",
+                    )
+                ],
+            ),
+        )
         output = stats.prometheus_metrics()
         self.assertNotIn("SUPER_SECRET_VALUE_12345", output)
 

@@ -3,7 +3,6 @@
 import json
 import sys
 import threading
-from typing import Optional
 
 from lumen_argus.models import ScanResult
 
@@ -43,10 +42,13 @@ class TerminalDisplay:
         """Display startup banner."""
         with self._lock:
             print()
-            print("  %s — listening on %s" % (
-                self._bold("lumen-argus"),
-                self._cyan("http://%s:%d" % (bind, port)),
-            ))
+            print(
+                "  %s — listening on %s"
+                % (
+                    self._bold("lumen-argus"),
+                    self._cyan("http://%s:%d" % (bind, port)),
+                )
+            )
             print()
 
     def show_request(
@@ -94,7 +96,13 @@ class TerminalDisplay:
             detail = ""
 
         line = "  #%-3d %-4s %-20s %-12s %10s  %6s  %s" % (
-            request_id, method, path[:20], short_model, size_str, dur_str, action_str,
+            request_id,
+            method,
+            path[:20],
+            short_model,
+            size_str,
+            dur_str,
+            action_str,
         )
         if detail:
             line += "  " + detail
@@ -105,11 +113,14 @@ class TerminalDisplay:
     def show_error(self, request_id: int, error: str) -> None:
         """Display a proxy error."""
         with self._lock:
-            print("  %s Request #%d: %s" % (
-                self._red("[ERROR]"),
-                request_id,
-                error,
-            ))
+            print(
+                "  %s Request #%d: %s"
+                % (
+                    self._red("[ERROR]"),
+                    request_id,
+                    error,
+                )
+            )
 
     def show_shutdown(self, stats: dict = None) -> None:
         """Display shutdown summary with optional session statistics."""
@@ -125,13 +136,16 @@ class TerminalDisplay:
             alerted = actions.get("alert", 0)
             avg_scan = stats.get("avg_scan_ms", 0)
 
-            print("  %s — %d requests | %d blocked | %d alerts | avg scan %.1fms" % (
-                self._dim("shutdown"),
-                total,
-                blocked,
-                alerted,
-                avg_scan,
-            ))
+            print(
+                "  %s — %d requests | %d blocked | %d alerts | avg scan %.1fms"
+                % (
+                    self._dim("shutdown"),
+                    total,
+                    blocked,
+                    alerted,
+                    avg_scan,
+                )
+            )
 
             # Finding type summary
             finding_types = stats.get("finding_types", {})
@@ -142,10 +156,13 @@ class TerminalDisplay:
                         parts.append("%s\u00d7%d" % (ftype, count))
                     else:
                         parts.append(ftype)
-                print("  %s %s" % (
-                    self._dim("findings:"),
-                    ", ".join(parts),
-                ))
+                print(
+                    "  %s %s"
+                    % (
+                        self._dim("findings:"),
+                        ", ".join(parts),
+                    )
+                )
 
     def _format_size(self, size_bytes: int) -> str:
         """Format byte size as human-readable (e.g. 88.3k)."""
@@ -162,7 +179,7 @@ class TerminalDisplay:
         # Strip common prefixes
         for prefix in ("claude-", "gpt-", "gemini-"):
             if model.startswith(prefix):
-                model = model[len(prefix):]
+                model = model[len(prefix) :]
                 break
         # Truncate long model strings
         if len(model) > 12:
@@ -217,19 +234,21 @@ class JsonDisplay:
                 entry["count"] = f.count
             findings.append(entry)
 
-        self._emit({
-            "event": "request",
-            "request_id": request_id,
-            "method": method,
-            "path": path,
-            "model": model,
-            "req_bytes": req_size,
-            "resp_bytes": resp_size,
-            "duration_ms": round(duration_ms, 1),
-            "action": result.action,
-            "findings": findings,
-            "scan_ms": round(result.scan_duration_ms, 1),
-        })
+        self._emit(
+            {
+                "event": "request",
+                "request_id": request_id,
+                "method": method,
+                "path": path,
+                "model": model,
+                "req_bytes": req_size,
+                "resp_bytes": resp_size,
+                "duration_ms": round(duration_ms, 1),
+                "action": result.action,
+                "findings": findings,
+                "scan_ms": round(result.scan_duration_ms, 1),
+            }
+        )
 
     def show_error(self, request_id: int, error: str) -> None:
         self._emit({"event": "error", "request_id": request_id, "error": error})

@@ -88,8 +88,7 @@ class TestAnalyticsStore(unittest.TestCase):
         rows = conn.execute("SELECT * FROM findings").fetchall()
         for row in rows:
             for key in row.keys():
-                self.assertNotEqual(str(row[key]), secret,
-                                    f"matched_value found in column '{key}'")
+                self.assertNotEqual(str(row[key]), secret, f"matched_value found in column '{key}'")
 
     def test_record_findings_stores_provider_and_model(self):
         """Provider and model should be persisted."""
@@ -324,9 +323,7 @@ class TestAnalyticsStore(unittest.TestCase):
 
     def test_get_total_count_combined_filters(self):
         self._seed_findings()
-        self.assertEqual(
-            self.store.get_total_count(severity="high", detector="secrets"), 1
-        )
+        self.assertEqual(self.store.get_total_count(severity="high", detector="secrets"), 1)
 
     def test_get_total_count_no_match(self):
         self._seed_findings()
@@ -358,9 +355,7 @@ class TestAnalyticsStore(unittest.TestCase):
         conn = self.store._connect()
         with self.store._lock:
             with conn:
-                conn.execute(
-                    "UPDATE findings SET timestamp = DATE('now', '-400 days') WHERE id = 1"
-                )
+                conn.execute("UPDATE findings SET timestamp = DATE('now', '-400 days') WHERE id = 1")
 
         deleted = self.store.cleanup(retention_days=365)
         self.assertEqual(deleted, 1)
@@ -381,9 +376,7 @@ class TestAnalyticsStore(unittest.TestCase):
         conn = self.store._connect()
         with self.store._lock:
             with conn:
-                conn.execute(
-                    "UPDATE findings SET timestamp = DATE('now', '-500 days')"
-                )
+                conn.execute("UPDATE findings SET timestamp = DATE('now', '-500 days')")
 
         deleted = self.store.cleanup(retention_days=365)
         self.assertEqual(deleted, 3)
@@ -396,9 +389,7 @@ class TestAnalyticsStore(unittest.TestCase):
         conn = self.store._connect()
         with self.store._lock:
             with conn:
-                conn.execute(
-                    "UPDATE findings SET timestamp = DATE('now', '-400 days') WHERE id = 1"
-                )
+                conn.execute("UPDATE findings SET timestamp = DATE('now', '-400 days') WHERE id = 1")
 
         deleted = self.store.cleanup(retention_days=365)
         self.assertEqual(deleted, 1)
@@ -448,9 +439,7 @@ class TestAnalyticsStore(unittest.TestCase):
             t.join(timeout=10)
 
         self.assertEqual(errors, [], f"Concurrent write errors: {errors}")
-        self.assertEqual(
-            self.store.get_total_count(), num_threads * writes_per_thread
-        )
+        self.assertEqual(self.store.get_total_count(), num_threads * writes_per_thread)
 
     def test_concurrent_read_write(self):
         """Reads and writes happening concurrently should not raise."""
@@ -469,9 +458,7 @@ class TestAnalyticsStore(unittest.TestCase):
         def writer():
             try:
                 for _ in range(20):
-                    self.store.record_findings(
-                        [_make_finding()], provider="test"
-                    )
+                    self.store.record_findings([_make_finding()], provider="test")
             except Exception as e:
                 errors.append(e)
 

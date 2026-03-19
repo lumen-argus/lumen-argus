@@ -48,14 +48,16 @@ class CustomDetector(BaseDetector):
                 if allowlist.is_allowed_secret(value):
                     continue
                 field_idx = _find_field(match.start(), boundaries)
-                findings.append(Finding(
-                    detector=rule.detector,
-                    type=rule.name,
-                    severity=rule.severity,
-                    location=fields[field_idx].path,
-                    value_preview=_mask_value(value),
-                    matched_value=value,
-                    action=rule.action,  # empty = PolicyEngine uses default
-                ))
+                findings.append(
+                    Finding(
+                        detector=rule.detector,
+                        type=rule.name,
+                        severity=rule.severity,
+                        location=fields[field_idx].path,
+                        value_preview=_mask_value(value),
+                        matched_value=value,
+                        action=rule.action,  # empty = PolicyEngine uses default
+                    )
+                )
 
         return findings

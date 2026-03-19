@@ -19,23 +19,36 @@ class TestNotificationAPI(unittest.TestCase):
         self.store = AnalyticsStore(db_path=self.db_path)
         self.ext = ExtensionRegistry()
         # Register channel types (simulating Pro)
-        self.ext.register_channel_types({
-            "webhook": {"label": "Webhook", "fields": {
-                "url": {"label": "URL", "required": True, "type": "url"},
-            }},
-            "email": {"label": "Email", "fields": {
-                "smtp_host": {"label": "SMTP Host", "required": True, "type": "text"},
-            }},
-        })
+        self.ext.register_channel_types(
+            {
+                "webhook": {
+                    "label": "Webhook",
+                    "fields": {
+                        "url": {"label": "URL", "required": True, "type": "url"},
+                    },
+                },
+                "email": {
+                    "label": "Email",
+                    "fields": {
+                        "smtp_host": {"label": "SMTP Host", "required": True, "type": "text"},
+                    },
+                },
+            }
+        )
         self.ext.set_channel_limit(None)  # unlimited for most tests
 
     def tearDown(self):
         import shutil
+
         shutil.rmtree(self.tmpdir, ignore_errors=True)
 
     def _api(self, path, method="GET", body=b""):
         return handle_community_api(
-            path, method, body, self.store, extensions=self.ext,
+            path,
+            method,
+            body,
+            self.store,
+            extensions=self.ext,
         )
 
     def test_get_types(self):
@@ -60,10 +73,13 @@ class TestNotificationAPI(unittest.TestCase):
         self.assertEqual(data["channels"], [])
 
     def test_create_channel(self):
-        payload = json.dumps({
-            "name": "test", "type": "webhook",
-            "config": {"url": "https://example.com"},
-        }).encode()
+        payload = json.dumps(
+            {
+                "name": "test",
+                "type": "webhook",
+                "config": {"url": "https://example.com"},
+            }
+        ).encode()
         status, body = self._api("/api/v1/notifications/channels", "POST", payload)
         self.assertEqual(status, 201)
         data = json.loads(body)
@@ -72,9 +88,13 @@ class TestNotificationAPI(unittest.TestCase):
         self.assertNotIn("config", data)
 
     def test_create_channel_unknown_type(self):
-        payload = json.dumps({
-            "name": "test", "type": "unknown_type", "config": {},
-        }).encode()
+        payload = json.dumps(
+            {
+                "name": "test",
+                "type": "unknown_type",
+                "config": {},
+            }
+        ).encode()
         status, body = self._api("/api/v1/notifications/channels", "POST", payload)
         self.assertEqual(status, 400)
         data = json.loads(body)
@@ -83,25 +103,36 @@ class TestNotificationAPI(unittest.TestCase):
     def test_create_channel_limit_enforced(self):
         self.ext.set_channel_limit(1)
         # Create first — should succeed
-        payload = json.dumps({
-            "name": "first", "type": "webhook", "config": {"url": "https://a.com"},
-        }).encode()
+        payload = json.dumps(
+            {
+                "name": "first",
+                "type": "webhook",
+                "config": {"url": "https://a.com"},
+            }
+        ).encode()
         status, _ = self._api("/api/v1/notifications/channels", "POST", payload)
         self.assertEqual(status, 201)
         # Create second — should fail with 409
-        payload = json.dumps({
-            "name": "second", "type": "email", "config": {"smtp_host": "mail.com"},
-        }).encode()
+        payload = json.dumps(
+            {
+                "name": "second",
+                "type": "email",
+                "config": {"smtp_host": "mail.com"},
+            }
+        ).encode()
         status, body = self._api("/api/v1/notifications/channels", "POST", payload)
         self.assertEqual(status, 409)
         data = json.loads(body)
         self.assertEqual(data["error"], "channel_limit_reached")
 
     def test_get_channel_by_id(self):
-        create_payload = json.dumps({
-            "name": "test", "type": "webhook",
-            "config": {"url": "https://example.com"},
-        }).encode()
+        create_payload = json.dumps(
+            {
+                "name": "test",
+                "type": "webhook",
+                "config": {"url": "https://example.com"},
+            }
+        ).encode()
         _, create_body = self._api("/api/v1/notifications/channels", "POST", create_payload)
         channel_id = json.loads(create_body)["id"]
         status, body = self._api("/api/v1/notifications/channels/%d" % channel_id)
@@ -116,112 +147,138 @@ class TestNotificationAPI(unittest.TestCase):
         self.assertEqual(status, 404)
 
     def test_update_channel(self):
-        create_payload = json.dumps({
-            "name": "test", "type": "webhook", "config": {"url": "https://old.com"},
-        }).encode()
+        create_payload = json.dumps(
+            {
+                "name": "test",
+                "type": "webhook",
+                "config": {"url": "https://old.com"},
+            }
+        ).encode()
         _, create_body = self._api("/api/v1/notifications/channels", "POST", create_payload)
         channel_id = json.loads(create_body)["id"]
 
         update_payload = json.dumps({"name": "renamed"}).encode()
-        status, body = self._api(
-            "/api/v1/notifications/channels/%d" % channel_id, "PUT", update_payload
-        )
+        status, body = self._api("/api/v1/notifications/channels/%d" % channel_id, "PUT", update_payload)
         self.assertEqual(status, 200)
         data = json.loads(body)
         self.assertEqual(data["name"], "renamed")
 
     def test_delete_channel(self):
-        create_payload = json.dumps({
-            "name": "test", "type": "webhook", "config": {},
-        }).encode()
+        create_payload = json.dumps(
+            {
+                "name": "test",
+                "type": "webhook",
+                "config": {},
+            }
+        ).encode()
         _, create_body = self._api("/api/v1/notifications/channels", "POST", create_payload)
         channel_id = json.loads(create_body)["id"]
 
-        status, body = self._api(
-            "/api/v1/notifications/channels/%d" % channel_id, "DELETE"
-        )
+        status, body = self._api("/api/v1/notifications/channels/%d" % channel_id, "DELETE")
         self.assertEqual(status, 200)
         data = json.loads(body)
         self.assertEqual(data["deleted"], channel_id)
 
     def test_test_channel_no_builder(self):
         """Test endpoint returns error when no notifier builder registered."""
-        create_payload = json.dumps({
-            "name": "test", "type": "webhook", "config": {},
-        }).encode()
+        create_payload = json.dumps(
+            {
+                "name": "test",
+                "type": "webhook",
+                "config": {},
+            }
+        ).encode()
         _, create_body = self._api("/api/v1/notifications/channels", "POST", create_payload)
         channel_id = json.loads(create_body)["id"]
 
-        status, body = self._api(
-            "/api/v1/notifications/channels/%d/test" % channel_id, "POST"
-        )
+        status, body = self._api("/api/v1/notifications/channels/%d/test" % channel_id, "POST")
         self.assertEqual(status, 400)
         data = json.loads(body)
         self.assertEqual(data["error"], "notifications_unavailable")
 
     def test_test_channel_with_builder(self):
         """Test endpoint works when notifier builder is registered."""
+
         class MockNotifier:
             def notify(self, findings, provider="", model=""):
                 pass
 
         self.ext.set_notifier_builder(lambda ch: MockNotifier())
 
-        create_payload = json.dumps({
-            "name": "test", "type": "webhook", "config": {"url": "https://x.com"},
-        }).encode()
+        create_payload = json.dumps(
+            {
+                "name": "test",
+                "type": "webhook",
+                "config": {"url": "https://x.com"},
+            }
+        ).encode()
         _, create_body = self._api("/api/v1/notifications/channels", "POST", create_payload)
         channel_id = json.loads(create_body)["id"]
 
-        status, body = self._api(
-            "/api/v1/notifications/channels/%d/test" % channel_id, "POST"
-        )
+        status, body = self._api("/api/v1/notifications/channels/%d/test" % channel_id, "POST")
         self.assertEqual(status, 200)
         data = json.loads(body)
         self.assertEqual(data["status"], "sent")
 
     def test_test_channel_builder_failure(self):
         """Test endpoint returns 502 when notifier raises."""
+
         class FailNotifier:
             def notify(self, findings, provider="", model=""):
                 raise Exception("connection refused")
 
         self.ext.set_notifier_builder(lambda ch: FailNotifier())
 
-        create_payload = json.dumps({
-            "name": "test", "type": "webhook", "config": {},
-        }).encode()
+        create_payload = json.dumps(
+            {
+                "name": "test",
+                "type": "webhook",
+                "config": {},
+            }
+        ).encode()
         _, create_body = self._api("/api/v1/notifications/channels", "POST", create_payload)
         channel_id = json.loads(create_body)["id"]
 
-        status, body = self._api(
-            "/api/v1/notifications/channels/%d/test" % channel_id, "POST"
-        )
+        status, body = self._api("/api/v1/notifications/channels/%d/test" % channel_id, "POST")
         self.assertEqual(status, 502)
         data = json.loads(body)
         self.assertEqual(data["status"], "failed")
         self.assertIn("connection refused", data["error"])
 
     def test_batch_action(self):
-        a = self.store.create_notification_channel({
-            "name": "a", "type": "webhook", "config": {},
-        })
-        b = self.store.create_notification_channel({
-            "name": "b", "type": "webhook", "config": {},
-        })
-        payload = json.dumps({
-            "action": "disable", "ids": [a["id"], b["id"]],
-        }).encode()
+        a = self.store.create_notification_channel(
+            {
+                "name": "a",
+                "type": "webhook",
+                "config": {},
+            }
+        )
+        b = self.store.create_notification_channel(
+            {
+                "name": "b",
+                "type": "webhook",
+                "config": {},
+            }
+        )
+        payload = json.dumps(
+            {
+                "action": "disable",
+                "ids": [a["id"], b["id"]],
+            }
+        ).encode()
         status, body = self._api("/api/v1/notifications/channels/batch", "POST", payload)
         self.assertEqual(status, 200)
         data = json.loads(body)
         self.assertEqual(data["affected"], 2)
 
     def test_config_masked_sensitive_fields(self):
-        create_payload = json.dumps({
-            "name": "test", "type": "webhook",
-            "config": {"url": "https://secret-webhook-url.example.com/hook"},
-        }).encode()
+        create_payload = json.dumps(
+            {
+                "name": "test",
+                "type": "webhook",
+                "config": {"url": "https://secret-webhook-url.example.com/hook"},
+            }
+        ).encode()
         _, create_body = self._api("/api/v1/notifications/channels", "POST", create_payload)
 
         status, body = self._api("/api/v1/notifications/channels")
@@ -247,11 +304,16 @@ class TestNotificationAPIWithoutPro(unittest.TestCase):
 
     def tearDown(self):
         import shutil
+
         shutil.rmtree(self.tmpdir, ignore_errors=True)
 
     def _api(self, path, method="GET", body=b""):
         return handle_community_api(
-            path, method, body, self.store, extensions=self.ext,
+            path,
+            method,
+            body,
+            self.store,
+            extensions=self.ext,
         )
 
     def test_get_channels_shows_unavailable(self):
@@ -265,10 +327,14 @@ class TestNotificationAPIWithoutPro(unittest.TestCase):
 
     def test_get_channels_shows_yaml_channels_without_pro(self):
         """YAML channels in DB should be visible even without Pro."""
-        self.store.create_notification_channel({
-            "name": "yaml-alert", "type": "webhook",
-            "config": {"url": "https://example.com"}, "source": "yaml",
-        })
+        self.store.create_notification_channel(
+            {
+                "name": "yaml-alert",
+                "type": "webhook",
+                "config": {"url": "https://example.com"},
+                "source": "yaml",
+            }
+        )
         status, body = self._api("/api/v1/notifications/channels")
         self.assertEqual(status, 200)
         data = json.loads(body)

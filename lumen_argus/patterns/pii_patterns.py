@@ -80,7 +80,7 @@ def _validate_iban(value: str) -> bool:
         if c.isdigit():
             digits.append(c)
         elif c.isalpha():
-            digits.append(str(ord(c) - ord('A') + 10))
+            digits.append(str(ord(c) - ord("A") + 10))
         else:
             return False
     return int("".join(digits)) % 97 == 1

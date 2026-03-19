@@ -80,13 +80,15 @@ class PIIDetector(BaseDetector):
                     continue
 
                 field_idx = _find_field(match.start(), boundaries)
-                findings.append(Finding(
-                    detector="pii",
-                    type=pat.name,
-                    severity=pat.severity,
-                    location=fields[field_idx].path,
-                    value_preview=_mask_value(value),
-                    matched_value=value,
-                ))
+                findings.append(
+                    Finding(
+                        detector="pii",
+                        type=pat.name,
+                        severity=pat.severity,
+                        location=fields[field_idx].path,
+                        value_preview=_mask_value(value),
+                        matched_value=value,
+                    )
+                )
 
         return findings

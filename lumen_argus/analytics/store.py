@@ -132,8 +132,7 @@ class AnalyticsStore:
         now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
         rows = [
-            (now, f.detector, f.type, f.severity, f.location,
-             f.action, provider, model, f.value_preview)
+            (now, f.detector, f.type, f.severity, f.location, f.action, provider, model, f.value_preview)
             for f in findings
         ]
 
@@ -173,13 +172,13 @@ class AnalyticsStore:
 
         with self._connect() as conn:
             total = conn.execute(
-                "SELECT COUNT(*) FROM findings" + where, params,
+                "SELECT COUNT(*) FROM findings" + where,
+                params,
             ).fetchone()[0]
             rows = conn.execute(
                 "SELECT id, timestamp, detector, finding_type, severity, "
                 "location, action_taken, provider, model, value_preview "
-                "FROM findings" + where +
-                " ORDER BY id DESC LIMIT ? OFFSET ?",
+                "FROM findings" + where + " ORDER BY id DESC LIMIT ? OFFSET ?",
                 params + [limit, offset],
             ).fetchall()
         return [dict(r) for r in rows], total
@@ -201,41 +200,30 @@ class AnalyticsStore:
             total = conn.execute("SELECT COUNT(*) FROM findings").fetchone()[0]
 
             by_severity = {}
-            for row in conn.execute(
-                "SELECT severity, COUNT(*) as cnt FROM findings GROUP BY severity"
-            ):
+            for row in conn.execute("SELECT severity, COUNT(*) as cnt FROM findings GROUP BY severity"):
                 by_severity[row["severity"]] = row["cnt"]
 
             by_detector = {}
-            for row in conn.execute(
-                "SELECT detector, COUNT(*) as cnt FROM findings GROUP BY detector"
-            ):
+            for row in conn.execute("SELECT detector, COUNT(*) as cnt FROM findings GROUP BY detector"):
                 by_detector[row["detector"]] = row["cnt"]
 
             top_types = {}
             for row in conn.execute(
-                "SELECT finding_type, COUNT(*) as cnt FROM findings "
-                "GROUP BY finding_type ORDER BY cnt DESC LIMIT 20"
+                "SELECT finding_type, COUNT(*) as cnt FROM findings GROUP BY finding_type ORDER BY cnt DESC LIMIT 20"
             ):
                 top_types[row["finding_type"]] = row["cnt"]
 
             by_action = {}
-            for row in conn.execute(
-                "SELECT action_taken, COUNT(*) as cnt FROM findings "
-                "GROUP BY action_taken"
-            ):
+            for row in conn.execute("SELECT action_taken, COUNT(*) as cnt FROM findings GROUP BY action_taken"):
                 by_action[row["action_taken"]] = row["cnt"]
 
             by_provider = {}
-            for row in conn.execute(
-                "SELECT provider, COUNT(*) as cnt FROM findings GROUP BY provider"
-            ):
+            for row in conn.execute("SELECT provider, COUNT(*) as cnt FROM findings GROUP BY provider"):
                 by_provider[row["provider"] or "unknown"] = row["cnt"]
 
             by_model = {}
             for row in conn.execute(
-                "SELECT model, COUNT(*) as cnt FROM findings "
-                "GROUP BY model ORDER BY cnt DESC LIMIT 20"
+                "SELECT model, COUNT(*) as cnt FROM findings GROUP BY model ORDER BY cnt DESC LIMIT 20"
             ):
                 by_model[row["model"] or "unknown"] = row["cnt"]
 
@@ -294,12 +282,12 @@ class AnalyticsStore:
                 )
                 deleted = cursor.rowcount
         if deleted:
-            log.info("analytics cleanup: deleted %d findings older than %d days",
-                     deleted, retention_days)
+            log.info("analytics cleanup: deleted %d findings older than %d days", deleted, retention_days)
         return deleted
 
     def start_cleanup_scheduler(self, retention_days: int = 365) -> None:
         """Start a background thread that runs cleanup daily."""
+
         def _cleanup_loop():
             while True:
                 time.sleep(86400)  # 24 hours
@@ -330,9 +318,7 @@ class AnalyticsStore:
 
     def list_notification_channels(self, source: Optional[str] = None) -> list:
         """Return all channels, optionally filtered by source."""
-        query = ("SELECT * FROM notification_channels"
-                 + (" WHERE source = ?" if source else "")
-                 + " ORDER BY id")
+        query = "SELECT * FROM notification_channels" + (" WHERE source = ?" if source else "") + " ORDER BY id"
         params = [source] if source else []
         with self._connect() as conn:
             rows = conn.execute(query, params).fetchall()
@@ -355,7 +341,9 @@ class AnalyticsStore:
             ).fetchone()[0]
 
     def create_notification_channel(
-        self, data: dict, channel_limit: "Optional[int]" = None,
+        self,
+        data: dict,
+        channel_limit: "Optional[int]" = None,
     ) -> dict:
         """Create a channel. Raises ValueError on validation failure.
 
@@ -381,9 +369,7 @@ class AnalyticsStore:
             with self._connect() as conn:
                 # Atomic limit check under the same lock as insert
                 if channel_limit is not None:
-                    current = conn.execute(
-                        "SELECT COUNT(*) FROM notification_channels"
-                    ).fetchone()[0]
+                    current = conn.execute("SELECT COUNT(*) FROM notification_channels").fetchone()[0]
                     if current >= channel_limit:
                         raise ValueError("channel_limit_reached")
                 created_by = data.get("created_by", "")
@@ -407,17 +393,13 @@ class AnalyticsStore:
                             created_by,
                         ),
                     )
-                    channel_id = conn.execute(
-                        "SELECT last_insert_rowid()"
-                    ).fetchone()[0]
+                    channel_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
                 except sqlite3.IntegrityError:
                     raise ValueError("channel name '%s' already exists" % name)
 
         return self.get_notification_channel(channel_id)
 
-    def update_notification_channel(
-        self, channel_id: int, data: dict
-    ) -> Optional[dict]:
+    def update_notification_channel(self, channel_id: int, data: dict) -> Optional[dict]:
         """Update channel fields. Only updates provided keys."""
         updates = []  # type: List[str]
         params = []  # type: list
@@ -455,14 +437,11 @@ class AnalyticsStore:
             with self._connect() as conn:
                 try:
                     cursor = conn.execute(
-                        "UPDATE notification_channels SET %s WHERE id = ?"
-                        % ", ".join(updates),
+                        "UPDATE notification_channels SET %s WHERE id = ?" % ", ".join(updates),
                         params,
                     )
                 except sqlite3.IntegrityError:
-                    raise ValueError(
-                        "channel name '%s' already exists" % data.get("name", "")
-                    )
+                    raise ValueError("channel name '%s' already exists" % data.get("name", ""))
                 if cursor.rowcount == 0:
                     return None
 
@@ -488,15 +467,13 @@ class AnalyticsStore:
                 if action == "delete":
                     # Only delete dashboard-managed channels
                     cursor = conn.execute(
-                        "DELETE FROM notification_channels "
-                        "WHERE id IN (%s) AND source = 'dashboard'" % placeholders,
+                        "DELETE FROM notification_channels WHERE id IN (%s) AND source = 'dashboard'" % placeholders,
                         ids,
                     )
                 elif action in ("enable", "disable"):
                     enabled = 1 if action == "enable" else 0
                     cursor = conn.execute(
-                        "UPDATE notification_channels SET enabled = ?, updated_at = ? "
-                        "WHERE id IN (%s)" % placeholders,
+                        "UPDATE notification_channels SET enabled = ?, updated_at = ? WHERE id IN (%s)" % placeholders,
                         [enabled, self._now()] + ids,
                     )
                 else:
@@ -504,7 +481,9 @@ class AnalyticsStore:
                 return cursor.rowcount
 
     def reconcile_yaml_channels(
-        self, yaml_channels: list, channel_limit: Optional[int] = None,
+        self,
+        yaml_channels: list,
+        channel_limit: Optional[int] = None,
     ) -> dict:
         """Kubernetes-style declarative reconciliation of YAML channels.
 
@@ -526,14 +505,8 @@ class AnalyticsStore:
                 yaml_by_name[name] = ch
 
         # Get current DB state
-        db_yaml = {
-            ch["name"]: ch
-            for ch in self.list_notification_channels(source="yaml")
-        }
-        db_dashboard_names = {
-            ch["name"]
-            for ch in self.list_notification_channels(source="dashboard")
-        }
+        db_yaml = {ch["name"]: ch for ch in self.list_notification_channels(source="yaml")}
+        db_dashboard_names = {ch["name"] for ch in self.list_notification_channels(source="dashboard")}
         current_total = self.count_notification_channels()
 
         # Delete YAML channels no longer in config
@@ -548,8 +521,8 @@ class AnalyticsStore:
             # Skip if name collides with a dashboard-managed channel
             if name in db_dashboard_names:
                 log.warning(
-                    "notification channel '%s' in config conflicts with "
-                    "dashboard-managed channel — skipping", name,
+                    "notification channel '%s' in config conflicts with dashboard-managed channel — skipping",
+                    name,
                 )
                 continue
 
@@ -559,9 +532,7 @@ class AnalyticsStore:
             config = {k: v for k, v in yaml_ch.items() if k not in _top_keys}
             # Normalize to_addrs: comma-separated string → list
             if "to_addrs" in config and isinstance(config["to_addrs"], str):
-                config["to_addrs"] = [
-                    a.strip() for a in config["to_addrs"].split(",") if a.strip()
-                ]
+                config["to_addrs"] = [a.strip() for a in config["to_addrs"].split(",") if a.strip()]
 
             channel_data = {
                 "name": name,
@@ -583,9 +554,9 @@ class AnalyticsStore:
                 # New create — check limit
                 if channel_limit is not None and current_total >= channel_limit:
                     log.warning(
-                        "notification channel '%s' skipped — "
-                        "channel limit reached (%d)",
-                        name, channel_limit,
+                        "notification channel '%s' skipped — channel limit reached (%d)",
+                        name,
+                        channel_limit,
                     )
                     continue
                 self.create_notification_channel(channel_data)

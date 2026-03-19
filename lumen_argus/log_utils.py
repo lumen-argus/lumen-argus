@@ -14,6 +14,7 @@ from lumen_argus.provider import DEFAULT_UPSTREAMS
 # Secure rotating file handler and setup
 # ---------------------------------------------------------------------------
 
+
 class SecureRotatingFileHandler(logging.handlers.RotatingFileHandler):
     """RotatingFileHandler that creates files with 0o600 permissions.
 
@@ -54,10 +55,12 @@ def setup_file_logging(logging_config):
         encoding="utf-8",
     )
     file_handler.setLevel(file_level)
-    file_handler.setFormatter(logging.Formatter(
-        "%(asctime)s.%(msecs)03d %(levelname)-5s [%(name)s] %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    ))
+    file_handler.setFormatter(
+        logging.Formatter(
+            "%(asctime)s.%(msecs)03d %(levelname)-5s [%(name)s] %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
+    )
 
     return file_handler, log_file_path, file_level
 
@@ -128,8 +131,7 @@ def config_diff(old, new):
         new_det = getattr(new, name)
         if old_det.action != new_det.action:
             changes.append(
-                "detectors.%s.action: %s -> %s"
-                % (name, old_det.action or "(default)", new_det.action or "(default)")
+                "detectors.%s.action: %s -> %s" % (name, old_det.action or "(default)", new_det.action or "(default)")
             )
         if old_det.enabled != new_det.enabled:
             changes.append("detectors.%s.enabled: %s -> %s" % (name, old_det.enabled, new_det.enabled))
@@ -154,12 +156,16 @@ def config_diff(old, new):
     if old.proxy.drain_timeout != new.proxy.drain_timeout:
         changes.append("proxy.drain_timeout: %d -> %d" % (old.proxy.drain_timeout, new.proxy.drain_timeout))
     if old.proxy.ca_bundle != new.proxy.ca_bundle:
-        changes.append("proxy.ca_bundle: %s -> %s" % (old.proxy.ca_bundle or "(system)", new.proxy.ca_bundle or "(system)"))
+        changes.append(
+            "proxy.ca_bundle: %s -> %s" % (old.proxy.ca_bundle or "(system)", new.proxy.ca_bundle or "(system)")
+        )
     if old.proxy.verify_ssl != new.proxy.verify_ssl:
         changes.append("proxy.verify_ssl: %s -> %s" % (old.proxy.verify_ssl, new.proxy.verify_ssl))
     # Dashboard (requires restart)
     if old.dashboard.enabled != new.dashboard.enabled:
-        changes.append("dashboard.enabled: %s -> %s (restart required)" % (old.dashboard.enabled, new.dashboard.enabled))
+        changes.append(
+            "dashboard.enabled: %s -> %s (restart required)" % (old.dashboard.enabled, new.dashboard.enabled)
+        )
     if old.dashboard.port != new.dashboard.port:
         changes.append("dashboard.port: %d -> %d (restart required)" % (old.dashboard.port, new.dashboard.port))
     if old.dashboard.bind != new.dashboard.bind:
@@ -168,11 +174,16 @@ def config_diff(old, new):
         changes.append("dashboard.password: changed (restart required)")
     # Analytics (requires restart)
     if old.analytics.enabled != new.analytics.enabled:
-        changes.append("analytics.enabled: %s -> %s (restart required)" % (old.analytics.enabled, new.analytics.enabled))
+        changes.append(
+            "analytics.enabled: %s -> %s (restart required)" % (old.analytics.enabled, new.analytics.enabled)
+        )
     if old.analytics.db_path != new.analytics.db_path:
         changes.append("analytics.db_path: changed (restart required)")
     if old.analytics.retention_days != new.analytics.retention_days:
-        changes.append("analytics.retention_days: %d -> %d (restart required)" % (old.analytics.retention_days, new.analytics.retention_days))
+        changes.append(
+            "analytics.retention_days: %d -> %d (restart required)"
+            % (old.analytics.retention_days, new.analytics.retention_days)
+        )
     return changes
 
 

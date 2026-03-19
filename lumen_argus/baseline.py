@@ -38,12 +38,14 @@ def load_baseline(path: str) -> Set[Tuple[str, str, str, str]]:
             data = json.load(f)
         keys = set()
         for entry in data.get("findings", []):
-            keys.add((
-                entry.get("detector", ""),
-                entry.get("type", ""),
-                entry.get("file", ""),
-                entry.get("value_hash", ""),
-            ))
+            keys.add(
+                (
+                    entry.get("detector", ""),
+                    entry.get("type", ""),
+                    entry.get("file", ""),
+                    entry.get("value_hash", ""),
+                )
+            )
         return keys
     except (json.JSONDecodeError, OSError) as e:
         print("lumen-argus: failed to load baseline %s: %s" % (path, e), file=sys.stderr)
@@ -57,12 +59,14 @@ def save_baseline(path: str, findings_by_file: Dict[str, List[Finding]]) -> None
     for filepath, findings in sorted(findings_by_file.items()):
         for f in findings:
             key = _finding_key(f, filepath)
-            entries.append({
-                "detector": key[0],
-                "type": key[1],
-                "file": key[2],
-                "value_hash": key[3],
-            })
+            entries.append(
+                {
+                    "detector": key[0],
+                    "type": key[1],
+                    "file": key[2],
+                    "value_hash": key[3],
+                }
+            )
 
     data = {
         "version": "1",

@@ -4,7 +4,7 @@ import re
 import unittest
 
 from lumen_argus.allowlist import AllowlistMatcher
-from lumen_argus.config import CustomRuleConfig, Config, _parse_yaml, _validate_config, load_config
+from lumen_argus.config import CustomRuleConfig, _parse_yaml, _validate_config
 from lumen_argus.detectors.custom import CustomDetector
 from lumen_argus.models import ScanField
 from lumen_argus.pipeline import ScannerPipeline

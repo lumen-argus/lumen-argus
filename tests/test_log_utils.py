@@ -212,14 +212,22 @@ class TestSecureRotatingFileHandler(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             path = os.path.join(tmpdir, "test.log")
             handler = SecureRotatingFileHandler(
-                path, maxBytes=50, backupCount=2, encoding="utf-8",
+                path,
+                maxBytes=50,
+                backupCount=2,
+                encoding="utf-8",
             )
             os.chmod(path, 0o600)
             try:
                 # Write enough to trigger rotation
                 record = logging.LogRecord(
-                    "test", logging.INFO, "", 0,
-                    "x" * 60, (), None,
+                    "test",
+                    logging.INFO,
+                    "",
+                    0,
+                    "x" * 60,
+                    (),
+                    None,
                 )
                 handler.emit(record)
                 handler.emit(record)
@@ -236,14 +244,16 @@ class TestSecureRotatingFileHandler(unittest.TestCase):
             finally:
                 handler.close()
 
-
     def test_new_file_created_with_secure_permissions(self):
         """File should be 0o600 from creation — no race window."""
         with tempfile.TemporaryDirectory() as tmpdir:
             path = os.path.join(tmpdir, "fresh.log")
             self.assertFalse(os.path.exists(path))
             handler = SecureRotatingFileHandler(
-                path, maxBytes=1024, backupCount=1, encoding="utf-8",
+                path,
+                maxBytes=1024,
+                backupCount=1,
+                encoding="utf-8",
             )
             try:
                 # File should exist with secure permissions immediately
@@ -270,6 +280,7 @@ class TestExportLogs(unittest.TestCase):
             # Capture stdout
             import io
             from unittest.mock import patch
+
             buf = io.StringIO()
             with patch("sys.stdout", buf):
                 result = export_logs(config)
@@ -291,6 +302,7 @@ class TestExportLogs(unittest.TestCase):
 
             import io
             from unittest.mock import patch
+
             buf = io.StringIO()
             with patch("sys.stdout", buf):
                 export_logs(config)
@@ -313,6 +325,7 @@ class TestExportLogs(unittest.TestCase):
 
             import io
             from unittest.mock import patch
+
             buf = io.StringIO()
             with patch("sys.stdout", buf):
                 export_logs(config, sanitize=True)

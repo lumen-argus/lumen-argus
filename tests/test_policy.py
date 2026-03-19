@@ -16,9 +16,12 @@ class TestPolicyEngine(unittest.TestCase):
         engine = PolicyEngine(default_action="alert")
         findings = [
             Finding(
-                detector="secrets", type="aws_access_key",
-                severity="critical", location="messages[0]",
-                value_preview="AKIA****", matched_value="AKIA...",
+                detector="secrets",
+                type="aws_access_key",
+                severity="critical",
+                location="messages[0]",
+                value_preview="AKIA****",
+                matched_value="AKIA...",
             ),
         ]
         decision = engine.evaluate(findings)
@@ -31,9 +34,12 @@ class TestPolicyEngine(unittest.TestCase):
         )
         findings = [
             Finding(
-                detector="secrets", type="aws_access_key",
-                severity="critical", location="messages[0]",
-                value_preview="AKIA****", matched_value="AKIA...",
+                detector="secrets",
+                type="aws_access_key",
+                severity="critical",
+                location="messages[0]",
+                value_preview="AKIA****",
+                matched_value="AKIA...",
             ),
         ]
         decision = engine.evaluate(findings)
@@ -46,14 +52,20 @@ class TestPolicyEngine(unittest.TestCase):
         )
         findings = [
             Finding(
-                detector="pii", type="email",
-                severity="warning", location="messages[0]",
-                value_preview="john****", matched_value="john@example.com",
+                detector="pii",
+                type="email",
+                severity="warning",
+                location="messages[0]",
+                value_preview="john****",
+                matched_value="john@example.com",
             ),
             Finding(
-                detector="secrets", type="aws_access_key",
-                severity="critical", location="messages[1]",
-                value_preview="AKIA****", matched_value="AKIA...",
+                detector="secrets",
+                type="aws_access_key",
+                severity="critical",
+                location="messages[1]",
+                value_preview="AKIA****",
+                matched_value="AKIA...",
             ),
         ]
         decision = engine.evaluate(findings)
@@ -63,15 +75,21 @@ class TestPolicyEngine(unittest.TestCase):
         engine = PolicyEngine(default_action="alert")
         findings = [
             Finding(
-                detector="pii", type="email",
-                severity="warning", location="messages[0]",
-                value_preview="john****", matched_value="john@example.com",
+                detector="pii",
+                type="email",
+                severity="warning",
+                location="messages[0]",
+                value_preview="john****",
+                matched_value="john@example.com",
                 action="alert",
             ),
             Finding(
-                detector="secrets", type="private_key",
-                severity="critical", location="messages[1]",
-                value_preview="----****", matched_value="-----BEGIN...",
+                detector="secrets",
+                type="private_key",
+                severity="critical",
+                location="messages[1]",
+                value_preview="----****",
+                matched_value="-----BEGIN...",
                 action="block",
             ),
         ]
@@ -82,14 +100,20 @@ class TestPolicyEngine(unittest.TestCase):
         engine = PolicyEngine(default_action="alert")
         findings = [
             Finding(
-                detector="pii", type="email",
-                severity="warning", location="messages[0]",
-                value_preview="john****", matched_value="john@example.com",
+                detector="pii",
+                type="email",
+                severity="warning",
+                location="messages[0]",
+                value_preview="john****",
+                matched_value="john@example.com",
             ),
             Finding(
-                detector="pii", type="ssn",
-                severity="critical", location="messages[1]",
-                value_preview="123-****", matched_value="123-45-6789",
+                detector="pii",
+                type="ssn",
+                severity="critical",
+                location="messages[1]",
+                value_preview="123-****",
+                matched_value="123-45-6789",
             ),
         ]
         decision = engine.evaluate(findings)

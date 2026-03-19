@@ -35,11 +35,19 @@ log = logging.getLogger("argus.proxy")
 _request_counter = itertools.count(1)
 
 # Hop-by-hop headers that must not be forwarded.
-_HOP_BY_HOP = frozenset({
-    "connection", "keep-alive", "proxy-authenticate",
-    "proxy-authorization", "proxy-connection",
-    "te", "trailers", "transfer-encoding", "upgrade",
-})
+_HOP_BY_HOP = frozenset(
+    {
+        "connection",
+        "keep-alive",
+        "proxy-authenticate",
+        "proxy-authorization",
+        "proxy-connection",
+        "te",
+        "trailers",
+        "transfer-encoding",
+        "upgrade",
+    }
+)
 
 
 class ArgusProxyHandler(http.server.BaseHTTPRequestHandler):
@@ -185,7 +193,14 @@ class ArgusProxyHandler(http.server.BaseHTTPRequestHandler):
             host, port, use_ssl, provider = server.router.route(self.path, headers_dict)
             log.debug(
                 "#%d %s %s -> %s:%d (ssl=%s, provider=%s, %d bytes)",
-                request_id, self.command, self.path, host, port, use_ssl, provider, len(body),
+                request_id,
+                self.command,
+                self.path,
+                host,
+                port,
+                use_ssl,
+                provider,
+                len(body),
             )
             # Set provider on trace span (available after routing)
             if span and hasattr(span, "set_attribute"):
@@ -211,7 +226,10 @@ class ArgusProxyHandler(http.server.BaseHTTPRequestHandler):
                 scan_result = server.pipeline.scan(body, provider)
                 log.debug(
                     "#%d scan: %d findings, action=%s, %.1fms",
-                    request_id, len(scan_result.findings), scan_result.action, scan_result.scan_duration_ms,
+                    request_id,
+                    len(scan_result.findings),
+                    scan_result.action,
+                    scan_result.scan_duration_ms,
                 )
                 # Enrich trace span with scan results
                 if span and hasattr(span, "set_attribute"):
@@ -223,29 +241,35 @@ class ArgusProxyHandler(http.server.BaseHTTPRequestHandler):
                     types = ", ".join(f.type for f in scan_result.findings)
                     log.info(
                         "#%d %s %s (%d findings)",
-                        request_id, scan_result.action.upper(), types, len(scan_result.findings),
+                        request_id,
+                        scan_result.action.upper(),
+                        types,
+                        len(scan_result.findings),
                     )
             elif len(body) > server.max_body_size:
                 scan_result = ScanResult(
                     action="pass",
-                    findings=[Finding(
-                        detector="proxy",
-                        type="scan_skipped_oversized",
-                        severity="warning",
-                        location="request_body",
-                        value_preview="%d bytes" % len(body),
-                        matched_value="",
-                        action="log",
-                    )],
+                    findings=[
+                        Finding(
+                            detector="proxy",
+                            type="scan_skipped_oversized",
+                            severity="warning",
+                            location="request_body",
+                            value_preview="%d bytes" % len(body),
+                            matched_value="",
+                            action="log",
+                        )
+                    ],
                 )
                 log.warning(
                     "#%d oversized body skipped scanning (%d bytes > %d limit)",
-                    request_id, len(body), server.max_body_size,
+                    request_id,
+                    len(body),
+                    server.max_body_size,
                 )
                 server.display.show_error(
                     request_id,
-                    "body too large to scan (%d bytes > %d limit)"
-                    % (len(body), server.max_body_size),
+                    "body too large to scan (%d bytes > %d limit)" % (len(body), server.max_body_size),
                 )
 
             # Check if we should block (SSE-aware block response)
@@ -265,13 +289,23 @@ class ArgusProxyHandler(http.server.BaseHTTPRequestHandler):
                 resp_size = len(block_body)
 
                 server.display.show_request(
-                    request_id, self.command, self.path, model,
-                    len(body), resp_size,
-                    (time.monotonic() - t0) * 1000, scan_result,
+                    request_id,
+                    self.command,
+                    self.path,
+                    model,
+                    len(body),
+                    resp_size,
+                    (time.monotonic() - t0) * 1000,
+                    scan_result,
                 )
                 self._log_audit(
-                    server, request_id, provider, model,
-                    scan_result, len(body), False,
+                    server,
+                    request_id,
+                    provider,
+                    model,
+                    scan_result,
+                    len(body),
+                    False,
                 )
                 server.stats.record(provider, len(body), scan_result)
                 return
@@ -367,15 +401,25 @@ class ArgusProxyHandler(http.server.BaseHTTPRequestHandler):
 
             # Display request line
             server.display.show_request(
-                request_id, self.command, self.path, model,
-                len(body), resp_size,
-                (time.monotonic() - t0) * 1000, scan_result,
+                request_id,
+                self.command,
+                self.path,
+                model,
+                len(body),
+                resp_size,
+                (time.monotonic() - t0) * 1000,
+                scan_result,
             )
 
             # Audit log + stats
             self._log_audit(
-                server, request_id, provider, model,
-                scan_result, len(body), True,
+                server,
+                request_id,
+                provider,
+                model,
+                scan_result,
+                len(body),
+                True,
             )
             server.stats.record(provider, len(body), scan_result)
 
@@ -385,8 +429,7 @@ class ArgusProxyHandler(http.server.BaseHTTPRequestHandler):
             msg = (
                 "Upstream timed out after %ds. "
                 "Increase proxy.timeout in ~/.lumen-argus/config.yaml "
-                "or the dashboard Settings page."
-                % server.timeout
+                "or the dashboard Settings page." % server.timeout
             )
             log.error("#%d upstream timeout after %ds", request_id, server.timeout)
             server.display.show_error(request_id, msg)
@@ -394,9 +437,7 @@ class ArgusProxyHandler(http.server.BaseHTTPRequestHandler):
             # Only send error response if headers haven't been sent yet
             if not resp_size:
                 try:
-                    error_body = json.dumps({
-                        "error": {"type": "timeout", "message": msg}
-                    }).encode("utf-8")
+                    error_body = json.dumps({"error": {"type": "timeout", "message": msg}}).encode("utf-8")
                     self.send_response(504)
                     self.send_header("Content-Type", "application/json")
                     self.send_header("Content-Length", str(len(error_body)))
@@ -415,9 +456,7 @@ class ArgusProxyHandler(http.server.BaseHTTPRequestHandler):
             server.display.show_error(request_id, msg)
             server.stats.record(provider, len(body), scan_result)
             try:
-                error_body = json.dumps({
-                    "error": {"type": "tls_error", "message": msg}
-                }).encode("utf-8")
+                error_body = json.dumps({"error": {"type": "tls_error", "message": msg}}).encode("utf-8")
                 self.send_response(502)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(error_body)))
@@ -431,9 +470,7 @@ class ArgusProxyHandler(http.server.BaseHTTPRequestHandler):
             server.display.show_error(request_id, str(e))
             server.stats.record(provider, len(body), scan_result)
             try:
-                error_body = json.dumps({
-                    "error": {"type": "proxy_error", "message": str(e)}
-                }).encode("utf-8")
+                error_body = json.dumps({"error": {"type": "proxy_error", "message": str(e)}}).encode("utf-8")
                 self.send_response(502)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(error_body)))
@@ -495,6 +532,7 @@ class ArgusProxyServer(http.server.ThreadingHTTPServer):
     def handle_error(self, request, client_address):
         """Suppress connection reset errors from client disconnections."""
         import sys
+
         exc_type = sys.exc_info()[0]
         if exc_type in (ConnectionResetError, BrokenPipeError, ConnectionAbortedError):
             return  # Normal — client closed the connection
@@ -520,8 +558,10 @@ class ArgusProxyServer(http.server.ThreadingHTTPServer):
         # The --host CLI flag is required to override the config default.
         if bind not in ("127.0.0.1", "localhost"):
             import logging as _logging
+
             _logging.getLogger("argus.proxy").warning(
-                "binding to %s — proxy is accessible on the network", bind,
+                "binding to %s — proxy is accessible on the network",
+                bind,
             )
 
         self.pipeline = pipeline
@@ -536,7 +576,9 @@ class ArgusProxyServer(http.server.ThreadingHTTPServer):
         self._active_requests = 0
         self._active_lock = threading.Lock()
         self.pool = ConnectionPool(
-            pool_size=pool_size, timeout=timeout, idle_timeout=timeout * 2,
+            pool_size=pool_size,
+            timeout=timeout,
+            idle_timeout=timeout * 2,
             ssl_context=ssl_context,
         )
         self.stats = SessionStats()

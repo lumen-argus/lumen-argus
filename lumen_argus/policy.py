@@ -11,8 +11,9 @@ ACTION_PRIORITY = {"block": 4, "redact": 3, "alert": 2, "log": 1, "pass": 0}
 @dataclass
 class ActionDecision:
     """The resolved action after evaluating all findings."""
-    action: str             # winning action
-    reason: str             # which finding triggered it
+
+    action: str  # winning action
+    reason: str  # which finding triggered it
     findings: List[Finding]  # all findings
 
 

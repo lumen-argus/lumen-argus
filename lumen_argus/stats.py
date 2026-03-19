@@ -1,7 +1,6 @@
 """Session statistics: thread-safe counters for requests, findings, and timing."""
 
 import threading
-from typing import Dict, List
 
 from lumen_argus.models import ScanResult
 
@@ -100,7 +99,9 @@ class SessionStats:
             lines.append("# HELP lumen_argus_provider_requests_total Requests by provider")
             lines.append("# TYPE lumen_argus_provider_requests_total counter")
             for provider, count in self.providers.items():
-                lines.append('lumen_argus_provider_requests_total{provider="%s"} %d' % (self._escape_label(provider), count))
+                lines.append(
+                    'lumen_argus_provider_requests_total{provider="%s"} %d' % (self._escape_label(provider), count)
+                )
 
             # Scan duration
             lines.append("# HELP lumen_argus_scan_duration_seconds Scan duration summary")

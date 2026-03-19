@@ -61,10 +61,12 @@ class RequestExtractor:
                 continue
             content = msg.get("content")
             if isinstance(content, str) and content:
-                fields.append(ScanField(
-                    path="messages[%d].content" % i,
-                    text=content,
-                ))
+                fields.append(
+                    ScanField(
+                        path="messages[%d].content" % i,
+                        text=content,
+                    )
+                )
             elif isinstance(content, list):
                 for j, block in enumerate(content):
                     if not isinstance(block, dict):
@@ -74,20 +76,18 @@ class RequestExtractor:
                     if block_type == "text":
                         text = block.get("text", "")
                         if text:
-                            fields.append(ScanField(
-                                path="messages[%d].content[%d]" % (i, j),
-                                text=text,
-                            ))
+                            fields.append(
+                                ScanField(
+                                    path="messages[%d].content[%d]" % (i, j),
+                                    text=text,
+                                )
+                            )
                     elif block_type == "tool_result":
-                        self._extract_tool_result(
-                            block, "messages[%d].content[%d]" % (i, j), fields
-                        )
+                        self._extract_tool_result(block, "messages[%d].content[%d]" % (i, j), fields)
 
         return fields
 
-    def _extract_tool_result(
-        self, block: dict, base_path: str, fields: List[ScanField]
-    ) -> None:
+    def _extract_tool_result(self, block: dict, base_path: str, fields: List[ScanField]) -> None:
         """Extract text from tool_result content blocks."""
         content = block.get("content")
         source_file = ""
@@ -96,27 +96,29 @@ class RequestExtractor:
         tool_input = block.get("input", {})
         if isinstance(tool_input, dict):
             source_file = (
-                tool_input.get("file_path", "")
-                or tool_input.get("path", "")
-                or tool_input.get("filename", "")
+                tool_input.get("file_path", "") or tool_input.get("path", "") or tool_input.get("filename", "")
             )
 
         if isinstance(content, str) and content:
-            fields.append(ScanField(
-                path=base_path,
-                text=content,
-                source_filename=source_file,
-            ))
+            fields.append(
+                ScanField(
+                    path=base_path,
+                    text=content,
+                    source_filename=source_file,
+                )
+            )
         elif isinstance(content, list):
             for k, sub_block in enumerate(content):
                 if isinstance(sub_block, dict) and sub_block.get("type") == "text":
                     text = sub_block.get("text", "")
                     if text:
-                        fields.append(ScanField(
-                            path="%s.content[%d]" % (base_path, k),
-                            text=text,
-                            source_filename=source_file,
-                        ))
+                        fields.append(
+                            ScanField(
+                                path="%s.content[%d]" % (base_path, k),
+                                text=text,
+                                source_filename=source_file,
+                            )
+                        )
 
     def _extract_openai(self, data: dict) -> List[ScanField]:
         """Extract from OpenAI Chat Completions API format."""
@@ -133,27 +135,33 @@ class RequestExtractor:
             if role != "tool":
                 # General content extraction (skip tool role — handled below)
                 if isinstance(content, str) and content:
-                    fields.append(ScanField(
-                        path="messages[%d].content" % i,
-                        text=content,
-                    ))
+                    fields.append(
+                        ScanField(
+                            path="messages[%d].content" % i,
+                            text=content,
+                        )
+                    )
                 elif isinstance(content, list):
                     for j, part in enumerate(content):
                         if isinstance(part, dict) and part.get("type") == "text":
                             text = part.get("text", "")
                             if text:
-                                fields.append(ScanField(
-                                    path="messages[%d].content[%d]" % (i, j),
-                                    text=text,
-                                ))
+                                fields.append(
+                                    ScanField(
+                                        path="messages[%d].content[%d]" % (i, j),
+                                        text=text,
+                                    )
+                                )
             else:
                 # Tool/function call results
                 tool_content = msg.get("content", "")
                 if isinstance(tool_content, str) and tool_content:
-                    fields.append(ScanField(
-                        path="messages[%d].content" % i,
-                        text=tool_content,
-                    ))
+                    fields.append(
+                        ScanField(
+                            path="messages[%d].content" % i,
+                            text=tool_content,
+                        )
+                    )
 
             # Tool calls from assistant messages (#9)
             if role == "assistant":
@@ -173,16 +181,21 @@ class RequestExtractor:
                             if isinstance(args_data, dict):
                                 for arg_key, arg_val in args_data.items():
                                     if isinstance(arg_val, str) and arg_val:
-                                        fields.append(ScanField(
-                                            path="messages[%d].tool_calls[%d].function.arguments.%s" % (i, k, arg_key),
-                                            text=arg_val,
-                                        ))
+                                        fields.append(
+                                            ScanField(
+                                                path="messages[%d].tool_calls[%d].function.arguments.%s"
+                                                % (i, k, arg_key),
+                                                text=arg_val,
+                                            )
+                                        )
                         except (json.JSONDecodeError, ValueError):
                             if len(args_str) > 20:
-                                fields.append(ScanField(
-                                    path="messages[%d].tool_calls[%d].function.arguments" % (i, k),
-                                    text=args_str,
-                                ))
+                                fields.append(
+                                    ScanField(
+                                        path="messages[%d].tool_calls[%d].function.arguments" % (i, k),
+                                        text=args_str,
+                                    )
+                                )
 
         return fields
 
@@ -198,10 +211,12 @@ class RequestExtractor:
                 if isinstance(part, dict):
                     text = part.get("text", "")
                     if text:
-                        fields.append(ScanField(
-                            path="systemInstruction.parts[%d]" % i,
-                            text=text,
-                        ))
+                        fields.append(
+                            ScanField(
+                                path="systemInstruction.parts[%d]" % i,
+                                text=text,
+                            )
+                        )
 
         # Contents
         contents = data.get("contents", [])
@@ -214,10 +229,12 @@ class RequestExtractor:
                     continue
                 text = part.get("text", "")
                 if text:
-                    fields.append(ScanField(
-                        path="contents[%d].parts[%d]" % (i, j),
-                        text=text,
-                    ))
+                    fields.append(
+                        ScanField(
+                            path="contents[%d].parts[%d]" % (i, j),
+                            text=text,
+                        )
+                    )
                 # Function response (#10)
                 func_resp = part.get("functionResponse", {})
                 if isinstance(func_resp, dict):

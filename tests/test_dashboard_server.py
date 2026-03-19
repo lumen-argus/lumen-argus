@@ -35,9 +35,11 @@ from lumen_argus.models import Finding
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _free_port():
     """Find a free TCP port."""
     import socket
+
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(("127.0.0.1", 0))
         return s.getsockname()[1]
@@ -53,28 +55,34 @@ def _seed_findings(store, count=5):
     """Insert sample findings into the store."""
     findings = []
     for i in range(count):
-        findings.append(Finding(
-            detector="secrets",
-            type="aws_access_key",
-            severity="critical",
-            location="user_message[%d]" % i,
-            matched_value="AKIA" + "X" * 16,
-            value_preview="AKIA****",
-            action="alert",
-        ))
+        findings.append(
+            Finding(
+                detector="secrets",
+                type="aws_access_key",
+                severity="critical",
+                location="user_message[%d]" % i,
+                matched_value="AKIA" + "X" * 16,
+                value_preview="AKIA****",
+                action="alert",
+            )
+        )
     store.record_findings(findings, provider="anthropic", model="claude-3")
 
 
-def _start_server(password="", store=None, extensions=None,
-                  audit_reader=None, config=None, sse_broadcaster=None):
+def _start_server(password="", store=None, extensions=None, audit_reader=None, config=None, sse_broadcaster=None):
     """Start a DashboardServer on a random port. Returns (server, port)."""
     port = _free_port()
     if extensions is None:
         extensions = ExtensionRegistry()
     server = DashboardServer(
-        "127.0.0.1", port, store, extensions,
-        password=password, audit_reader=audit_reader,
-        sse_broadcaster=sse_broadcaster, config=config,
+        "127.0.0.1",
+        port,
+        store,
+        extensions,
+        password=password,
+        audit_reader=audit_reader,
+        sse_broadcaster=sse_broadcaster,
+        config=config,
     )
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -143,10 +151,15 @@ def _login(port, password, next_url="/"):
     body = "password=%s&next=%s" % (password, next_url)
     body_bytes = body.encode("utf-8")
     conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
-    conn.request("POST", "/login", body=body_bytes, headers={
-        "Content-Type": "application/x-www-form-urlencoded",
-        "Content-Length": str(len(body_bytes)),
-    })
+    conn.request(
+        "POST",
+        "/login",
+        body=body_bytes,
+        headers={
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Content-Length": str(len(body_bytes)),
+        },
+    )
     resp = conn.getresponse()
     resp.read()
     status = resp.status
@@ -172,8 +185,8 @@ def _login(port, password, next_url="/"):
 # 1. Dashboard HTML assembly
 # ---------------------------------------------------------------------------
 
-class TestDashboardHTML(unittest.TestCase):
 
+class TestDashboardHTML(unittest.TestCase):
     def test_no_unreplaced_placeholders(self):
         html = COMMUNITY_DASHBOARD_HTML
         self.assertNotIn("{{STYLE}}", html)
@@ -207,8 +220,8 @@ class TestDashboardHTML(unittest.TestCase):
 # 2. Dashboard server
 # ---------------------------------------------------------------------------
 
-class TestDashboardServer(unittest.TestCase):
 
+class TestDashboardServer(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.tmpdir = tempfile.mkdtemp()
@@ -270,8 +283,7 @@ class TestDashboardServer(unittest.TestCase):
 
             # Authenticated GET
             cookie = "argus_session=%s; csrf_token=%s" % (session, csrf)
-            status, _, body = _get(port, "/api/v1/status",
-                                   headers={"Cookie": cookie})
+            status, _, body = _get(port, "/api/v1/status", headers={"Cookie": cookie})
             self.assertEqual(status, 200)
             data = json.loads(body)
             self.assertEqual(data["status"], "operational")
@@ -294,14 +306,12 @@ class TestDashboardServer(unittest.TestCase):
             cookie = "argus_session=%s; csrf_token=%s" % (session, csrf)
 
             # Logout
-            status, headers, _ = _get(port, "/logout",
-                                      headers={"Cookie": cookie})
+            status, headers, _ = _get(port, "/logout", headers={"Cookie": cookie})
             self.assertEqual(status, 302)
             self.assertIn("/login", headers.get("location", ""))
 
             # Session should be invalid now
-            status, _, body = _get(port, "/api/v1/status",
-                                   headers={"Cookie": cookie})
+            status, _, body = _get(port, "/api/v1/status", headers={"Cookie": cookie})
             self.assertEqual(status, 401)
         finally:
             server.shutdown()
@@ -328,14 +338,17 @@ class TestDashboardServer(unittest.TestCase):
 
             # POST with matching CSRF header and cookie -> should pass CSRF check
             license_body = json.dumps({"key": "test-key"}).encode()
-            status, _, body = _post(port, "/api/v1/license",
-                                    body=license_body,
-                                    headers={
-                                        "Cookie": cookie,
-                                        "X-CSRF-Token": csrf,
-                                        "Content-Type": "application/json",
-                                        "Content-Length": str(len(license_body)),
-                                    })
+            status, _, body = _post(
+                port,
+                "/api/v1/license",
+                body=license_body,
+                headers={
+                    "Cookie": cookie,
+                    "X-CSRF-Token": csrf,
+                    "Content-Type": "application/json",
+                    "Content-Length": str(len(license_body)),
+                },
+            )
             self.assertEqual(status, 200)
         finally:
             server.shutdown()
@@ -347,12 +360,15 @@ class TestDashboardServer(unittest.TestCase):
             cookie = "argus_session=%s; csrf_token=%s" % (session, csrf)
 
             # POST without X-CSRF-Token header -> 403
-            status, _, body = _post(port, "/api/v1/license",
-                                    body=b'{"key":"x"}',
-                                    headers={
-                                        "Cookie": cookie,
-                                        "Content-Type": "application/json",
-                                    })
+            status, _, body = _post(
+                port,
+                "/api/v1/license",
+                body=b'{"key":"x"}',
+                headers={
+                    "Cookie": cookie,
+                    "Content-Type": "application/json",
+                },
+            )
             self.assertEqual(status, 403)
             data = json.loads(body)
             self.assertEqual(data["error"], "csrf_validation_failed")
@@ -366,13 +382,16 @@ class TestDashboardServer(unittest.TestCase):
             cookie = "argus_session=%s; csrf_token=%s" % (session, csrf)
 
             # POST with wrong X-CSRF-Token -> 403
-            status, _, body = _post(port, "/api/v1/license",
-                                    body=b'{"key":"x"}',
-                                    headers={
-                                        "Cookie": cookie,
-                                        "X-CSRF-Token": "wrong-token",
-                                        "Content-Type": "application/json",
-                                    })
+            status, _, body = _post(
+                port,
+                "/api/v1/license",
+                body=b'{"key":"x"}',
+                headers={
+                    "Cookie": cookie,
+                    "X-CSRF-Token": "wrong-token",
+                    "Content-Type": "application/json",
+                },
+            )
             self.assertEqual(status, 403)
         finally:
             server.shutdown()
@@ -384,8 +403,7 @@ class TestDashboardServer(unittest.TestCase):
             _, _, session, csrf = _login(port, "hunter2")
             cookie = "argus_session=%s" % session  # No csrf_token cookie
 
-            status, _, body = _get(port, "/api/v1/status",
-                                   headers={"Cookie": cookie})
+            status, _, body = _get(port, "/api/v1/status", headers={"Cookie": cookie})
             self.assertEqual(status, 200)
         finally:
             server.shutdown()
@@ -406,8 +424,8 @@ class TestDashboardServer(unittest.TestCase):
 # 3. API endpoints
 # ---------------------------------------------------------------------------
 
-class TestAPIEndpoints(unittest.TestCase):
 
+class TestAPIEndpoints(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.tmpdir = tempfile.mkdtemp()
@@ -535,32 +553,41 @@ class TestAPIEndpoints(unittest.TestCase):
     def test_license_post(self):
         """POST /api/v1/license saves a key (no auth required on open server)."""
         license_body = json.dumps({"key": "LUMEN-TEST-KEY-123"}).encode()
-        status, _, body = _post(self.port, "/api/v1/license",
-                                body=license_body,
-                                headers={
-                                    "Content-Type": "application/json",
-                                    "Content-Length": str(len(license_body)),
-                                })
+        status, _, body = _post(
+            self.port,
+            "/api/v1/license",
+            body=license_body,
+            headers={
+                "Content-Type": "application/json",
+                "Content-Length": str(len(license_body)),
+            },
+        )
         self.assertEqual(status, 200)
         data = json.loads(body)
         self.assertEqual(data["status"], "saved")
 
     def test_license_post_empty_key(self):
         license_body = json.dumps({"key": ""}).encode()
-        status, _, body = _post(self.port, "/api/v1/license",
-                                body=license_body,
-                                headers={
-                                    "Content-Type": "application/json",
-                                    "Content-Length": str(len(license_body)),
-                                })
+        status, _, body = _post(
+            self.port,
+            "/api/v1/license",
+            body=license_body,
+            headers={
+                "Content-Type": "application/json",
+                "Content-Length": str(len(license_body)),
+            },
+        )
         self.assertEqual(status, 400)
 
     def test_license_post_invalid_json(self):
-        status, _, body = _post(self.port, "/api/v1/license",
-                                body=b"not-json",
-                                headers={
-                                    "Content-Type": "application/json",
-                                })
+        status, _, body = _post(
+            self.port,
+            "/api/v1/license",
+            body=b"not-json",
+            headers={
+                "Content-Type": "application/json",
+            },
+        )
         self.assertEqual(status, 400)
 
 
@@ -568,8 +595,8 @@ class TestAPIEndpoints(unittest.TestCase):
 # 4. Tier gating
 # ---------------------------------------------------------------------------
 
-class TestTierGating(unittest.TestCase):
 
+class TestTierGating(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.tmpdir = tempfile.mkdtemp()
@@ -622,12 +649,11 @@ class TestTierGating(unittest.TestCase):
 # 5. Extension hooks
 # ---------------------------------------------------------------------------
 
-class TestExtensionHooks(unittest.TestCase):
 
+class TestExtensionHooks(unittest.TestCase):
     def test_register_and_get_dashboard_pages(self):
         reg = ExtensionRegistry()
-        page = {"name": "notifications", "label": "Notifications",
-                "js": "console.log('hi')", "order": 55}
+        page = {"name": "notifications", "label": "Notifications", "js": "console.log('hi')", "order": 55}
         reg.register_dashboard_pages([page])
         pages = reg.get_dashboard_pages()
         self.assertEqual(len(pages), 1)
@@ -711,10 +737,8 @@ class TestExtensionHooks(unittest.TestCase):
                 # CSS should be injected before </style>
                 style_end = body.find("</style>")
                 injected_pos = body.find(".injected-class")
-                self.assertGreater(injected_pos, -1,
-                                   "Injected CSS not found in HTML")
-                self.assertLess(injected_pos, style_end,
-                                "Injected CSS should appear before </style>")
+                self.assertGreater(injected_pos, -1, "Injected CSS not found in HTML")
+                self.assertLess(injected_pos, style_end, "Injected CSS should appear before </style>")
             finally:
                 server.shutdown()
         finally:
@@ -726,22 +750,24 @@ class TestExtensionHooks(unittest.TestCase):
         try:
             store = _make_store(tmpdir)
             ext = ExtensionRegistry()
-            ext.register_dashboard_pages([{
-                "name": "test-page",
-                "label": "Test Page",
-                "js": "console.log('plugin-page-loaded');",
-                "order": 99,
-            }])
+            ext.register_dashboard_pages(
+                [
+                    {
+                        "name": "test-page",
+                        "label": "Test Page",
+                        "js": "console.log('plugin-page-loaded');",
+                        "order": 99,
+                    }
+                ]
+            )
             server, port = _start_server(store=store, extensions=ext)
             try:
                 status, _, body = _get(port, "/")
                 self.assertEqual(status, 200)
                 body_end = body.find("</body>")
                 js_pos = body.find("plugin-page-loaded")
-                self.assertGreater(js_pos, -1,
-                                   "Injected JS not found in HTML")
-                self.assertLess(js_pos, body_end,
-                                "Injected JS should appear before </body>")
+                self.assertGreater(js_pos, -1, "Injected JS not found in HTML")
+                self.assertLess(js_pos, body_end, "Injected JS should appear before </body>")
             finally:
                 server.shutdown()
         finally:
@@ -783,8 +809,8 @@ class TestExtensionHooks(unittest.TestCase):
 # 6. SSE
 # ---------------------------------------------------------------------------
 
-class TestSSEBroadcaster(unittest.TestCase):
 
+class TestSSEBroadcaster(unittest.TestCase):
     def test_register_unregister(self):
         broadcaster = SSEBroadcaster(heartbeat_interval=9999)
         buf = io.BytesIO()
@@ -819,6 +845,7 @@ class TestSSEBroadcaster(unittest.TestCase):
         class DeadWriter:
             def write(self, data):
                 raise BrokenPipeError("gone")
+
             def flush(self):
                 raise BrokenPipeError("gone")
 
@@ -852,8 +879,8 @@ class TestSSEBroadcaster(unittest.TestCase):
 # 7. AuditReader
 # ---------------------------------------------------------------------------
 
-class TestAuditReader(unittest.TestCase):
 
+class TestAuditReader(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.tmpdir = tempfile.mkdtemp()
@@ -975,6 +1002,7 @@ class TestAuditReader(unittest.TestCase):
 # Direct API handler tests (no server needed)
 # ---------------------------------------------------------------------------
 
+
 class TestCommunityAPIDirect(unittest.TestCase):
     """Test handle_community_api directly without HTTP server overhead."""
 
@@ -1033,8 +1061,7 @@ class TestCommunityAPIDirect(unittest.TestCase):
 
     def test_pro_endpoint_post_returns_402(self):
         # Notifications are now community-handled, not in _PRO_ENDPOINTS
-        for path in ("/api/v1/rules",
-                     "/api/v1/patterns", "/api/v1/allowlist"):
+        for path in ("/api/v1/rules", "/api/v1/patterns", "/api/v1/allowlist"):
             status, body = handle_community_api(path, "POST", b"{}", None)
             data = json.loads(body)
             self.assertEqual(status, 402, "Expected 402 for POST %s" % path)

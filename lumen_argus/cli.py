@@ -27,7 +27,8 @@ def main(argv=None):
         description="AI coding tool DLP proxy — scan outbound requests for secrets, PII, and proprietary data.",
     )
     parser.add_argument(
-        "--version", "-V",
+        "--version",
+        "-V",
         action="version",
         version="lumen-argus %s" % __version__,
     )
@@ -37,21 +38,48 @@ def main(argv=None):
     # --- "serve" command ---
     serve_parser = subparsers.add_parser("serve", help="Run the proxy server")
     serve_parser.add_argument("--port", "-p", type=int, default=None, help="Proxy port (default: 8080)")
-    serve_parser.add_argument("--host", "-H", type=str, default=None, help="Bind address for proxy and dashboard (default: 127.0.0.1, use 0.0.0.0 for Docker)")
+    serve_parser.add_argument(
+        "--host",
+        "-H",
+        type=str,
+        default=None,
+        help="Bind address for proxy and dashboard (default: 127.0.0.1, use 0.0.0.0 for Docker)",
+    )
     serve_parser.add_argument("--config", "-c", type=str, default=None, help="Config YAML path")
     serve_parser.add_argument("--log-dir", type=str, default=None, help="Audit log directory")
     serve_parser.add_argument("--no-color", action="store_true", help="Disable ANSI colors")
-    serve_parser.add_argument("--format", "-f", type=str, default="text", choices=["text", "json"], dest="output_format", help="Output format")
-    serve_parser.add_argument("--log-level", type=str, default="warning", choices=["debug", "info", "warning", "error"], help="Logging verbosity")
+    serve_parser.add_argument(
+        "--format", "-f", type=str, default="text", choices=["text", "json"], dest="output_format", help="Output format"
+    )
+    serve_parser.add_argument(
+        "--log-level",
+        type=str,
+        default="warning",
+        choices=["debug", "info", "warning", "error"],
+        help="Logging verbosity",
+    )
 
     # --- "scan" command ---
     scan_parser = subparsers.add_parser("scan", help="Scan files or stdin for secrets/PII (pre-commit hook)")
     scan_parser.add_argument("files", nargs="*", help="Files to scan (reads stdin if none)")
-    scan_parser.add_argument("--diff", nargs="?", const="", default=None, metavar="REF", help="Scan git diff only (staged changes by default, or diff against REF)")
-    scan_parser.add_argument("--baseline", type=str, default=None, metavar="FILE", help="Ignore findings in baseline file")
-    scan_parser.add_argument("--create-baseline", type=str, default=None, metavar="FILE", help="Save current findings as baseline")
+    scan_parser.add_argument(
+        "--diff",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="REF",
+        help="Scan git diff only (staged changes by default, or diff against REF)",
+    )
+    scan_parser.add_argument(
+        "--baseline", type=str, default=None, metavar="FILE", help="Ignore findings in baseline file"
+    )
+    scan_parser.add_argument(
+        "--create-baseline", type=str, default=None, metavar="FILE", help="Save current findings as baseline"
+    )
     scan_parser.add_argument("--config", "-c", type=str, default=None, help="Config YAML path")
-    scan_parser.add_argument("--format", "-f", type=str, default="text", choices=["text", "json"], dest="output_format", help="Output format")
+    scan_parser.add_argument(
+        "--format", "-f", type=str, default="text", choices=["text", "json"], dest="output_format", help="Output format"
+    )
 
     # --- "logs" command ---
     logs_parser = subparsers.add_parser("logs", help="Log file utilities")
@@ -81,10 +109,12 @@ def main(argv=None):
     # to avoid silent no-op if any import triggered basicConfig earlier.
     console_level = getattr(logging, args.log_level.upper())
     console_handler = logging.StreamHandler(sys.stderr)
-    console_handler.setFormatter(logging.Formatter(
-        "  %(asctime)s [%(name)s] %(levelname)s: %(message)s",
-        datefmt="%H:%M:%S",
-    ))
+    console_handler.setFormatter(
+        logging.Formatter(
+            "  %(asctime)s [%(name)s] %(levelname)s: %(message)s",
+            datefmt="%H:%M:%S",
+        )
+    )
     console_handler.setLevel(console_level)
     root_logger = logging.getLogger()
     root_logger.handlers.clear()
@@ -118,8 +148,11 @@ def main(argv=None):
         config.pii.action or config.default_action,
         config.proprietary.action or config.default_action,
     )
-    log.info("allowlist: %d secrets, %d pii, %d paths",
-        len(config.allowlist.secrets), len(config.allowlist.pii), len(config.allowlist.paths),
+    log.info(
+        "allowlist: %d secrets, %d pii, %d paths",
+        len(config.allowlist.secrets),
+        len(config.allowlist.pii),
+        len(config.allowlist.paths),
     )
     if config.custom_rules:
         log.info("custom rules: %d", len(config.custom_rules))
@@ -162,6 +195,7 @@ def main(argv=None):
 
     # Build SSL context for upstream connections
     from lumen_argus.pool import build_ssl_context
+
     ssl_context = build_ssl_context(
         ca_bundle=config.proxy.ca_bundle,
         verify_ssl=config.proxy.verify_ssl,
@@ -237,12 +271,12 @@ def main(argv=None):
         if analytics_store and config.notifications:
             limit = extensions.get_channel_limit()
             result = analytics_store.reconcile_yaml_channels(
-                config.notifications, channel_limit=limit,
+                config.notifications,
+                channel_limit=limit,
             )
             for action_name in ("created", "updated", "deleted"):
                 if result[action_name]:
-                    log.info("notification channels %s from config: %s",
-                             action_name, ", ".join(result[action_name]))
+                    log.info("notification channels %s from config: %s", action_name, ", ".join(result[action_name]))
             # Warn if channels exist but no dispatcher (source install)
             if not extensions.get_dispatcher():
                 count = analytics_store.count_notification_channels()
@@ -308,8 +342,14 @@ def main(argv=None):
         if reload_requested[0]:
             reload_requested[0] = False
             _do_reload(
-                server, args.config, file_handler, console_level,
-                root_logger, extensions, current_config, log,
+                server,
+                args.config,
+                file_handler,
+                console_level,
+                root_logger,
+                extensions,
+                current_config,
+                log,
             )
 
     server.service_actions = _service_actions
@@ -341,8 +381,7 @@ def main(argv=None):
         pass
 
 
-def _do_reload(server, config_path, file_handler, console_level,
-               root_logger, extensions, current_config, log):
+def _do_reload(server, config_path, file_handler, console_level, root_logger, extensions, current_config, log):
     """Reload config from disk — runs in main thread, safe for locks."""
     try:
         from lumen_argus.log_utils import config_diff
@@ -380,7 +419,8 @@ def _do_reload(server, config_path, file_handler, console_level,
         if old.proxy.max_connections != new_config.proxy.max_connections:
             log.warning(
                 "proxy.max_connections changed (%d -> %d) — requires restart to take effect",
-                old.proxy.max_connections, new_config.proxy.max_connections,
+                old.proxy.max_connections,
+                new_config.proxy.max_connections,
             )
 
         # Rebuild SSL context if ca_bundle or verify_ssl changed
@@ -393,7 +433,8 @@ def _do_reload(server, config_path, file_handler, console_level,
 
         new_file_level = getattr(logging, new_config.logging_config.file_level.upper())
         if file_handler.level != new_file_level:
-            log.info("file log level: %s -> %s",
+            log.info(
+                "file log level: %s -> %s",
                 logging.getLevelName(file_handler.level).lower(),
                 new_config.logging_config.file_level,
             )
@@ -413,12 +454,14 @@ def _do_reload(server, config_path, file_handler, console_level,
         if analytics_store:
             limit = extensions.get_channel_limit()
             notif_result = analytics_store.reconcile_yaml_channels(
-                new_config.notifications, channel_limit=limit,
+                new_config.notifications,
+                channel_limit=limit,
             )
             for action_name in ("created", "updated", "deleted"):
                 if notif_result[action_name]:
-                    log.info("notification channels %s from config: %s",
-                             action_name, ", ".join(notif_result[action_name]))
+                    log.info(
+                        "notification channels %s from config: %s", action_name, ", ".join(notif_result[action_name])
+                    )
             dispatcher = extensions.get_dispatcher()
             if dispatcher and hasattr(dispatcher, "rebuild"):
                 try:
@@ -439,13 +482,18 @@ def _run_scan(args):
         if args.create_baseline:
             print("lumen-argus: --create-baseline not supported with --diff", file=sys.stderr)
         exit_code = scan_diff(
-            ref=args.diff or None, config_path=args.config,
-            output_format=args.output_format, baseline_path=args.baseline,
+            ref=args.diff or None,
+            config_path=args.config,
+            output_format=args.output_format,
+            baseline_path=args.baseline,
         )
     elif args.files:
         exit_code = scan_files(
-            args.files, config_path=args.config, output_format=args.output_format,
-            baseline_path=args.baseline, create_baseline_path=args.create_baseline,
+            args.files,
+            config_path=args.config,
+            output_format=args.output_format,
+            baseline_path=args.baseline,
+            create_baseline_path=args.create_baseline,
         )
     else:
         # Read from stdin — warn if it's a terminal

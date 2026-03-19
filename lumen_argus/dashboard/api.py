@@ -21,10 +21,18 @@ _PRO_ENDPOINTS = (
     "/api/v1/allowlist",
 )
 
-_SENSITIVE_FIELDS = frozenset({
-    "webhook_url", "routing_key", "password", "url",
-    "username", "api_key", "token", "api_token",
-})
+_SENSITIVE_FIELDS = frozenset(
+    {
+        "webhook_url",
+        "routing_key",
+        "password",
+        "url",
+        "username",
+        "api_key",
+        "token",
+        "api_token",
+    }
+)
 
 # Start time for uptime calculation
 _start_time = time.monotonic()
@@ -38,6 +46,7 @@ def _parse_query(path: str) -> tuple:
     params = {}
     if query:
         from urllib.parse import unquote_plus
+
         for part in query.split("&"):
             if "=" in part:
                 k, v = part.split("=", 1)
@@ -51,9 +60,9 @@ def _json_response(status: int, data) -> tuple:
     return status, body
 
 
-def handle_community_api(path: str, method: str, body: bytes,
-                         store, audit_reader=None, config=None,
-                         extensions=None, request_user: str = "") -> tuple:
+def handle_community_api(
+    path: str, method: str, body: bytes, store, audit_reader=None, config=None, extensions=None, request_user: str = ""
+) -> tuple:
     """Handle a community API request.
 
     Args:
@@ -113,23 +122,30 @@ def handle_community_api(path: str, method: str, body: bytes,
     if method in ("POST", "PUT", "DELETE"):
         for prefix in _PRO_ENDPOINTS:
             if path.startswith(prefix):
-                return _json_response(402, {
-                    "error": "pro_required",
-                    "message": "This feature requires a Pro license",
-                    "upgrade_url": "https://lumen-argus.com/pro",
-                })
+                return _json_response(
+                    402,
+                    {
+                        "error": "pro_required",
+                        "message": "This feature requires a Pro license",
+                        "upgrade_url": "https://lumen-argus.com/pro",
+                    },
+                )
         # PUT on config is also Pro-only
         if path == "/api/v1/config" and method == "PUT":
-            return _json_response(402, {
-                "error": "pro_required",
-                "message": "Config changes require a Pro license",
-                "upgrade_url": "https://lumen-argus.com/pro",
-            })
+            return _json_response(
+                402,
+                {
+                    "error": "pro_required",
+                    "message": "Config changes require a Pro license",
+                    "upgrade_url": "https://lumen-argus.com/pro",
+                },
+            )
 
     return _json_response(404, {"error": "not_found"})
 
 
 # --- Handler implementations ---
+
 
 def _handle_status(store, extensions=None) -> tuple:
     uptime = time.monotonic() - _start_time
@@ -164,8 +180,11 @@ def _handle_findings_list(params: dict, store) -> tuple:
     provider = params.get("provider") or None
 
     findings, total = store.get_findings_page(
-        limit=limit, offset=offset,
-        severity=severity, detector=detector, provider=provider,
+        limit=limit,
+        offset=offset,
+        severity=severity,
+        detector=detector,
+        provider=provider,
     )
     return _json_response(200, {"findings": findings, "total": total})
 
@@ -182,10 +201,15 @@ def _handle_finding_detail(finding_id: int, store) -> tuple:
 
 def _handle_stats(store) -> tuple:
     if not store:
-        return _json_response(200, {
-            "total_findings": 0, "by_severity": {},
-            "by_detector": {}, "daily_trend": [],
-        })
+        return _json_response(
+            200,
+            {
+                "total_findings": 0,
+                "by_severity": {},
+                "by_detector": {},
+                "daily_trend": [],
+            },
+        )
 
     stats = store.get_stats()
     return _json_response(200, stats)
@@ -206,9 +230,15 @@ def _handle_config(config) -> tuple:
             },
             "default_action": config.default_action,
             "detectors": {
-                "secrets": {"enabled": config.secrets.enabled, "action": config.secrets.action or config.default_action},
+                "secrets": {
+                    "enabled": config.secrets.enabled,
+                    "action": config.secrets.action or config.default_action,
+                },
                 "pii": {"enabled": config.pii.enabled, "action": config.pii.action or config.default_action},
-                "proprietary": {"enabled": config.proprietary.enabled, "action": config.proprietary.action or config.default_action},
+                "proprietary": {
+                    "enabled": config.proprietary.enabled,
+                    "action": config.proprietary.action or config.default_action,
+                },
             },
         },
     }
@@ -229,8 +259,11 @@ def _handle_audit(params: dict, audit_reader) -> tuple:
     search = params.get("search") or None
 
     entries, total = audit_reader.read_entries(
-        limit=limit, offset=offset,
-        action=action, provider=provider, search=search,
+        limit=limit,
+        offset=offset,
+        action=action,
+        provider=provider,
+        search=search,
     )
     providers = audit_reader.get_providers()
     return _json_response(200, {"entries": entries, "total": total, "providers": providers})
@@ -281,14 +314,18 @@ def _handle_license_activation(body: bytes) -> tuple:
     except OSError as e:
         return _json_response(500, {"error": "failed to save license: %s" % e})
 
-    return _json_response(200, {
-        "status": "saved",
-        "message": "License key saved. Restart the proxy to activate.",
-        "path": license_path,
-    })
+    return _json_response(
+        200,
+        {
+            "status": "saved",
+            "message": "License key saved. Restart the proxy to activate.",
+            "path": license_path,
+        },
+    )
 
 
 # --- Notification channel handlers ---
+
 
 def _mask_channel(channel: dict) -> dict:
     """Mask sensitive fields in channel config for API responses."""
@@ -324,11 +361,14 @@ def _handle_notifications(path, method, body, store, extensions, request_user=""
         types = extensions.get_channel_types() if extensions else {}
         limit = extensions.get_channel_limit() if extensions else 1
         count = store.count_notification_channels() if store else 0
-        return _json_response(200, {
-            "types": types,
-            "channel_limit": limit,
-            "channel_count": count,
-        })
+        return _json_response(
+            200,
+            {
+                "types": types,
+                "channel_limit": limit,
+                "channel_count": count,
+            },
+        )
 
     # No channel types registered — Pro not loaded (source install)
     # Still return DB channels (from YAML reconciliation) so users can see them
@@ -339,14 +379,17 @@ def _handle_notifications(path, method, body, store, extensions, request_user=""
             if store:
                 channels = [_mask_channel(ch) for ch in store.list_notification_channels()]
                 count = len(channels)
-            return _json_response(200, {
-                "channels": channels,
-                "channel_limit": 1,
-                "channel_count": count,
-                "notifications_unavailable": True,
-                "message": "Notification dispatch requires the published package. "
-                           "Install from PyPI: pip install lumen-argus",
-            })
+            return _json_response(
+                200,
+                {
+                    "channels": channels,
+                    "channel_limit": 1,
+                    "channel_count": count,
+                    "notifications_unavailable": True,
+                    "message": "Notification dispatch requires the published package. "
+                    "Install from PyPI: pip install lumen-argus",
+                },
+            )
         return None  # fall through for unknown paths
 
     if not store:
@@ -357,11 +400,14 @@ def _handle_notifications(path, method, body, store, extensions, request_user=""
         channels = store.list_notification_channels()
         safe = [_mask_channel(ch) for ch in channels]
         limit = extensions.get_channel_limit()
-        return _json_response(200, {
-            "channels": safe,
-            "channel_limit": limit,
-            "channel_count": len(channels),
-        })
+        return _json_response(
+            200,
+            {
+                "channels": safe,
+                "channel_limit": limit,
+                "channel_count": len(channels),
+            },
+        )
 
     # POST /api/v1/notifications/channels
     if path == "/api/v1/notifications/channels" and method == "POST":
@@ -380,23 +426,25 @@ def _handle_notifications(path, method, body, store, extensions, request_user=""
         data["created_by"] = request_user or "dashboard"
         try:
             channel = store.create_notification_channel(
-                data, channel_limit=limit,
+                data,
+                channel_limit=limit,
             )
         except ValueError as e:
             err = str(e)
             if err == "channel_limit_reached":
                 count = store.count_notification_channels()
-                return _json_response(409, {
-                    "error": "channel_limit_reached",
-                    "message": "Free tier allows %d channel(s). "
-                               "Upgrade to Pro for unlimited." % (limit or 0),
-                    "limit": limit,
-                    "count": count,
-                })
+                return _json_response(
+                    409,
+                    {
+                        "error": "channel_limit_reached",
+                        "message": "Free tier allows %d channel(s). Upgrade to Pro for unlimited." % (limit or 0),
+                        "limit": limit,
+                        "count": count,
+                    },
+                )
             return _json_response(400, {"error": err})
         _rebuild_dispatcher(extensions)
-        log.info("notification channel created: %s (type=%s)",
-                 channel.get("name"), channel.get("type"))
+        log.info("notification channel created: %s (type=%s)", channel.get("name"), channel.get("type"))
         return _json_response(201, _mask_channel(channel))
 
     # POST /api/v1/notifications/channels/batch
@@ -423,9 +471,7 @@ def _handle_notifications(path, method, body, store, extensions, request_user=""
     parts = path.rstrip("/").split("/")
     # /api/v1/notifications/channels/:id → 6 parts
     # /api/v1/notifications/channels/:id/test → 7 parts
-    if (len(parts) in (6, 7)
-            and parts[4] == "channels"
-            and parts[5].isdigit()):
+    if len(parts) in (6, 7) and parts[4] == "channels" and parts[5].isdigit():
         channel_id = int(parts[5])
         sub = parts[6] if len(parts) == 7 else None
 
@@ -458,8 +504,7 @@ def _handle_notifications(path, method, body, store, extensions, request_user=""
             if result is None:
                 return _json_response(404, {"error": "not found"})
             _rebuild_dispatcher(extensions)
-            log.info("notification channel updated: id=%d name=%s",
-                     channel_id, result.get("name"))
+            log.info("notification channel updated: id=%d name=%s", channel_id, result.get("name"))
             return _json_response(200, _mask_channel(result))
 
         # DELETE /api/v1/notifications/channels/:id
@@ -468,8 +513,7 @@ def _handle_notifications(path, method, body, store, extensions, request_user=""
             ch = store.get_notification_channel(channel_id)
             if store.delete_notification_channel(channel_id):
                 _rebuild_dispatcher(extensions)
-                log.info("notification channel deleted: id=%d name=%s",
-                         channel_id, ch["name"] if ch else "?")
+                log.info("notification channel deleted: id=%d name=%s", channel_id, ch["name"] if ch else "?")
                 return _json_response(200, {"deleted": channel_id})
             return _json_response(404, {"error": "not found"})
 
@@ -484,19 +528,28 @@ def _handle_notification_test(channel_id, store, extensions):
 
     builder = extensions.get_notifier_builder() if extensions else None
     if not builder:
-        return _json_response(400, {
-            "error": "notifications_unavailable",
-            "message": "Install from PyPI: pip install lumen-argus",
-        })
+        return _json_response(
+            400,
+            {
+                "error": "notifications_unavailable",
+                "message": "Install from PyPI: pip install lumen-argus",
+            },
+        )
 
     notifier = builder(channel)
     if not notifier:
         return _json_response(400, {"error": "invalid channel configuration"})
 
     from lumen_argus.models import Finding
+
     test_finding = Finding(
-        detector="test", type="test_notification", severity="info",
-        location="test", value_preview="****", matched_value="", action="alert",
+        detector="test",
+        type="test_notification",
+        severity="info",
+        location="test",
+        value_preview="****",
+        matched_value="",
+        action="alert",
     )
     try:
         notifier.notify([test_finding], provider="lumen-argus", model="test")

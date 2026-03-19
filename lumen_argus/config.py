@@ -20,6 +20,7 @@ log = logging.getLogger("argus.config")
 # Minimal YAML subset parser
 # ---------------------------------------------------------------------------
 
+
 def _parse_yaml(text: str) -> dict:
     """Parse a YAML-subset string into a dict.
 
@@ -68,7 +69,7 @@ def _parse_mapping(lines: list, start: int, indent: int) -> Tuple[dict, int]:
             continue
 
         key = stripped[:colon_pos].strip().strip('"').strip("'")
-        rest = stripped[colon_pos + 1:].strip()
+        rest = stripped[colon_pos + 1 :].strip()
 
         # Remove inline comments
         rest = _remove_comment(rest)
@@ -146,8 +147,8 @@ def _parse_sequence(lines: list, start: int, indent: int) -> Tuple[list, int]:
                 next_indent = len(lines[next_i]) - len(lines[next_i].lstrip())
                 if next_indent >= current_indent + 2:
                     # Multi-line mapping under sequence item
-                    first_key = item_text[:item_text.index(":")].strip().strip('"').strip("'")
-                    first_val = _parse_scalar(_remove_comment(item_text[item_text.index(":") + 1:].strip()))
+                    first_key = item_text[: item_text.index(":")].strip().strip('"').strip("'")
+                    first_val = _parse_scalar(_remove_comment(item_text[item_text.index(":") + 1 :].strip()))
                     nested, i = _parse_mapping(lines, next_i, next_indent)
                     nested[first_key] = first_val
                     # Reorder so first_key is first
@@ -159,7 +160,7 @@ def _parse_sequence(lines: list, start: int, indent: int) -> Tuple[list, int]:
             # Simple inline mapping
             colon_pos = item_text.index(":")
             k = item_text[:colon_pos].strip().strip('"').strip("'")
-            v = _parse_scalar(item_text[colon_pos + 1:].strip())
+            v = _parse_scalar(item_text[colon_pos + 1 :].strip())
             result.append({k: v})
             i += 1
         else:
@@ -195,8 +196,7 @@ def _parse_scalar(text: str) -> Any:
             return result
 
     # Quoted string
-    if (text.startswith('"') and text.endswith('"')) or \
-       (text.startswith("'") and text.endswith("'")):
+    if (text.startswith('"') and text.endswith('"')) or (text.startswith("'") and text.endswith("'")):
         return text[1:-1]
 
     # Boolean
@@ -227,9 +227,9 @@ def _remove_comment(text: str) -> str:
             in_quote = c
         elif c == in_quote:
             in_quote = None
-        elif c == '#' and in_quote is None:
+        elif c == "#" and in_quote is None:
             # Make sure it's preceded by whitespace
-            if i > 0 and text[i - 1] in (' ', '\t'):
+            if i > 0 and text[i - 1] in (" ", "\t"):
                 return text[:i].rstrip()
     return text
 
@@ -238,6 +238,7 @@ def _remove_comment(text: str) -> str:
 # Config dataclasses
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class ProxyConfig:
     port: int = 8080
@@ -245,16 +246,16 @@ class ProxyConfig:
     timeout: int = 120
     retries: int = 1
     max_body_size: int = 50 * 1024 * 1024  # 50MB
-    max_connections: int = 10    # max concurrent upstream connections
-    drain_timeout: int = 30     # seconds to wait for in-flight requests on shutdown
-    ca_bundle: str = ""         # path to custom CA cert file/directory
-    verify_ssl: bool = True     # set False for dev/testing only
+    max_connections: int = 10  # max concurrent upstream connections
+    drain_timeout: int = 30  # seconds to wait for in-flight requests on shutdown
+    ca_bundle: str = ""  # path to custom CA cert file/directory
+    verify_ssl: bool = True  # set False for dev/testing only
 
 
 @dataclass
 class DetectorConfig:
     enabled: bool = True
-    action: str = ""       # empty = use default_action
+    action: str = ""  # empty = use default_action
 
 
 @dataclass
@@ -297,11 +298,11 @@ class AnalyticsConfig:
 @dataclass
 class CustomRuleConfig:
     name: str = ""
-    pattern: str = ""          # raw regex string
-    compiled: object = None    # compiled re.Pattern (set during parsing)
-    severity: str = "high"     # critical, high, warning, info
-    action: str = ""           # empty = use default_action
-    detector: str = "custom"   # detector name reported in findings
+    pattern: str = ""  # raw regex string
+    compiled: object = None  # compiled re.Pattern (set during parsing)
+    severity: str = "high"  # critical, high, warning, info
+    action: str = ""  # empty = use default_action
+    detector: str = "custom"  # detector name reported in findings
 
 
 @dataclass
@@ -330,15 +331,45 @@ _VALID_ACTIONS = {"log", "alert", "redact", "block"}
 
 _KNOWN_TOP_KEYS = {
     # Community keys
-    "version", "proxy", "default_action", "detectors",
-    "allowlists", "audit", "logging", "custom_rules",
-    "dashboard", "analytics",
+    "version",
+    "proxy",
+    "default_action",
+    "detectors",
+    "allowlists",
+    "audit",
+    "logging",
+    "custom_rules",
+    "dashboard",
+    "analytics",
     # Pro/Enterprise extension keys
-    "license_key", "redaction", "notifications", "enterprise",
+    "license_key",
+    "redaction",
+    "notifications",
+    "enterprise",
     "custom_detectors",
 }
-_KNOWN_PROXY_KEYS = {"port", "bind", "upstream", "timeout", "retries", "max_body_size", "max_connections", "drain_timeout", "ca_bundle", "verify_ssl"}
-_KNOWN_DETECTOR_KEYS = {"enabled", "action", "entropy_threshold", "severity_threshold", "patterns", "types", "keywords", "file_patterns"}
+_KNOWN_PROXY_KEYS = {
+    "port",
+    "bind",
+    "upstream",
+    "timeout",
+    "retries",
+    "max_body_size",
+    "max_connections",
+    "drain_timeout",
+    "ca_bundle",
+    "verify_ssl",
+}
+_KNOWN_DETECTOR_KEYS = {
+    "enabled",
+    "action",
+    "entropy_threshold",
+    "severity_threshold",
+    "patterns",
+    "types",
+    "keywords",
+    "file_patterns",
+}
 _KNOWN_AUDIT_KEYS = {"log_dir", "retention_days", "include_request_summary", "redact_findings_in_log"}
 _KNOWN_LOGGING_KEYS = {"log_dir", "file_level", "max_size_mb", "backup_count", "format", "output"}
 _KNOWN_CUSTOM_RULE_KEYS = {"name", "pattern", "severity", "action", "detector"}
@@ -391,8 +422,7 @@ def _validate_config(data: dict, source: str) -> List[str]:
             bind = str(proxy["bind"])
             if bind not in ("127.0.0.1", "localhost"):
                 warnings.append(
-                    "%s: proxy.bind '%s' exposes the proxy on the network (use --host for Docker)"
-                    % (source, bind)
+                    "%s: proxy.bind '%s' exposes the proxy on the network (use --host for Docker)" % (source, bind)
                 )
         if "timeout" in proxy:
             try:
@@ -431,10 +461,7 @@ def _validate_config(data: dict, source: str) -> List[str]:
             if not isinstance(val, bool):
                 warnings.append("%s: proxy.verify_ssl must be true or false" % source)
             elif not val:
-                warnings.append(
-                    "%s: proxy.verify_ssl is disabled — TLS certificates will not be verified"
-                    % source
-                )
+                warnings.append("%s: proxy.verify_ssl is disabled — TLS certificates will not be verified" % source)
 
     # Validate detector sections
     detectors = data.get("detectors", {})
@@ -461,10 +488,7 @@ def _validate_config(data: dict, source: str) -> List[str]:
                                 % (source, det_name, threshold)
                             )
                     except (ValueError, TypeError):
-                        warnings.append(
-                            "%s: detectors.%s.entropy_threshold must be a number"
-                            % (source, det_name)
-                        )
+                        warnings.append("%s: detectors.%s.entropy_threshold must be a number" % (source, det_name))
 
     # Validate audit section
     audit = data.get("audit", {})
@@ -490,8 +514,7 @@ def _validate_config(data: dict, source: str) -> List[str]:
             lvl = str(logging_sec["file_level"]).lower()
             if lvl not in ("debug", "info", "warning", "error"):
                 warnings.append(
-                    "%s: logging.file_level '%s' is not valid (expected: debug, info, warning, error)"
-                    % (source, lvl)
+                    "%s: logging.file_level '%s' is not valid (expected: debug, info, warning, error)" % (source, lvl)
                 )
         if "max_size_mb" in logging_sec:
             try:
@@ -510,25 +533,17 @@ def _validate_config(data: dict, source: str) -> List[str]:
         if "format" in logging_sec:
             fmt = str(logging_sec["format"]).lower()
             if fmt not in ("text", "json"):
-                warnings.append(
-                    "%s: logging.format '%s' is not valid (expected: text, json)"
-                    % (source, fmt)
-                )
+                warnings.append("%s: logging.format '%s' is not valid (expected: text, json)" % (source, fmt))
             elif fmt == "json":
-                warnings.append(
-                    "%s: JSON log format requires Pro license" % source
-                )
+                warnings.append("%s: JSON log format requires Pro license" % source)
         if "output" in logging_sec:
             output = str(logging_sec["output"]).lower()
             if output not in ("file", "stdout", "both"):
                 warnings.append(
-                    "%s: logging.output '%s' is not valid (expected: file, stdout, both)"
-                    % (source, output)
+                    "%s: logging.output '%s' is not valid (expected: file, stdout, both)" % (source, output)
                 )
             elif output in ("stdout", "both"):
-                warnings.append(
-                    "%s: logging.output '%s' requires Pro license" % (source, output)
-                )
+                warnings.append("%s: logging.output '%s' requires Pro license" % (source, output))
 
     # Validate custom_rules section
     rules = data.get("custom_rules", [])
@@ -548,9 +563,7 @@ def _validate_config(data: dict, source: str) -> List[str]:
                 try:
                     re.compile(str(rule["pattern"]))
                 except re.error as e:
-                    warnings.append(
-                        "%s: custom_rules[%d].pattern is invalid regex: %s" % (source, i, e)
-                    )
+                    warnings.append("%s: custom_rules[%d].pattern is invalid regex: %s" % (source, i, e))
             if "severity" in rule:
                 sev = str(rule["severity"]).lower()
                 if sev not in _VALID_SEVERITIES:
@@ -570,12 +583,29 @@ def _validate_config(data: dict, source: str) -> List[str]:
     notifications = data.get("notifications", [])
     if isinstance(notifications, list):
         _known_notif_keys = {
-            "name", "type", "url", "headers", "webhook_url",
-            "smtp_host", "smtp_port", "from_addr", "to_addrs",
-            "username", "password", "use_tls", "channel",
-            "routing_key", "api_key", "team", "project_key",
-            "api_token", "email", "issue_type",
-            "events", "min_severity", "enabled",
+            "name",
+            "type",
+            "url",
+            "headers",
+            "webhook_url",
+            "smtp_host",
+            "smtp_port",
+            "from_addr",
+            "to_addrs",
+            "username",
+            "password",
+            "use_tls",
+            "channel",
+            "routing_key",
+            "api_key",
+            "team",
+            "project_key",
+            "api_token",
+            "email",
+            "issue_type",
+            "events",
+            "min_severity",
+            "enabled",
         }
         for i, notif in enumerate(notifications):
             if not isinstance(notif, dict):
@@ -587,9 +617,7 @@ def _validate_config(data: dict, source: str) -> List[str]:
                 warnings.append("%s: notifications[%d] missing required 'type'" % (source, i))
             for key in notif:
                 if key not in _known_notif_keys:
-                    warnings.append(
-                        "%s: unknown key 'notifications[%d].%s'" % (source, i, key)
-                    )
+                    warnings.append("%s: unknown key 'notifications[%d].%s'" % (source, i, key))
 
     # Validate dashboard section
     dashboard = data.get("dashboard", {})
@@ -644,6 +672,7 @@ def _validate_config(data: dict, source: str) -> List[str]:
 # Config loading
 # ---------------------------------------------------------------------------
 
+
 def _check_unsupported_yaml(text: str, source: str) -> List[str]:
     """Detect unsupported YAML syntax and return warnings."""
     warnings = []  # type: List[str]
@@ -666,7 +695,7 @@ def _check_unsupported_yaml(text: str, source: str) -> List[str]:
         # Flow mappings {key: value}
         colon_pos = stripped.find(":")
         if colon_pos != -1:
-            value = stripped[colon_pos + 1:].strip()
+            value = stripped[colon_pos + 1 :].strip()
             value = _remove_comment(value)
             if value.startswith("{") and value.endswith("}"):
                 warnings.append(
@@ -917,14 +946,16 @@ def _apply_config(config: Config, data: dict) -> None:
                 compiled = re.compile(pattern)
             except re.error:
                 continue  # validation already warned
-            config.custom_rules.append(CustomRuleConfig(
-                name=name,
-                pattern=pattern,
-                compiled=compiled,
-                severity=str(rule.get("severity", "high")).lower(),
-                action=str(rule.get("action", "")),
-                detector=str(rule.get("detector", "custom")),
-            ))
+            config.custom_rules.append(
+                CustomRuleConfig(
+                    name=name,
+                    pattern=pattern,
+                    compiled=compiled,
+                    severity=str(rule.get("severity", "high")).lower(),
+                    action=str(rule.get("action", "")),
+                    detector=str(rule.get("detector", "custom")),
+                )
+            )
 
     # Notifications (optional — reconciled to DB on startup)
     notifications = data.get("notifications", [])

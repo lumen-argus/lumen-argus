@@ -50,14 +50,15 @@ class AuditReader:
         if search:
             search_lower = search.lower()
             filtered = [
-                e for e in filtered
+                e
+                for e in filtered
                 if search_lower in e.get("endpoint", "").lower()
                 or search_lower in e.get("model", "").lower()
                 or search_lower in e.get("provider", "").lower()
             ]
 
         total = len(filtered)
-        page = filtered[offset:offset + limit]
+        page = filtered[offset : offset + limit]
         return page, total
 
     def get_providers(self) -> List[str]:
@@ -108,7 +109,7 @@ class AuditReader:
                 log.warning("failed to read audit file %s: %s", filepath, e)
 
         all_entries.sort(key=lambda e: e.get("timestamp", ""), reverse=True)
-        all_entries = all_entries[:self._MAX_ENTRIES]
+        all_entries = all_entries[: self._MAX_ENTRIES]
         return all_entries
 
     @staticmethod

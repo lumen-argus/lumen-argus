@@ -2,7 +2,6 @@
 
 import http.client
 import http.server
-import json
 import threading
 import time
 import unittest
@@ -25,7 +24,8 @@ class TestConnectionPool(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.server = http.server.ThreadingHTTPServer(
-            ("127.0.0.1", 0), MockHandler,
+            ("127.0.0.1", 0),
+            MockHandler,
         )
         cls.server.daemon_threads = True
         cls.port = cls.server.server_address[1]
@@ -113,7 +113,6 @@ class TestConnectionPool(unittest.TestCase):
         self.assertNotIn(conn, conns)
         conn.close()
         pool.close_all()
-
 
     def test_set_timeout_recycles_connections(self):
         pool = ConnectionPool(pool_size=2, timeout=5)

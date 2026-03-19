@@ -9,7 +9,6 @@ import json
 import logging
 import threading
 import time
-from typing import List
 
 log = logging.getLogger("argus.sse")
 
@@ -66,6 +65,7 @@ class SSEBroadcaster:
 
     def _start_heartbeat(self) -> None:
         """Start background heartbeat thread to keep connections alive."""
+
         def _heartbeat_loop():
             while True:
                 time.sleep(self._heartbeat_interval)

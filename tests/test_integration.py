@@ -18,15 +18,17 @@ def _make_findings(count=3):
     """Create test findings."""
     findings = []
     for i in range(count):
-        findings.append(Finding(
-            detector="secrets",
-            type="aws_access_key",
-            severity="critical",
-            location="messages[%d].content" % i,
-            value_preview="AKIA****EXAMPLE",
-            matched_value="AKIAIOSFODNN7EXAMPLE",
-            action="alert",
-        ))
+        findings.append(
+            Finding(
+                detector="secrets",
+                type="aws_access_key",
+                severity="critical",
+                location="messages[%d].content" % i,
+                value_preview="AKIA****EXAMPLE",
+                matched_value="AKIAIOSFODNN7EXAMPLE",
+                action="alert",
+            )
+        )
     return findings
 
 
@@ -41,9 +43,7 @@ class TestCommunityOnly(unittest.TestCase):
         _store = AnalyticsStore(db_path=self.db_path)  # side effect: creates tables
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
-        tables = {r["name"] for r in conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table'"
-        ).fetchall()}
+        tables = {r["name"] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
         conn.close()
         self.assertIn("findings", tables)
         self.assertIn("notification_channels", tables)

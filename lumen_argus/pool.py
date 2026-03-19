@@ -6,7 +6,7 @@ import os
 import ssl
 import threading
 import time
-from typing import Dict, List, Optional, Tuple
+from typing import Tuple
 
 log = logging.getLogger("argus.pool")
 
@@ -50,8 +50,9 @@ class ConnectionPool:
     before the connection can be reused, and we don't buffer the full stream).
     """
 
-    def __init__(self, pool_size: int = 4, timeout: int = 30, idle_timeout: int = 60,
-                 ssl_context: ssl.SSLContext = None):
+    def __init__(
+        self, pool_size: int = 4, timeout: int = 30, idle_timeout: int = 60, ssl_context: ssl.SSLContext = None
+    ):
         """
         Args:
             pool_size: Max idle connections per host.
@@ -87,11 +88,16 @@ class ConnectionPool:
         # No pooled connection available — create new one
         if use_ssl:
             conn = http.client.HTTPSConnection(
-                host, port, context=self._ssl_ctx, timeout=self._timeout,
+                host,
+                port,
+                context=self._ssl_ctx,
+                timeout=self._timeout,
             )
         else:
             conn = http.client.HTTPConnection(
-                host, port, timeout=self._timeout,
+                host,
+                port,
+                timeout=self._timeout,
             )
         log.debug("new connection to %s:%d (ssl=%s)", host, port, use_ssl)
         return conn
@@ -100,11 +106,16 @@ class ConnectionPool:
         """Create a new connection, bypassing the pool. Used on retry after stale failure."""
         if use_ssl:
             conn = http.client.HTTPSConnection(
-                host, port, context=self._ssl_ctx, timeout=self._timeout,
+                host,
+                port,
+                context=self._ssl_ctx,
+                timeout=self._timeout,
             )
         else:
             conn = http.client.HTTPConnection(
-                host, port, timeout=self._timeout,
+                host,
+                port,
+                timeout=self._timeout,
             )
         log.debug("fresh connection to %s:%d (ssl=%s, retry)", host, port, use_ssl)
         return conn

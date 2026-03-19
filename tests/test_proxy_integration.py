@@ -2,14 +2,12 @@
 
 import http.server
 import json
-import ssl
 import threading
 import time
 import unittest
 import urllib.request
 from urllib.error import HTTPError
 
-from lumen_argus.allowlist import AllowlistMatcher
 from lumen_argus.audit import AuditLogger
 from lumen_argus.display import TerminalDisplay
 from lumen_argus.pipeline import ScannerPipeline
@@ -27,14 +25,16 @@ class MockUpstreamHandler(http.server.BaseHTTPRequestHandler):
         content_length = int(self.headers.get("Content-Length", 0))
         self.rfile.read(content_length)
 
-        response = json.dumps({
-            "id": "msg_mock",
-            "type": "message",
-            "role": "assistant",
-            "content": [{"type": "text", "text": "Hello!"}],
-            "model": "claude-opus-4-6",
-            "usage": {"input_tokens": 100, "output_tokens": 10},
-        }).encode()
+        response = json.dumps(
+            {
+                "id": "msg_mock",
+                "type": "message",
+                "role": "assistant",
+                "content": [{"type": "text", "text": "Hello!"}],
+                "model": "claude-opus-4-6",
+                "usage": {"input_tokens": 100, "output_tokens": 10},
+            }
+        ).encode()
 
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
@@ -50,7 +50,8 @@ class TestProxyIntegration(unittest.TestCase):
 
         # Start mock upstream on an ephemeral port
         cls.upstream = http.server.ThreadingHTTPServer(
-            ("127.0.0.1", 0), MockUpstreamHandler,
+            ("127.0.0.1", 0),
+            MockUpstreamHandler,
         )
         cls.upstream.daemon_threads = True
         cls.upstream_port = cls.upstream.server_address[1]
@@ -113,43 +114,51 @@ class TestProxyIntegration(unittest.TestCase):
             return e.code, json.loads(e.read())
 
     def test_clean_request_forwarded(self):
-        status, data = self._post({
-            "model": "claude-opus-4-6",
-            "messages": [{"role": "user", "content": "What is 2+2?"}],
-        })
+        status, data = self._post(
+            {
+                "model": "claude-opus-4-6",
+                "messages": [{"role": "user", "content": "What is 2+2?"}],
+            }
+        )
         self.assertEqual(status, 200)
         self.assertEqual(data["type"], "message")
 
     def test_secret_blocked(self):
-        status, data = self._post({
-            "model": "claude-opus-4-6",
-            "messages": [
-                {"role": "user", "content": "My key: AKIAIOSFODNN7EXAMPLE"},
-            ],
-        })
+        status, data = self._post(
+            {
+                "model": "claude-opus-4-6",
+                "messages": [
+                    {"role": "user", "content": "My key: AKIAIOSFODNN7EXAMPLE"},
+                ],
+            }
+        )
         self.assertEqual(status, 403)
         self.assertEqual(data["error"]["type"], "request_blocked")
         self.assertTrue(len(data["error"]["findings"]) > 0)
 
     def test_pii_alerted_but_forwarded(self):
-        status, data = self._post({
-            "model": "claude-opus-4-6",
-            "messages": [
-                {"role": "user", "content": "Contact john.smith@company.com for details"},
-            ],
-        })
+        status, data = self._post(
+            {
+                "model": "claude-opus-4-6",
+                "messages": [
+                    {"role": "user", "content": "Contact john.smith@company.com for details"},
+                ],
+            }
+        )
         # Alert action should forward (not block)
         self.assertEqual(status, 200)
 
     def test_streaming_secret_blocked_as_sse(self):
         """#2: Blocked SSE request should return SSE error event."""
-        body = json.dumps({
-            "model": "claude-opus-4-6",
-            "stream": True,
-            "messages": [
-                {"role": "user", "content": "My key: AKIAIOSFODNN7EXAMPLE"},
-            ],
-        }).encode()
+        body = json.dumps(
+            {
+                "model": "claude-opus-4-6",
+                "stream": True,
+                "messages": [
+                    {"role": "user", "content": "My key: AKIAIOSFODNN7EXAMPLE"},
+                ],
+            }
+        ).encode()
         req = urllib.request.Request(
             "http://127.0.0.1:%d/v1/messages" % self.proxy_port,
             data=body,

@@ -60,8 +60,9 @@ class ScannerPipeline:
         if extensions:
             self._detectors.extend(extensions.extra_detectors())
 
-    def reload(self, allowlist: AllowlistMatcher, default_action: str,
-               action_overrides: dict = None, custom_rules: list = None) -> None:
+    def reload(
+        self, allowlist: AllowlistMatcher, default_action: str, action_overrides: dict = None, custom_rules: list = None
+    ) -> None:
         """Reload policy, allowlist, and custom rules from new config.
 
         Builds replacement objects then swaps references atomically
@@ -95,10 +96,7 @@ class ScannerPipeline:
         log.debug("extracted %d fields from %s request (%d bytes)", len(fields), provider, len(body))
 
         # Filter out allowlisted paths
-        fields = [
-            f for f in fields
-            if not (f.source_filename and self._allowlist.is_allowed_path(f.source_filename))
-        ]
+        fields = [f for f in fields if not (f.source_filename and self._allowlist.is_allowed_path(f.source_filename))]
 
         # Prioritize scanning: reverse order so newest messages (end of
         # conversation) are scanned first, then cap total text to keep
@@ -111,18 +109,22 @@ class ScannerPipeline:
                 # Include truncated field up to the budget
                 remaining = self._max_scan_bytes - total_text
                 if remaining > 100:
-                    fields_to_scan.append(ScanField(
-                        path=field.path,
-                        text=field.text[:remaining],
-                        source_filename=field.source_filename,
-                    ))
+                    fields_to_scan.append(
+                        ScanField(
+                            path=field.path,
+                            text=field.text[:remaining],
+                            source_filename=field.source_filename,
+                        )
+                    )
                 break
             fields_to_scan.append(field)
             total_text += len(field.text)
 
         log.debug(
             "scanning %d fields (%d chars, budget %d)",
-            len(fields_to_scan), total_text, self._max_scan_bytes,
+            len(fields_to_scan),
+            total_text,
+            self._max_scan_bytes,
         )
 
         # Run all detectors
@@ -131,7 +133,9 @@ class ScannerPipeline:
             det_findings = detector.scan(fields_to_scan, self._allowlist)
             if det_findings:
                 log.debug(
-                    "%s: %d findings", detector.__class__.__name__, len(det_findings),
+                    "%s: %d findings",
+                    detector.__class__.__name__,
+                    len(det_findings),
                 )
             all_findings.extend(det_findings)
 
@@ -156,7 +160,10 @@ class ScannerPipeline:
         if elapsed_ms > 50:
             log.warning(
                 "slow scan: %.1fms (%d fields, %dKB, budget %dKB)",
-                elapsed_ms, len(fields_to_scan), total_text // 1024, self._max_scan_bytes // 1024,
+                elapsed_ms,
+                len(fields_to_scan),
+                total_text // 1024,
+                self._max_scan_bytes // 1024,
             )
 
         result = ScanResult(
@@ -202,6 +209,7 @@ class ScannerPipeline:
         Creates new Finding objects to avoid mutating detector output.
         """
         from dataclasses import replace
+
         seen = {}  # type: dict[tuple, int]
         first = {}  # type: dict[tuple, Finding]
         for f in findings:

@@ -13,10 +13,9 @@ Usage:
 import argparse
 import json
 import random
-import string
 import statistics
 import time
-from typing import List, Tuple
+from typing import List
 
 from lumen_argus.pipeline import ScannerPipeline
 from lumen_argus.allowlist import AllowlistMatcher
@@ -26,75 +25,69 @@ from lumen_argus.allowlist import AllowlistMatcher
 # Payload generators
 # ---------------------------------------------------------------------------
 
+
 def _random_code(size: int) -> str:
     """Generate realistic-looking Python code of approximately `size` bytes."""
     snippets = [
-        'def process_request(self, data: dict) -> dict:\n'
+        "def process_request(self, data: dict) -> dict:\n"
         '    """Process incoming API request."""\n'
-        '    validated = self._validate(data)\n'
-        '    result = self._transform(validated)\n'
+        "    validated = self._validate(data)\n"
+        "    result = self._transform(validated)\n"
         '    self.logger.info("Processed request %s", data.get("id"))\n'
         '    return {"status": "ok", "result": result}\n\n',
-
-        'class UserService:\n'
-        '    def __init__(self, db_session):\n'
-        '        self.db = db_session\n'
-        '        self.cache = {}\n\n'
-        '    def get_user(self, user_id: int):\n'
-        '        if user_id in self.cache:\n'
-        '            return self.cache[user_id]\n'
-        '        user = self.db.query(User).filter_by(id=user_id).first()\n'
-        '        self.cache[user_id] = user\n'
-        '        return user\n\n',
-
-        'async def fetch_data(url: str, timeout: int = 30):\n'
-        '    async with aiohttp.ClientSession() as session:\n'
-        '        async with session.get(url, timeout=timeout) as resp:\n'
-        '            if resp.status != 200:\n'
+        "class UserService:\n"
+        "    def __init__(self, db_session):\n"
+        "        self.db = db_session\n"
+        "        self.cache = {}\n\n"
+        "    def get_user(self, user_id: int):\n"
+        "        if user_id in self.cache:\n"
+        "            return self.cache[user_id]\n"
+        "        user = self.db.query(User).filter_by(id=user_id).first()\n"
+        "        self.cache[user_id] = user\n"
+        "        return user\n\n",
+        "async def fetch_data(url: str, timeout: int = 30):\n"
+        "    async with aiohttp.ClientSession() as session:\n"
+        "        async with session.get(url, timeout=timeout) as resp:\n"
+        "            if resp.status != 200:\n"
         '                raise APIError(f"Failed: {resp.status}")\n'
-        '            return await resp.json()\n\n',
-
-        'import logging\n'
-        'from pathlib import Path\n'
-        'from typing import Optional, List\n\n'
-        'logger = logging.getLogger(__name__)\n\n'
-        'BASE_DIR = Path(__file__).parent\n'
+        "            return await resp.json()\n\n",
+        "import logging\n"
+        "from pathlib import Path\n"
+        "from typing import Optional, List\n\n"
+        "logger = logging.getLogger(__name__)\n\n"
+        "BASE_DIR = Path(__file__).parent\n"
         'CONFIG_PATH = BASE_DIR / "config" / "settings.yaml"\n\n',
-
-        '# Database migration: create users table\n'
+        "# Database migration: create users table\n"
         'CREATE_TABLE = """\n'
-        'CREATE TABLE IF NOT EXISTS users (\n'
-        '    id SERIAL PRIMARY KEY,\n'
-        '    email VARCHAR(255) UNIQUE NOT NULL,\n'
-        '    name VARCHAR(100),\n'
-        '    created_at TIMESTAMP DEFAULT NOW()\n'
-        ');\n'
+        "CREATE TABLE IF NOT EXISTS users (\n"
+        "    id SERIAL PRIMARY KEY,\n"
+        "    email VARCHAR(255) UNIQUE NOT NULL,\n"
+        "    name VARCHAR(100),\n"
+        "    created_at TIMESTAMP DEFAULT NOW()\n"
+        ");\n"
         '"""\n\n',
-
-        'def calculate_metrics(data: list) -> dict:\n'
+        "def calculate_metrics(data: list) -> dict:\n"
         '    total = sum(d["value"] for d in data)\n'
-        '    avg = total / len(data) if data else 0\n'
+        "    avg = total / len(data) if data else 0\n"
         '    sorted_vals = sorted(d["value"] for d in data)\n'
-        '    median = sorted_vals[len(sorted_vals) // 2] if sorted_vals else 0\n'
+        "    median = sorted_vals[len(sorted_vals) // 2] if sorted_vals else 0\n"
         '    return {"total": total, "average": avg, "median": median}\n\n',
-
-        'class Config:\n'
-        '    DEBUG = False\n'
-        '    TESTING = False\n'
+        "class Config:\n"
+        "    DEBUG = False\n"
+        "    TESTING = False\n"
         '    LOG_LEVEL = "INFO"\n'
-        '    MAX_RETRIES = 3\n'
-        '    TIMEOUT = 30\n'
-        '    BATCH_SIZE = 100\n\n',
-
-        'def parse_response(raw: bytes) -> dict:\n'
-        '    try:\n'
-        '        data = json.loads(raw)\n'
-        '    except json.JSONDecodeError as e:\n'
+        "    MAX_RETRIES = 3\n"
+        "    TIMEOUT = 30\n"
+        "    BATCH_SIZE = 100\n\n",
+        "def parse_response(raw: bytes) -> dict:\n"
+        "    try:\n"
+        "        data = json.loads(raw)\n"
+        "    except json.JSONDecodeError as e:\n"
         '        logger.error("Failed to parse response: %s", e)\n'
         '        return {"error": str(e)}\n'
         '    if "error" in data:\n'
         '        raise APIError(data["error"]["message"])\n'
-        '    return data\n\n',
+        "    return data\n\n",
     ]
     result = []
     current_size = 0
@@ -134,6 +127,7 @@ def _random_prose(size: int) -> str:
 # Payload builders (Anthropic Messages API format)
 # ---------------------------------------------------------------------------
 
+
 def build_clean_payload(target_size: int) -> bytes:
     """Build a payload with no secrets/PII (should PASS)."""
     system = "You are an expert software engineer. Help the user with their code."
@@ -146,41 +140,49 @@ def build_clean_payload(target_size: int) -> bytes:
         if msg_id % 3 == 0:
             # User message with code (tool_result)
             code_size = min(remaining // 2, 30000)
-            messages.append({
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": "Please review this file:"},
-                    {
-                        "type": "tool_result",
-                        "content": _random_code(code_size),
-                        "input": {"file_path": "/src/module_%d.py" % msg_id},
-                    },
-                ],
-            })
+            messages.append(
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "Please review this file:"},
+                        {
+                            "type": "tool_result",
+                            "content": _random_code(code_size),
+                            "input": {"file_path": "/src/module_%d.py" % msg_id},
+                        },
+                    ],
+                }
+            )
             current_size += code_size + 200
         elif msg_id % 3 == 1:
             # Assistant response
             prose_size = min(remaining, 5000)
-            messages.append({
-                "role": "assistant",
-                "content": _random_prose(prose_size),
-            })
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": _random_prose(prose_size),
+                }
+            )
             current_size += prose_size + 100
         else:
             # User follow-up
-            messages.append({
-                "role": "user",
-                "content": "Can you also add error handling and type hints?",
-            })
+            messages.append(
+                {
+                    "role": "user",
+                    "content": "Can you also add error handling and type hints?",
+                }
+            )
             current_size += 100
         msg_id += 1
 
-    return json.dumps({
-        "model": "claude-opus-4-6",
-        "max_tokens": 4096,
-        "system": system,
-        "messages": messages,
-    }).encode()
+    return json.dumps(
+        {
+            "model": "claude-opus-4-6",
+            "max_tokens": 4096,
+            "system": system,
+            "messages": messages,
+        }
+    ).encode()
 
 
 def build_secrets_payload(target_size: int) -> bytes:
@@ -193,33 +195,33 @@ def build_secrets_payload(target_size: int) -> bytes:
     github_token = "ghp_" + "A" * 36 + "EXAMPLE"
     slack_token = "xoxb-" + "1" * 12 + "-" + "2" * 13 + "-" + "a" * 16
     secrets_code = (
-        '# Configuration for deployment\n'
-        'import os\n\n'
+        "# Configuration for deployment\n"
+        "import os\n\n"
         'AWS_ACCESS_KEY = "AKIAIOSFODNN7EXAMPLE"\n'
         'AWS_SECRET_KEY = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"\n\n'
         'DATABASE_URL = "postgres://admin:supersecret@db.prod.internal:5432/maindb"\n\n'
         'STRIPE_KEY = "%s"\n\n'
-        '# API tokens\n'
+        "# API tokens\n"
         'GITHUB_TOKEN = "%s"\n'
         'SLACK_TOKEN = "%s"\n\n'
-        '-----BEGIN RSA PRIVATE KEY-----\n'
-        'MIIEowIBAAKCAQEAm6AALzBGcy1VvFn5MnXS+OBCoFskz2CTqp0MAJfOq4GNKA5l\n'
-        '-----END RSA PRIVATE KEY-----\n'
+        "-----BEGIN RSA PRIVATE KEY-----\n"
+        "MIIEowIBAAKCAQEAm6AALzBGcy1VvFn5MnXS+OBCoFskz2CTqp0MAJfOq4GNKA5l\n"
+        "-----END RSA PRIVATE KEY-----\n"
     ) % (stripe_key, github_token, slack_token)
 
-    pii_text = '''
+    pii_text = """
 Customer records:
 - John Smith, SSN: 123-45-6789, email: john.smith@company.com
 - Card on file: 4111111111111111
 - Phone: (555) 123-4567
 - Server IP: 52.14.200.1
-'''
+"""
 
-    proprietary_text = '''
+    proprietary_text = """
 CONFIDENTIAL - TRADE SECRET
 This algorithm is proprietary to our company.
 INTERNAL ONLY - Do not distribute.
-'''
+"""
 
     # Build padding first (earlier messages = clean conversation history)
     messages = []
@@ -235,41 +237,47 @@ INTERNAL ONLY - Do not distribute.
         code_size = min(remaining, 20000)
         if code_size < 100:
             break
-        messages.append({
-            "role": "user",
-            "content": [
-                {"type": "text", "text": "Review this module:"},
-                {
-                    "type": "tool_result",
-                    "content": _random_code(code_size),
-                    "input": {"file_path": "/src/service_%d.py" % msg_id},
-                },
-            ],
-        })
+        messages.append(
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "Review this module:"},
+                    {
+                        "type": "tool_result",
+                        "content": _random_code(code_size),
+                        "input": {"file_path": "/src/service_%d.py" % msg_id},
+                    },
+                ],
+            }
+        )
         current_size += code_size + 200
         msg_id += 1
 
     # Secrets at the END — realistic: newest file reads contain the sensitive data
     messages.append({"role": "user", "content": proprietary_text})
     messages.append({"role": "user", "content": pii_text})
-    messages.append({
-        "role": "user",
-        "content": [
-            {"type": "text", "text": "Check this config file:"},
-            {
-                "type": "tool_result",
-                "content": secrets_code,
-                "input": {"file_path": "/app/.env"},
-            },
-        ],
-    })
+    messages.append(
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "Check this config file:"},
+                {
+                    "type": "tool_result",
+                    "content": secrets_code,
+                    "input": {"file_path": "/app/.env"},
+                },
+            ],
+        }
+    )
 
-    return json.dumps({
-        "model": "claude-opus-4-6",
-        "max_tokens": 4096,
-        "system": system,
-        "messages": messages,
-    }).encode()
+    return json.dumps(
+        {
+            "model": "claude-opus-4-6",
+            "max_tokens": 4096,
+            "system": system,
+            "messages": messages,
+        }
+    ).encode()
 
 
 # ---------------------------------------------------------------------------
@@ -277,11 +285,11 @@ INTERNAL ONLY - Do not distribute.
 # ---------------------------------------------------------------------------
 
 PAYLOAD_SIZES = {
-    "tiny":   1_000,       # 1 KB
-    "small":  10_000,      # 10 KB
-    "medium": 100_000,     # 100 KB
-    "large":  500_000,     # 500 KB
-    "xlarge": 1_000_000,   # 1 MB (stress test)
+    "tiny": 1_000,  # 1 KB
+    "small": 10_000,  # 10 KB
+    "medium": 100_000,  # 100 KB
+    "large": 500_000,  # 500 KB
+    "xlarge": 1_000_000,  # 1 MB (stress test)
 }
 
 
@@ -325,9 +333,19 @@ def format_results(results: List[dict]) -> str:
     """Format benchmark results as a table."""
     lines = []
     lines.append("")
-    lines.append("  %-28s %8s %8s %8s %8s %8s %8s  %s" % (
-        "Payload", "Size", "Mean", "Median", "P95", "P99", "Max", "Result",
-    ))
+    lines.append(
+        "  %-28s %8s %8s %8s %8s %8s %8s  %s"
+        % (
+            "Payload",
+            "Size",
+            "Mean",
+            "Median",
+            "P95",
+            "P99",
+            "Max",
+            "Result",
+        )
+    )
     lines.append("  " + "-" * 100)
 
     target_ms = 50.0
@@ -341,17 +359,20 @@ def format_results(results: List[dict]) -> str:
             result_str = "clean"
 
         marker = " *" if status == "SLOW" else ""
-        lines.append("  %-28s %8s %7.1fms %7.1fms %7.1fms %7.1fms %7.1fms  %-20s%s" % (
-            r["label"],
-            size_str,
-            r["mean_ms"],
-            r["median_ms"],
-            r["p95_ms"],
-            r["p99_ms"],
-            r["max_ms"],
-            result_str,
-            marker,
-        ))
+        lines.append(
+            "  %-28s %8s %7.1fms %7.1fms %7.1fms %7.1fms %7.1fms  %-20s%s"
+            % (
+                r["label"],
+                size_str,
+                r["mean_ms"],
+                r["median_ms"],
+                r["p95_ms"],
+                r["p99_ms"],
+                r["max_ms"],
+                result_str,
+                marker,
+            )
+        )
 
     lines.append("  " + "-" * 100)
     lines.append("  Target: <50ms at P95.  * = exceeds target.")
@@ -362,11 +383,17 @@ def format_results(results: List[dict]) -> str:
 def main():
     parser = argparse.ArgumentParser(description="lumen-argus scan pipeline benchmark")
     parser.add_argument(
-        "--iterations", "-n", type=int, default=100,
+        "--iterations",
+        "-n",
+        type=int,
+        default=100,
         help="Number of timed iterations per payload (default: 100)",
     )
     parser.add_argument(
-        "--payload", "-p", type=str, default=None,
+        "--payload",
+        "-p",
+        type=str,
+        default=None,
         choices=list(PAYLOAD_SIZES.keys()),
         help="Run only a specific payload size",
     )

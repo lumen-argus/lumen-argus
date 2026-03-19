@@ -16,8 +16,11 @@ from lumen_argus.models import Finding
 
 def _finding(detector="secrets", ftype="aws_key", matched="secret123", severity="critical"):
     return Finding(
-        detector=detector, type=ftype, severity=severity,
-        location="test", value_preview="****",
+        detector=detector,
+        type=ftype,
+        severity=severity,
+        location="test",
+        value_preview="****",
         matched_value=matched,
     )
 
@@ -60,13 +63,16 @@ class TestLoadBaseline(unittest.TestCase):
 
     def test_valid_baseline(self):
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-            json.dump({
-                "version": "1",
-                "findings": [
-                    {"detector": "secrets", "type": "aws_key", "file": "a.py", "value_hash": "abc123"},
-                    {"detector": "pii", "type": "email", "file": "b.py", "value_hash": "def456"},
-                ],
-            }, f)
+            json.dump(
+                {
+                    "version": "1",
+                    "findings": [
+                        {"detector": "secrets", "type": "aws_key", "file": "a.py", "value_hash": "abc123"},
+                        {"detector": "pii", "type": "email", "file": "b.py", "value_hash": "def456"},
+                    ],
+                },
+                f,
+            )
             path = f.name
         try:
             result = load_baseline(path)

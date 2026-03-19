@@ -108,14 +108,16 @@ class SecretsDetector(BaseDetector):
 
                 field_idx = _find_field(match.start(), boundaries)
                 matched_spans.add(match.span())
-                findings.append(Finding(
-                    detector="secrets",
-                    type=pat.name,
-                    severity=pat.severity,
-                    location=fields[field_idx].path,
-                    value_preview=_mask_value(value),
-                    matched_value=value,
-                ))
+                findings.append(
+                    Finding(
+                        detector="secrets",
+                        type=pat.name,
+                        severity=pat.severity,
+                        location=fields[field_idx].path,
+                        value_preview=_mask_value(value),
+                        matched_value=value,
+                    )
+                )
 
         # Pass 2: entropy sweep for unstructured high-entropy strings
         merged_lower = merged.lower()
@@ -138,13 +140,15 @@ class SecretsDetector(BaseDetector):
             if any(kw in context for kw in SECRET_PROXIMITY_KEYWORDS):
                 if allowlist.is_allowed_secret(token):
                     continue
-                findings.append(Finding(
-                    detector="secrets",
-                    type="high_entropy_string",
-                    severity="warning",
-                    location=fields[field_idx].path,
-                    value_preview=_mask_value(token),
-                    matched_value=token,
-                ))
+                findings.append(
+                    Finding(
+                        detector="secrets",
+                        type="high_entropy_string",
+                        severity="warning",
+                        location=fields[field_idx].path,
+                        value_preview=_mask_value(token),
+                        matched_value=token,
+                    )
+                )
 
         return findings

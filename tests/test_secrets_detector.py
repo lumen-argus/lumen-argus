@@ -40,9 +40,7 @@ class TestSecretsDetector(unittest.TestCase):
         self.assertIn("aws_access_key", types)
 
     def test_aws_secret_key(self):
-        findings = self._scan(
-            'aws_secret_access_key = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"'
-        )
+        findings = self._scan('aws_secret_access_key = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"')
         types = [f.type for f in findings]
         self.assertIn("aws_secret_key", types)
 
@@ -92,7 +90,11 @@ class TestSecretsDetector(unittest.TestCase):
 
     # --- Tokens ---
     def test_jwt(self):
-        jwt = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U"
+        jwt = (
+            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
+            ".eyJzdWIiOiIxMjM0NTY3ODkwIn0"
+            ".dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U"
+        )
         findings = self._scan(jwt)
         types = [f.type for f in findings]
         self.assertIn("jwt_token", types)
@@ -183,7 +185,7 @@ class TestEntropySwept(unittest.TestCase):
         detector = SecretsDetector(entropy_threshold=4.0)
         allowlist = AllowlistMatcher()
         # High entropy token near "secret" keyword
-        text = 'secret_key = aB3xZ9mK7pQ2nW8jF5hL1'
+        text = "secret_key = aB3xZ9mK7pQ2nW8jF5hL1"
         fields = [ScanField(path="test", text=text)]
         findings = detector.scan(fields, allowlist)
         # Should find something (either generic pattern or entropy sweep)
