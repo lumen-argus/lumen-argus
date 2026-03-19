@@ -9,6 +9,10 @@ git clone https://github.com/slima4/lumen-argus.git
 cd lumen-argus
 pip install -e .
 python3 -m unittest discover -v tests/
+
+# Optional: install pre-commit hooks (auto-runs Ruff lint + format on every commit)
+brew install pre-commit   # or: pip install pre-commit
+pre-commit install
 ```
 
 ## Key Constraints
