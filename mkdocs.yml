@@ -3,30 +3,55 @@ site_description: AI coding tool DLP proxy — scan outbound requests for secret
 site_url: https://slima4.github.io/lumen-argus
 repo_url: https://github.com/slima4/lumen-argus
 repo_name: slima4/lumen-argus
+edit_uri: edit/main/docs/
 
 theme:
   name: material
+  custom_dir: docs/overrides
   palette:
-    - scheme: default
-      primary: indigo
-      accent: indigo
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: teal
+      accent: teal
       toggle:
         icon: material/brightness-7
-        name: Switch to dark mode
-    - scheme: slate
-      primary: indigo
-      accent: indigo
+        name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: teal
+      accent: teal
       toggle:
         icon: material/brightness-4
-        name: Switch to light mode
+        name: Switch to dark mode
+  font:
+    text: Inter
+    code: JetBrains Mono
+  icon:
+    repo: fontawesome/brands/github
+    logo: material/shield-lock
   features:
+    - navigation.instant
+    - navigation.tracking
     - navigation.sections
     - navigation.expand
     - navigation.top
+    - navigation.footer
     - search.highlight
     - search.suggest
     - content.code.copy
     - content.code.annotate
+    - content.action.edit
+    - toc.follow
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/slima4/lumen-argus
+
+copyright: Copyright &copy; 2026 Artem Senenko
+
+plugins:
+  - search
 
 nav:
   - Home: index.md
@@ -35,21 +60,21 @@ nav:
     - Quick Start: getting-started/quickstart.md
     - Configuration: getting-started/configuration.md
   - User Guide:
+    - Proxy Server: guide/proxy.md
     - Detection: guide/detection.md
+    - Allowlists: guide/allowlists.md
     - Custom Rules: guide/custom-rules.md
     - Scanning Files: guide/scan-cli.md
-    - Proxy Server: guide/proxy.md
-    - Allowlists: guide/allowlists.md
+  - Operations:
+    - Logging: operations/logging.md
+    - Monitoring: operations/monitoring.md
+    - Security: operations/security.md
   - Reference:
     - CLI: reference/cli.md
     - Config Schema: reference/config.md
     - API Endpoints: reference/api-endpoints.md
     - Architecture: reference/architecture.md
     - Exit Codes: reference/exit-codes.md
-  - Operations:
-    - Logging: operations/logging.md
-    - Monitoring: operations/monitoring.md
-    - Security: operations/security.md
   - Development:
     - Extensions: development/extensions.md
     - Contributing: development/contributing.md
@@ -58,13 +83,17 @@ nav:
 markdown_extensions:
   - admonition
   - pymdownx.details
+  - pymdownx.superfences
   - pymdownx.highlight:
       anchor_linenums: true
-  - pymdownx.superfences
+  - pymdownx.inlinehilite
   - pymdownx.tabbed:
       alternate_style: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - attr_list
+  - md_in_html
   - tables
   - toc:
       permalink: true
-  - attr_list
-  - md_in_html
