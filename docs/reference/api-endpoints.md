@@ -214,7 +214,8 @@ The dashboard runs on a separate port (default `8081`) and provides a REST API f
 | `/api/v1/sessions` | GET | Sessions grouped by session_id with finding counts and metadata |
 | `/api/v1/findings/:id` | GET | Single finding detail |
 | `/api/v1/findings/export` | GET | CSV or JSON export (via `?format=csv` or `?format=json`) |
-| `/api/v1/stats` | GET | Aggregated statistics for dashboard charts |
+| `/api/v1/stats` | GET | Aggregated statistics for dashboard charts (`?days=N`, default 30) |
+| `/api/v1/stats/advanced` | GET | Pro analytics: action trend, activity matrix, top accounts/projects, coverage (402 without Pro) |
 | `/api/v1/config` | GET | Sanitized read-only config |
 | `/api/v1/audit` | GET | Paginated audit log entries with action/provider/search filters |
 | `/api/v1/audit/export` | GET | Audit log CSV/JSON export |
@@ -247,6 +248,7 @@ These return `402 pro_required` when Pro is not active:
 
 | Endpoint | Description |
 |----------|-------------|
+| `/api/v1/stats/advanced` | Advanced analytics (action trend, activity matrix, top accounts, top projects, detection coverage) |
 | `/api/v1/rules/*` | Rules management (CRUD, import, clone, stats) |
 | `/api/v1/allowlist/*` | Allowlist management |
 
@@ -285,6 +287,44 @@ When `dashboard.password` is set (or `LUMEN_ARGUS_DASHBOARD_PASSWORD` env var), 
 ```
 
 Supports `?limit=N` (default 50, max 100).
+
+### Stats parameters
+
+`GET /api/v1/stats` supports a time range parameter:
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `days` | `30` | Number of days for `daily_trend` (1–365). Totals and breakdowns are always all-time. |
+
+The dashboard trend chart includes a 7d / 30d / 90d toggle that sets this parameter.
+
+### Advanced analytics (Pro)
+
+`GET /api/v1/stats/advanced?days=N` returns data for Pro dashboard charts. Returns `402 pro_required` without a valid Pro license.
+
+```json
+{
+  "action_trend": [
+    {"date": "2026-03-15", "block": 3, "redact": 1, "alert": 12, "log": 5}
+  ],
+  "activity_matrix": [
+    {"weekday": 1, "hour": 14, "count": 8}
+  ],
+  "top_accounts": [
+    {"account_id": "dbd6eafd-...", "count": 42}
+  ],
+  "top_projects": [
+    {"working_directory": "/Users/dev/myproject", "count": 28}
+  ],
+  "detection_coverage": {
+    "active_rules": 43,
+    "total_rules": 45,
+    "pro_imported": 1800
+  }
+}
+```
+
+Pro extends this response with `notification_health` (per-channel dispatch status).
 
 ### Channel limit enforcement
 

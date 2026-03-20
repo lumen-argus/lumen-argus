@@ -176,9 +176,9 @@ Scanning overhead stays under 50ms for typical payloads. Connection pooling elim
 
 Built-in web dashboard at `http://localhost:8081`:
 
-**Community pages:** Dashboard (stats, trend charts, recent findings), Findings (paginated table with filters, CSV/JSON export), Audit (log viewer with search), Settings (config, license activation), Notifications (channel management).
+**Community pages:** Dashboard (severity cards, trend chart with 7d/30d/90d toggle, top detectors, top providers, recent findings), Findings (paginated table with filters, CSV/JSON export), Audit (log viewer with search), Settings (config, license activation), Notifications (channel management).
 
-**Pro pages:** Rules, Allowlists — unlocked with a Pro license.
+**Pro pages:** Rules, Allowlists — unlocked with a Pro license. Pro also adds 6 analytics charts to the Dashboard: actions trend (stacked area), activity heatmap (hour × weekday), top accounts, top projects, detection coverage gauge, and notification health.
 
 ### Dashboard API
 
@@ -187,7 +187,8 @@ Built-in web dashboard at `http://localhost:8081`:
 | `GET /api/v1/status` | Health, uptime, version |
 | `GET /api/v1/findings` | Paginated findings (filter by session, account, severity) |
 | `GET /api/v1/sessions` | Sessions with finding counts and metadata |
-| `GET /api/v1/stats` | Aggregated statistics |
+| `GET /api/v1/stats` | Aggregated statistics (`?days=N` for trend range) |
+| `GET /api/v1/stats/advanced` | Pro analytics (action trend, heatmap, top accounts/projects) |
 | `GET /api/v1/audit` | Audit log entries |
 | `GET /api/v1/live` | SSE real-time feed |
 | `GET /api/v1/notifications/channels` | List notification channels |
