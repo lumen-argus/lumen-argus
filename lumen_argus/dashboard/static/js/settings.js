@@ -134,6 +134,36 @@ function loadSettings(){
         proRows.push(['Notifications',(chans.join(', ')||'none')+' (manage \u2192 Notifications tab)']);
       }
       _addLockedSG(el,'Pro Features',proRows,false);
+      /* Detection Rules — import button when Pro licensed but rules not imported */
+      if(cfg.pro.pro_rules_imported!=null){
+        var rulesInfo=_mkSG('Detection Rules');
+        if(cfg.pro.pro_rules_imported>0){
+          _addReadRow(rulesInfo,'Pro rules imported',cfg.pro.pro_rules_imported+' rules');
+        }else{
+          _addReadRow(rulesInfo,'Pro rules','Not imported yet');
+          var importRow=document.createElement('div');
+          importRow.style.cssText='margin-top:8px;display:flex;gap:8px;align-items:center';
+          var importBtn=document.createElement('div');importBtn.className='btn btn-primary btn-sm';
+          importBtn.textContent='Import Pro Rules';
+          var importMsg=document.createElement('span');
+          importMsg.style.cssText='font-family:var(--font-data);font-size:.78rem;color:var(--text-muted)';
+          importBtn.addEventListener('click',function(){
+            importMsg.textContent='Importing...';importBtn.style.opacity='0.5';
+            importBtn.style.pointerEvents='none';
+            fetch('/api/v1/rules/import-pro',{method:'POST',headers:csrfHeaders({'Content-Type':'application/json'})})
+              .then(function(r){return r.json()}).then(function(res){
+                if(res.error){importMsg.textContent=res.error;importMsg.style.color='var(--critical)';
+                  importBtn.style.opacity='1';importBtn.style.pointerEvents='auto';}
+                else{importMsg.textContent=res.message||'Done';importMsg.style.color='var(--accent)';
+                  setTimeout(loadSettings,1500);}
+              }).catch(function(e){importMsg.textContent='Failed';importMsg.style.color='var(--critical)';
+                importBtn.style.opacity='1';importBtn.style.pointerEvents='auto';});
+          });
+          importRow.appendChild(importBtn);importRow.appendChild(importMsg);
+          rulesInfo.appendChild(importRow);
+        }
+        el.appendChild(rulesInfo);
+      }
     }else{
       _addLockedSG(el,'Pro Features',[
         ['Redaction','Requires Pro license'],
