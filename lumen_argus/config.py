@@ -297,6 +297,11 @@ class AnalyticsConfig:
 
 
 @dataclass
+class RulesConfig:
+    auto_import: bool = True  # auto-import community rules on first serve
+
+
+@dataclass
 class DedupConfig:
     conversation_ttl_minutes: int = 30
     finding_ttl_minutes: int = 30
@@ -329,6 +334,7 @@ class Config:
     upstreams: Dict[str, str] = field(default_factory=dict)
     dashboard: DashboardConfig = field(default_factory=DashboardConfig)
     analytics: AnalyticsConfig = field(default_factory=AnalyticsConfig)
+    rules: RulesConfig = field(default_factory=RulesConfig)
     dedup: DedupConfig = field(default_factory=DedupConfig)
     notifications: List[dict] = field(default_factory=list)
 
@@ -356,6 +362,7 @@ _KNOWN_TOP_KEYS = {
     "redaction",
     "notifications",
     "dedup",
+    "rules",
     "enterprise",
     "custom_detectors",
 }
@@ -970,6 +977,12 @@ def _apply_config(config: Config, data: dict) -> None:
             config.analytics.retention_days = int(analytics["retention_days"])
         if "hash_secrets" in analytics:
             config.analytics.hash_secrets = bool(analytics["hash_secrets"])
+
+    # Rules
+    rules_sec = data.get("rules", {})
+    if isinstance(rules_sec, dict):
+        if "auto_import" in rules_sec:
+            config.rules.auto_import = bool(rules_sec["auto_import"])
 
     # Dedup
     dedup = data.get("dedup", {})

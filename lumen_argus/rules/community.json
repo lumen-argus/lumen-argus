@@ -1,0 +1,436 @@
+{
+  "version": "0.4.0",
+  "tier": "community",
+  "rules": [
+    {
+      "name": "aws_access_key",
+      "pattern": "AKIA[0-9A-Z]{16}",
+      "detector": "secrets",
+      "severity": "critical",
+      "description": "Aws Access Key",
+      "tags": [],
+      "validator": "",
+      "entropy_context": false
+    },
+    {
+      "name": "aws_secret_key",
+      "pattern": "(?i)(?:aws[_\\s]{0,10}secret[_\\s]{0,10}(?:access[_\\s]{0,10})?key)\\s*[:=]\\s*['\\\"]?([A-Za-z0-9/+=]{40})['\\\"]?",
+      "detector": "secrets",
+      "severity": "critical",
+      "description": "Aws Secret Key",
+      "tags": [],
+      "validator": "",
+      "entropy_context": false
+    },
+    {
+      "name": "google_api_key",
+      "pattern": "AIza[0-9A-Za-z_\\-]{35}",
+      "detector": "secrets",
+      "severity": "critical",
+      "description": "Google Api Key",
+      "tags": [],
+      "validator": "",
+      "entropy_context": false
+    },
+    {
+      "name": "gcp_service_account",
+      "pattern": "\"type\"\\s*:\\s*\"service_account\"",
+      "detector": "secrets",
+      "severity": "critical",
+      "description": "Gcp Service Account",
+      "tags": [],
+      "validator": "",
+      "entropy_context": false
+    },
+    {
+      "name": "azure_subscription_key",
+      "pattern": "(?i)(?:azure|subscription)[_\\s]{0,10}key\\s*[:=]\\s*['\\\"][0-9a-f]{32}['\\\"]",
+      "detector": "secrets",
+      "severity": "high",
+      "description": "Azure Subscription Key",
+      "tags": [],
+      "validator": "",
+      "entropy_context": false
+    },
+    {
+      "name": "anthropic_api_key",
+      "pattern": "sk-ant-[a-zA-Z0-9\\-_]{20,}",
+      "detector": "secrets",
+      "severity": "critical",
+      "description": "Anthropic Api Key",
+      "tags": [],
+      "validator": "",
+      "entropy_context": false
+    },
+    {
+      "name": "openai_api_key",
+      "pattern": "sk-[a-zA-Z0-9]{20,}",
+      "detector": "secrets",
+      "severity": "critical",
+      "description": "Openai Api Key",
+      "tags": [],
+      "validator": "",
+      "entropy_context": true
+    },
+    {
+      "name": "github_token",
+      "pattern": "gh[psor]_[A-Za-z0-9_]{36,}",
+      "detector": "secrets",
+      "severity": "critical",
+      "description": "Github Token",
+      "tags": [],
+      "validator": "",
+      "entropy_context": false
+    },
+    {
+      "name": "github_fine_grained_pat",
+      "pattern": "github_pat_[A-Za-z0-9_]{22,}",
+      "detector": "secrets",
+      "severity": "critical",
+      "description": "Github Fine Grained Pat",
+      "tags": [],
+      "validator": "",
+      "entropy_context": false
+    },
+    {
+      "name": "gitlab_token",
+      "pattern": "glpat-[A-Za-z0-9\\-_]{20,}",
+      "detector": "secrets",
+      "severity": "critical",
+      "description": "Gitlab Token",
+      "tags": [],
+      "validator": "",
+      "entropy_context": false
+    },
+    {
+      "name": "npm_token",
+      "pattern": "npm_[A-Za-z0-9]{36,}",
+      "detector": "secrets",
+      "severity": "critical",
+      "description": "Npm Token",
+      "tags": [],
+      "validator": "",
+      "entropy_context": false
+    },
+    {
+      "name": "pypi_token",
+      "pattern": "pypi-[A-Za-z0-9\\-_]{50,}",
+      "detector": "secrets",
+      "severity": "critical",
+      "description": "Pypi Token",
+      "tags": [],
+      "validator": "",
+      "entropy_context": false
+    },
+    {
+      "name": "private_key_pem",
+      "pattern": "-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----",
+      "detector": "secrets",
+      "severity": "critical",
+      "description": "Private Key Pem",
+      "tags": [],
+      "validator": "",
+      "entropy_context": false
+    },
+    {
+      "name": "ssh_private_key",
+      "pattern": "-----BEGIN OPENSSH PRIVATE KEY-----",
+      "detector": "secrets",
+      "severity": "critical",
+      "description": "Ssh Private Key",
+      "tags": [],
+      "validator": "",
+      "entropy_context": false
+    },
+    {
+      "name": "jwt_token",
+      "pattern": "eyJ[A-Za-z0-9_\\-]{10,}\\.eyJ[A-Za-z0-9_\\-]{10,}\\.[A-Za-z0-9_\\-]+",
+      "detector": "secrets",
+      "severity": "high",
+      "description": "Jwt Token",
+      "tags": [],
+      "validator": "",
+      "entropy_context": false
+    },
+    {
+      "name": "slack_token",
+      "pattern": "xox[bprs]-[0-9a-zA-Z\\-]{10,}",
+      "detector": "secrets",
+      "severity": "critical",
+      "description": "Slack Token",
+      "tags": [],
+      "validator": "",
+      "entropy_context": false
+    },
+    {
+      "name": "slack_webhook",
+      "pattern": "https://hooks\\.slack\\.com/services/T[A-Za-z0-9]+/B[A-Za-z0-9]+/[A-Za-z0-9]+",
+      "detector": "secrets",
+      "severity": "high",
+      "description": "Slack Webhook",
+      "tags": [],
+      "validator": "",
+      "entropy_context": false
+    },
+    {
+      "name": "discord_webhook",
+      "pattern": "https://discord(?:app)?\\.com/api/webhooks/\\d+/[A-Za-z0-9_\\-]+",
+      "detector": "secrets",
+      "severity": "high",
+      "description": "Discord Webhook",
+      "tags": [],
+      "validator": "",
+      "entropy_context": false
+    },
+    {
+      "name": "stripe_secret_key",
+      "pattern": "[sr]k_(?:test|live)_[0-9a-zA-Z]{24,}",
+      "detector": "secrets",
+      "severity": "critical",
+      "description": "Stripe Secret Key",
+      "tags": [],
+      "validator": "",
+      "entropy_context": false
+    },
+    {
+      "name": "stripe_webhook_secret",
+      "pattern": "whsec_[A-Za-z0-9]{24,}",
+      "detector": "secrets",
+      "severity": "critical",
+      "description": "Stripe Webhook Secret",
+      "tags": [],
+      "validator": "",
+      "entropy_context": false
+    },
+    {
+      "name": "twilio_api_key",
+      "pattern": "SK[0-9a-fA-F]{32}",
+      "detector": "secrets",
+      "severity": "high",
+      "description": "Twilio Api Key",
+      "tags": [],
+      "validator": "",
+      "entropy_context": false
+    },
+    {
+      "name": "sendgrid_api_key",
+      "pattern": "SG\\.[A-Za-z0-9_\\-]{22,}\\.[A-Za-z0-9_\\-]{22,}",
+      "detector": "secrets",
+      "severity": "critical",
+      "description": "Sendgrid Api Key",
+      "tags": [],
+      "validator": "",
+      "entropy_context": false
+    },
+    {
+      "name": "mailgun_api_key",
+      "pattern": "key-[0-9a-zA-Z]{32}",
+      "detector": "secrets",
+      "severity": "high",
+      "description": "Mailgun Api Key",
+      "tags": [],
+      "validator": "",
+      "entropy_context": false
+    },
+    {
+      "name": "heroku_api_key",
+      "pattern": "(?i)heroku\\s*[_\\s]{0,10}api[_\\s]{0,10}key\\s*[:=]\\s*['\\\"]?[0-9a-f\\-]{36}['\\\"]?",
+      "detector": "secrets",
+      "severity": "critical",
+      "description": "Heroku Api Key",
+      "tags": [],
+      "validator": "",
+      "entropy_context": false
+    },
+    {
+      "name": "docker_hub_pat",
+      "pattern": "dckr_pat_[A-Za-z0-9\\-_]{20,}",
+      "detector": "secrets",
+      "severity": "critical",
+      "description": "Docker Hub Pat",
+      "tags": [],
+      "validator": "",
+      "entropy_context": false
+    },
+    {
+      "name": "terraform_cloud_token",
+      "pattern": "(?i)(?:terraform|tfe)[_\\s]{0,10}token\\s*[:=]\\s*['\\\"][A-Za-z0-9.]{14,}['\\\"]",
+      "detector": "secrets",
+      "severity": "high",
+      "description": "Terraform Cloud Token",
+      "tags": [],
+      "validator": "",
+      "entropy_context": true
+    },
+    {
+      "name": "vault_token",
+      "pattern": "\\bhvs\\.[A-Za-z0-9]{24,}",
+      "detector": "secrets",
+      "severity": "critical",
+      "description": "Vault Token",
+      "tags": [],
+      "validator": "",
+      "entropy_context": false
+    },
+    {
+      "name": "datadog_api_key",
+      "pattern": "(?i)(?:datadog|dd)[_\\s]{0,10}(?:api[_\\s]{0,10})?key\\s*[:=]\\s*['\\\"]?[0-9a-f]{32}['\\\"]?",
+      "detector": "secrets",
+      "severity": "high",
+      "description": "Datadog Api Key",
+      "tags": [],
+      "validator": "",
+      "entropy_context": false
+    },
+    {
+      "name": "pagerduty_key",
+      "pattern": "(?i)pagerduty[_\\s]{0,10}(?:api[_\\s]{0,10})?key\\s*[:=]\\s*['\\\"][A-Za-z0-9+/=]{20,}['\\\"]",
+      "detector": "secrets",
+      "severity": "high",
+      "description": "Pagerduty Key",
+      "tags": [],
+      "validator": "",
+      "entropy_context": true
+    },
+    {
+      "name": "database_url",
+      "pattern": "(?:postgres(?:ql)?|mysql|mongodb(?:\\+srv)?|redis|amqp)://[^\\s'\\\"]+@[^\\s'\\\"]+",
+      "detector": "secrets",
+      "severity": "critical",
+      "description": "Database Url",
+      "tags": [],
+      "validator": "",
+      "entropy_context": false
+    },
+    {
+      "name": "generic_password",
+      "pattern": "(?i)(?:password|passwd|pwd)\\s*[:=]\\s*['\\\"]([^'\\\"]{8,})['\\\"]",
+      "detector": "secrets",
+      "severity": "high",
+      "description": "Generic Password",
+      "tags": [],
+      "validator": "",
+      "entropy_context": true
+    },
+    {
+      "name": "generic_api_key",
+      "pattern": "(?i)(?:api[_\\-]?key|apikey|secret[_\\-]?key)\\s*[:=]\\s*['\\\"]([^'\\\"]{16,})['\\\"]",
+      "detector": "secrets",
+      "severity": "high",
+      "description": "Generic Api Key",
+      "tags": [],
+      "validator": "",
+      "entropy_context": true
+    },
+    {
+      "name": "generic_secret",
+      "pattern": "(?i)(?:secret|token|credential)\\s*[:=]\\s*['\\\"]([^'\\\"]{16,})['\\\"]",
+      "detector": "secrets",
+      "severity": "high",
+      "description": "Generic Secret",
+      "tags": [],
+      "validator": "",
+      "entropy_context": true
+    },
+    {
+      "name": "basic_auth_url",
+      "pattern": "https?://[^:\\s]+:[^@\\s]+@[^\\s]+",
+      "detector": "secrets",
+      "severity": "high",
+      "description": "Basic Auth Url",
+      "tags": [],
+      "validator": "",
+      "entropy_context": false
+    },
+    {
+      "name": "env_file_assignment",
+      "pattern": "(?i)^(?:export\\s+)?(?:SECRET|TOKEN|API_KEY|PASSWORD|PRIVATE_KEY)[A-Z_]*\\s*=\\s*['\\\"]?[^\\s'\\\"]{8,}['\\\"]?",
+      "detector": "secrets",
+      "severity": "warning",
+      "description": "Env File Assignment",
+      "tags": [],
+      "validator": "",
+      "entropy_context": true
+    },
+    {
+      "name": "email",
+      "pattern": "[a-zA-Z0-9._%+\\-]+@[a-zA-Z0-9.\\-]+\\.[a-zA-Z]{2,}",
+      "detector": "pii",
+      "severity": "warning",
+      "description": "Email",
+      "tags": [],
+      "validator": "",
+      "entropy_context": false
+    },
+    {
+      "name": "ssn",
+      "pattern": "\\b\\d{3}-\\d{2}-\\d{4}\\b",
+      "detector": "pii",
+      "severity": "critical",
+      "description": "Ssn",
+      "tags": [],
+      "validator": "ssn_range",
+      "entropy_context": false
+    },
+    {
+      "name": "credit_card",
+      "pattern": "\\b\\d{4}[\\s\\-]?\\d{4}[\\s\\-]?\\d{4}[\\s\\-]?\\d{4}\\b",
+      "detector": "pii",
+      "severity": "critical",
+      "description": "Credit Card",
+      "tags": [],
+      "validator": "luhn",
+      "entropy_context": false
+    },
+    {
+      "name": "phone_us",
+      "pattern": "\\b(?:\\+1)?[\\s.\\-]?\\(?\\d{3}\\)?[\\s.\\-]?\\d{3}[\\s.\\-]?\\d{4}\\b",
+      "detector": "pii",
+      "severity": "warning",
+      "description": "Phone Us",
+      "tags": [],
+      "validator": "",
+      "entropy_context": false
+    },
+    {
+      "name": "phone_intl",
+      "pattern": "\\+\\d{1,3}[\\s.\\-]?\\d{4,14}",
+      "detector": "pii",
+      "severity": "info",
+      "description": "Phone Intl",
+      "tags": [],
+      "validator": "",
+      "entropy_context": false
+    },
+    {
+      "name": "ip_address",
+      "pattern": "\\b\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\b",
+      "detector": "pii",
+      "severity": "info",
+      "description": "Ip Address",
+      "tags": [],
+      "validator": "exclude_private_ips",
+      "entropy_context": false
+    },
+    {
+      "name": "iban",
+      "pattern": "\\b[A-Z]{2}\\d{2}[A-Z0-9]{4,30}\\b",
+      "detector": "pii",
+      "severity": "warning",
+      "description": "Iban",
+      "tags": [],
+      "validator": "iban_mod97",
+      "entropy_context": false
+    },
+    {
+      "name": "passport_us",
+      "pattern": "\\b[A-Z]\\d{8}\\b",
+      "detector": "pii",
+      "severity": "info",
+      "description": "Passport Us",
+      "tags": [],
+      "validator": "",
+      "entropy_context": false
+    }
+  ]
+}

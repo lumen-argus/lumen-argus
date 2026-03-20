@@ -1,6 +1,7 @@
 """CLI entry point: argument parsing, startup, and run loop."""
 
 import argparse
+import json
 import logging
 import os
 import platform
@@ -58,6 +59,11 @@ def main(argv=None):
         choices=["debug", "info", "warning", "error"],
         help="Logging verbosity",
     )
+    serve_parser.add_argument(
+        "--no-default-rules",
+        action="store_true",
+        help="Skip auto-import of community rules on first run",
+    )
 
     # --- "scan" command ---
     scan_parser = subparsers.add_parser("scan", help="Scan files or stdin for secrets/PII (pre-commit hook)")
@@ -88,9 +94,29 @@ def main(argv=None):
     export_parser.add_argument("--sanitize", action="store_true", help="Strip IPs, hostnames, and file paths")
     export_parser.add_argument("--config", "-c", type=str, default=None, help="Config YAML path")
 
+    # --- "rules" command ---
+    rules_parser = subparsers.add_parser("rules", help="Manage detection rules")
+    rules_sub = rules_parser.add_subparsers(dest="rules_command", required=True)
+    import_parser = rules_sub.add_parser("import", help="Import rules from bundled JSON into DB")
+    import_parser.add_argument("--pro", action="store_true", help="Import Pro rules (requires license)")
+    import_parser.add_argument("--file", type=str, default=None, help="Import from custom JSON file")
+    import_parser.add_argument("--force", action="store_true", help="Reset action/enabled to defaults")
+    import_parser.add_argument("--dry-run", action="store_true", help="Show what would be imported")
+    import_parser.add_argument("--config", "-c", type=str, default=None, help="Config YAML path")
+    export_rules_parser = rules_sub.add_parser("export", help="Export rules as JSON")
+    export_rules_parser.add_argument("--tier", type=str, default=None, help="Filter by tier")
+    export_rules_parser.add_argument("--detector", type=str, default=None, help="Filter by detector")
+    export_rules_parser.add_argument("--config", "-c", type=str, default=None, help="Config YAML path")
+    list_parser = rules_sub.add_parser("list", help="List loaded rules")
+    list_parser.add_argument("--tier", type=str, default=None, help="Filter by tier")
+    list_parser.add_argument("--detector", type=str, default=None, help="Filter by detector")
+    list_parser.add_argument("--config", "-c", type=str, default=None, help="Config YAML path")
+    validate_parser = rules_sub.add_parser("validate", help="Validate rules JSON file")
+    validate_parser.add_argument("--file", type=str, required=True, help="JSON file to validate")
+
     args = parser.parse_args(argv)
 
-    if args.command in ("scan", "logs"):
+    if args.command in ("scan", "logs", "rules"):
         # Set up minimal logging for non-serve commands so config
         # warnings (log.warning) display cleanly on stderr.
         _handler = logging.StreamHandler(sys.stderr)
@@ -99,6 +125,8 @@ def main(argv=None):
         logging.getLogger().setLevel(logging.WARNING)
         if args.command == "scan":
             _run_scan(args)
+        elif args.command == "rules":
+            _run_rules(args)
         else:
             _run_logs(args)
         return
@@ -252,6 +280,13 @@ def main(argv=None):
         elif analytics_store is not None and hmac_key:
             # Plugin-provided store (Pro) — inject HMAC key for value hashing
             analytics_store._hmac_key = hmac_key
+
+        # Auto-import community rules on first run if DB has zero rules
+        if analytics_store and not args.no_default_rules and config.rules.auto_import:
+            if analytics_store.get_rules_count() == 0:
+                rules, version, tier = _load_rules_bundle()
+                result = analytics_store.import_rules(rules, tier=tier)
+                log.info("auto-imported %d community rules v%s", result["created"], version)
 
         # Create SSE broadcaster and register with extensions so Pro can use it
         sse_broadcaster = SSEBroadcaster()
@@ -554,6 +589,129 @@ def _run_logs(args):
     config = _load_config(config_path=args.config)
     exit_code = export_logs(config, sanitize=args.sanitize)
     sys.exit(exit_code)
+
+
+def _load_rules_bundle(path: str = None, pro: bool = False) -> tuple:
+    """Load a rules JSON bundle. Returns (rules_list, version, tier)."""
+    if path:
+        with open(path, encoding="utf-8") as f:
+            bundle = json.loads(f.read())
+        return bundle.get("rules", []), bundle.get("version", ""), bundle.get("tier", "custom")
+
+    if pro:
+        # Pro bundle loaded via entry point
+        try:
+            from importlib.resources import files as _files
+
+            pro_path = str(_files("lumen_argus_pro.rules").joinpath("pro.json"))
+        except (ImportError, ModuleNotFoundError):
+            # Fallback for Python 3.9-3.11
+            import importlib.resources as _resources
+
+            try:
+                with _resources.open_text("lumen_argus_pro.rules", "pro.json") as f:
+                    bundle = json.loads(f.read())
+                return bundle.get("rules", []), bundle.get("version", ""), "pro"
+            except (ModuleNotFoundError, FileNotFoundError):
+                print("lumen-argus: Pro rules bundle not found. Is lumen-argus-pro installed?", file=sys.stderr)
+                sys.exit(1)
+        try:
+            with open(pro_path, encoding="utf-8") as f:
+                bundle = json.loads(f.read())
+            return bundle.get("rules", []), bundle.get("version", ""), "pro"
+        except FileNotFoundError:
+            print("lumen-argus: Pro rules bundle not found. Is lumen-argus-pro installed?", file=sys.stderr)
+            sys.exit(1)
+
+    # Community bundle
+    bundle_path = os.path.join(os.path.dirname(__file__), "rules", "community.json")
+    with open(bundle_path, encoding="utf-8") as f:
+        bundle = json.loads(f.read())
+    return bundle.get("rules", []), bundle.get("version", ""), "community"
+
+
+def _run_rules(args):
+    """Execute the 'rules' subcommand."""
+    from lumen_argus.analytics.store import AnalyticsStore
+    from lumen_argus.config import load_config as _load_config
+
+    config_path = getattr(args, "config", None)
+    config = _load_config(config_path=config_path)
+    store = AnalyticsStore(db_path=config.analytics.db_path)
+
+    if args.rules_command == "import":
+        if args.pro:
+            # TODO: license validation (Pro implements this)
+            pass
+        if args.dry_run:
+            rules, version, tier = _load_rules_bundle(path=args.file, pro=args.pro)
+            print("lumen-argus: dry run — %d %s rules (v%s)" % (len(rules), tier, version))
+            return
+        rules, version, tier = _load_rules_bundle(path=args.file, pro=args.pro)
+        print("lumen-argus: importing %s rules v%s" % (tier, version))
+        result = store.import_rules(rules, tier=tier, force=args.force)
+        print(
+            "  %d rules imported (%d new, %d updated, %d skipped)"
+            % (result["created"] + result["updated"], result["created"], result["updated"], result["skipped"])
+        )
+        total = store.get_rules_count()
+        print("  total: %d rules in DB" % total)
+
+    elif args.rules_command == "export":
+        rules = store.export_rules(tier=args.tier, detector=args.detector)
+        bundle = {"version": "0.4.0", "tier": args.tier or "all", "rules": rules}
+        print(json.dumps(bundle, indent=2, default=str))
+
+    elif args.rules_command == "list":
+        rules = store.export_rules(tier=args.tier, detector=args.detector)
+        if not rules:
+            print("lumen-argus: no rules found. Run 'lumen-argus rules import' first.")
+            return
+        print("\n  %-30s %-10s %-10s %-8s %-12s %s" % ("NAME", "DETECTOR", "SEVERITY", "ACTION", "TIER", "ENABLED"))
+        print("  " + "-" * 90)
+        for r in rules:
+            print(
+                "  %-30s %-10s %-10s %-8s %-12s %s"
+                % (
+                    r["name"][:30],
+                    r["detector"],
+                    r["severity"],
+                    r.get("action") or "(default)",
+                    r["tier"],
+                    "yes" if r["enabled"] else "no",
+                )
+            )
+        stats = store.get_rule_stats()
+        by_tier = ", ".join("%d %s" % (v, k) for k, v in stats["by_tier"].items())
+        print("\n  %d rules (%s)\n" % (stats["total"], by_tier))
+
+    elif args.rules_command == "validate":
+        import re as re_mod
+
+        with open(args.file, encoding="utf-8") as f:
+            bundle = json.loads(f.read())
+        rules = bundle.get("rules", [])
+        errors = 0
+        for i, r in enumerate(rules):
+            name = r.get("name", "rule_%d" % i)
+            pattern = r.get("pattern", "")
+            if not name:
+                print("  ERROR: rule %d — missing name" % i)
+                errors += 1
+            if not pattern:
+                print("  ERROR: rule '%s' — missing pattern" % name)
+                errors += 1
+            else:
+                try:
+                    re_mod.compile(pattern)
+                except re_mod.error as e:
+                    print("  ERROR: rule '%s' — invalid regex: %s" % (name, e))
+                    errors += 1
+        if errors:
+            print("\n  %d rules validated, %d errors" % (len(rules), errors))
+            sys.exit(1)
+        else:
+            print("  %d rules validated, 0 errors" % len(rules))
 
 
 if __name__ == "__main__":
