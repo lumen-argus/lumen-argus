@@ -40,6 +40,7 @@ lumen-argus sits between your AI tool and the provider, scanning every outbound 
 - **< 50ms scanning overhead** for typical payloads
 - **Zero external dependencies** — Python stdlib only
 - **Session tracking** — identify WHO, WHICH project, WHICH conversation per finding
+- **Cross-request dedup** — 3-layer dedup eliminates redundant scanning of conversation history
 - **Web dashboard** with real-time findings, charts, session filtering, and audit log
 - **Notification channels** — webhook, email, Slack, Teams, PagerDuty, OpsGenie, Jira
 - **Pre-commit scanner** — catch secrets before they enter conversation history
@@ -128,6 +129,18 @@ Every proxied request is enriched with session context — no configuration need
 | `client_name` | User-Agent header | WHICH tool? |
 
 Claude Code, Cursor, and OpenAI-compatible clients are auto-detected. Dashboard findings are filterable by session and account.
+
+## Cross-Request Dedup
+
+LLM API requests contain the full conversation history — every previous message is re-sent. Without dedup, the same secret generates duplicate findings on every request. A 50-message conversation with 5 secrets would produce ~250 duplicate rows; with dedup, it produces 5.
+
+| Layer | What it does | Impact |
+|---|---|---|
+| **Content fingerprinting** | Skips already-scanned fields (SHA-256 hash set per session) | 80-95% less scan CPU |
+| **Finding TTL cache** | Suppresses duplicate DB writes within 30-min window | ~0 duplicate INSERTs |
+| **Store unique constraint** | `INSERT OR IGNORE` on `(content_hash, session_id)` | Defense in depth |
+
+No configuration needed — works automatically when session tracking is active. Tunable via `dedup:` config section.
 
 ## Performance
 

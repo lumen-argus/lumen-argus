@@ -61,7 +61,7 @@ Upstream connections are managed by a thread-safe per-host connection pool:
 
 **Module:** `lumen_argus/pipeline.py`
 
-The pipeline orchestrates three steps: extraction, detection, and deduplication.
+The pipeline orchestrates extraction, content fingerprinting, detection, finding dedup, and policy evaluation.
 
 ### Extraction
 
@@ -99,9 +99,36 @@ Detectors run **sequentially** on extracted fields. Each detector implements the
 
 All regex patterns are compiled at import time to avoid runtime compilation overhead.
 
-### Deduplication
+### Within-Request Deduplication
 
 After detection, findings with the same `(detector, type, matched_value)` tuple are collapsed into a single finding with an incremented `count`. This reduces noise from secrets repeated across conversation history.
+
+### Cross-Request Deduplication
+
+LLM API requests contain the full conversation history — every previous message is re-sent. Without cross-request dedup, the same secret generates new findings on every subsequent request, causing quadratic growth in finding rows.
+
+A 3-layer architecture eliminates this redundancy:
+
+| Layer | Location | What it does | Failure mode if missing |
+|-------|----------|-------------|------------------------|
+| **Content fingerprinting** | Before detectors | Per-session SHA-256[:16] hash set skips already-scanned fields | 80-95% wasted scan CPU |
+| **Finding TTL cache** | After policy eval, before `record_findings()` | Session-scoped `(detector, type, hash(matched_value), session_id)` cache suppresses duplicate DB writes | Same finding written N times per conversation |
+| **Store unique constraint** | `INSERT OR IGNORE` | `UNIQUE(content_hash, session_id)` index on findings table | Duplicates after process restart or cache eviction |
+
+**Content fingerprinting** (`ContentFingerprint` class) uses `session.session_id` as the conversation key. Each conversation tracks a set of SHA-256[:16] hashes of field text. On each request, only fields with unseen hashes are passed to detectors. Sharded (16 locks) for low contention, with TTL eviction (default 30 minutes) and a per-conversation hash cap (5,000).
+
+**Finding TTL cache** (`_FindingDedup` class) filters findings before `record_findings()` but keeps all findings in `ScanResult` for policy evaluation — the action (block/alert) still fires even if the finding isn't new. The notification dispatcher also receives all findings (it has its own independent cooldown). Both cleanup schedulers run on background daemon threads.
+
+**Store unique constraint** uses a `content_hash` column computed as SHA-256[:16] of `detector|type|value_preview`. The partial unique index `WHERE content_hash != ''` excludes legacy rows. `INSERT OR IGNORE` silently drops duplicates.
+
+Configurable via `dedup:` in config.yaml:
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `conversation_ttl_minutes` | 30 | Content fingerprint TTL per conversation |
+| `finding_ttl_minutes` | 30 | Finding-level cache TTL |
+| `max_conversations` | 10,000 | Max tracked conversations (TTL eviction) |
+| `max_hashes_per_conversation` | 5,000 | Cap hashes per conversation (~80KB each) |
 
 ---
 

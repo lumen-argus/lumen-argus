@@ -2,6 +2,21 @@
 
 All notable changes to lumen-argus are documented here.
 
+## 0.4.0 (2026-03-20)
+
+### Cross-Request Deduplication
+
+- 3-layer dedup architecture eliminates redundant scanning of conversation history
+- Layer 1: Content fingerprinting — per-session SHA-256 hash set skips already-scanned fields before detectors run
+- Layer 2: Finding-level TTL cache — session-scoped `(detector, type, matched_value_hash, session_id)` suppresses duplicate DB writes
+- Layer 3: Store-level unique constraint — `content_hash` column with `UNIQUE(content_hash, session_id)` index, `INSERT OR IGNORE`
+- Configurable via `dedup:` config section (`conversation_ttl_minutes`, `finding_ttl_minutes`, `max_conversations`, `max_hashes_per_conversation`)
+- Background cleanup schedulers for both content fingerprint and finding caches
+- All findings remain in `ScanResult` for policy enforcement — dedup only affects DB recording
+- Notification dispatcher still receives all findings (has its own cooldown)
+
+---
+
 ## 0.3.0 (2026-03-19)
 
 ### Session Tracking
