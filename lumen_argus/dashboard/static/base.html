@@ -31,7 +31,12 @@
   <div class="sh"><h2>Severity overview</h2><span class="count" id="total-badge">--</span></div>
   <div class="cards" id="cards"></div>
   <div class="mid-row">
-    <div class="panel"><div class="sh"><h2>30-day trend</h2></div>
+    <div class="panel"><div class="sh"><h2 id="trend-title">30-day trend</h2>
+      <div class="range-toggle" id="range-toggle">
+        <span class="range-btn" data-days="7">7d</span>
+        <span class="range-btn active" data-days="30">30d</span>
+        <span class="range-btn" data-days="90">90d</span>
+      </div></div>
       <div class="chart-wrap"><svg id="chart" viewBox="0 0 600 130" preserveAspectRatio="none"></svg></div></div>
     <div class="panel"><div class="sh"><h2>Top detectors</h2></div>
       <div class="det-list" id="det-list"></div></div>

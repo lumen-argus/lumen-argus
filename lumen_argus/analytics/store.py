@@ -145,8 +145,8 @@ class AnalyticsStore:
     def get_finding_by_id(self, finding_id):
         return self.findings.get_by_id(finding_id)
 
-    def get_stats(self):
-        return self.findings.get_stats()
+    def get_stats(self, days: int = 30):
+        return self.findings.get_stats(days=days)
 
     def get_total_count(self, severity=None, detector=None, provider=None):
         return self.findings.get_total_count(severity=severity, detector=detector, provider=provider)

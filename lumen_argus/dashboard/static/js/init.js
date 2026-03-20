@@ -30,6 +30,25 @@ function exportFindings(fmt){
 document.getElementById('export-csv').addEventListener('click',function(){exportFindings('csv')});
 document.getElementById('export-json').addEventListener('click',function(){exportFindings('json')});
 
+/* TIME RANGE TOGGLE */
+var trendDays=parseInt(localStorage.getItem('lumen_trend_days'))||30;
+(function initRange(){
+  var btns=document.querySelectorAll('#range-toggle .range-btn');
+  btns.forEach(function(b){
+    if(parseInt(b.getAttribute('data-days'))===trendDays)
+      {b.classList.add('active');}else{b.classList.remove('active');}
+    b.addEventListener('click',function(){
+      btns.forEach(function(x){x.classList.remove('active')});
+      b.classList.add('active');
+      trendDays=parseInt(b.getAttribute('data-days'));
+      localStorage.setItem('lumen_trend_days',String(trendDays));
+      document.getElementById('trend-title').textContent=trendDays+'-day trend';
+      loadData();
+    });
+  });
+  document.getElementById('trend-title').textContent=trendDays+'-day trend';
+})();
+
 /* SSE / POLLING TOGGLE */
 var sseMode=localStorage.getItem('lumen_sse_mode')==='true';
 var sseSource=null;
@@ -37,7 +56,7 @@ var pollTimer=null;
 
 async function loadData(){try{
   var r=await Promise.all([fetch('/api/v1/status').then(function(r){return r.json()}),
-    fetch('/api/v1/stats').then(function(r){return r.json()}),
+    fetch('/api/v1/stats?days='+trendDays).then(function(r){return r.json()}),
     fetch('/api/v1/findings?limit='+dashPerPage+'&offset='+dashPage*dashPerPage).then(function(r){return r.json()})]);
   var st=r[0],stats=r[1],fd=r[2];
   document.getElementById('hdr-status').textContent='operational';
@@ -46,7 +65,12 @@ async function loadData(){try{
   document.getElementById('total-badge').textContent=stats.total_findings.toLocaleString()+' findings';
   var cards=document.getElementById('cards');cards.replaceChildren();
   ['critical','high','warning','info'].forEach(function(s){cards.appendChild(makeCard(s,stats.by_severity[s]||0));});
-  if(stats.daily_trend&&stats.daily_trend.length>1)renderChart(stats.daily_trend);
+  if(stats.daily_trend&&stats.daily_trend.length){
+    var trend=stats.daily_trend;
+    if(trend.length===1){var ymd=trend[0].date.split('-');
+      var d=new Date(Date.UTC(+ymd[0],+ymd[1]-1,+ymd[2]-1));
+      var prev=d.toISOString().slice(0,10);trend=[{date:prev,count:0}].concat(trend);}
+    renderChart(trend);}
   if(stats.by_detector)renderBars('det-list',stats.by_detector);
   if(stats.by_provider)renderBars('prov-list',stats.by_provider);
   var dtb=document.getElementById('dash-tbody');dtb.replaceChildren();

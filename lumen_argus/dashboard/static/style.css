@@ -85,6 +85,11 @@ nav{display:flex;gap:2px;padding:12px 32px 0;max-width:1360px;margin-inline:auto
 @media(max-width:1100px){.mid-row{grid-template-columns:1fr 1fr}}
 @media(max-width:700px){.mid-row{grid-template-columns:1fr}}
 .panel{background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px;overflow:hidden}
+.range-toggle{display:flex;gap:2px;background:var(--bg-base);border-radius:4px;padding:2px}
+.range-btn{font-family:var(--font-data);font-size:.7rem;padding:2px 8px;border-radius:3px;cursor:pointer;
+  color:var(--text-muted);transition:all .15s}
+.range-btn:hover{color:var(--text-secondary)}
+.range-btn.active{background:var(--accent-dim);color:var(--accent)}
 .chart-wrap{position:relative;height:130px;margin-top:6px}
 .chart-wrap svg{width:100%;height:100%;display:block}
 .chart-grid line{stroke:var(--border);stroke-width:.5}

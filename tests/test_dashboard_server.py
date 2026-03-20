@@ -523,6 +523,16 @@ class TestAPIEndpoints(unittest.TestCase):
         self.assertIn("by_severity", data)
         self.assertIn("by_detector", data)
 
+    def test_stats_days_param(self):
+        for days in ["7", "30", "90"]:
+            status, _, body = _get(self.port, f"/api/v1/stats?days={days}")
+            self.assertEqual(status, 200)
+            data = json.loads(body)
+            self.assertIn("daily_trend", data)
+        # Invalid days falls back to 30
+        status, _, body = _get(self.port, "/api/v1/stats?days=abc")
+        self.assertEqual(status, 200)
+
     def test_config(self):
         status, _, body = _get(self.port, "/api/v1/config")
         self.assertEqual(status, 200)

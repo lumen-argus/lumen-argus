@@ -221,8 +221,14 @@ class FindingsRepository:
             ).fetchall()
         return [dict(r) for r in rows]
 
-    def get_stats(self) -> dict:
-        """Return aggregate statistics for the dashboard."""
+    def get_stats(self, days: int = 30) -> dict:
+        """Return aggregate statistics for the dashboard.
+
+        Args:
+            days: Number of days for daily_trend (default 30, max 365).
+                  Totals and breakdowns are always all-time.
+        """
+        days = max(1, min(days, 365))
         with self._store._connect() as conn:
             total = conn.execute("SELECT COUNT(*) FROM findings").fetchone()[0]
 
@@ -254,13 +260,13 @@ class FindingsRepository:
             ):
                 by_model[row["model"] or "unknown"] = row["cnt"]
 
-            # Findings per day (last 30 days)
             daily = []
             for row in conn.execute(
                 "SELECT DATE(timestamp) as day, COUNT(*) as cnt "
                 "FROM findings "
-                "WHERE timestamp >= DATE('now', '-30 days') "
-                "GROUP BY day ORDER BY day"
+                "WHERE timestamp >= DATE('now', '-' || ? || ' days') "
+                "GROUP BY day ORDER BY day",
+                (days,),
             ):
                 daily.append({"date": row["day"], "count": row["cnt"]})
 

@@ -83,7 +83,7 @@ def handle_community_api(
             return _handle_findings_list(params, store)
 
         if path == "/api/v1/stats":
-            return _handle_stats(store)
+            return _handle_stats(params, store)
 
         if path == "/api/v1/config":
             return _handle_config(config)
@@ -216,7 +216,7 @@ def _handle_sessions(params: dict, store) -> tuple:
     return _json_response(200, {"sessions": sessions})
 
 
-def _handle_stats(store) -> tuple:
+def _handle_stats(params: dict, store) -> tuple:
     if not store:
         return _json_response(
             200,
@@ -228,7 +228,12 @@ def _handle_stats(store) -> tuple:
             },
         )
 
-    stats = store.get_stats()
+    days_str = params.get("days", "30")
+    try:
+        days = int(days_str)
+    except (ValueError, TypeError):
+        days = 30
+    stats = store.get_stats(days=days)
     return _json_response(200, stats)
 
 
