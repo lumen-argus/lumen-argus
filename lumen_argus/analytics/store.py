@@ -171,10 +171,22 @@ class AnalyticsStore:
     def get_active_rules(self, detector=None, tier=None):
         return self.rules.get_active(detector=detector, tier=tier)
 
-    def get_rules_page(self, limit=50, offset=0, search=None, detector=None, tier=None, enabled=None):
+    def get_rules_page(
+        self, limit=50, offset=0, search=None, detector=None, tier=None, enabled=None, severity=None, tag=None
+    ):
         return self.rules.get_page(
-            limit=limit, offset=offset, search=search, detector=detector, tier=tier, enabled=enabled
+            limit=limit,
+            offset=offset,
+            search=search,
+            detector=detector,
+            tier=tier,
+            enabled=enabled,
+            severity=severity,
+            tag=tag,
         )
+
+    def get_rule_tag_stats(self):
+        return self.rules.get_tag_stats()
 
     def get_rule_by_name(self, name):
         return self.rules.get_by_name(name)

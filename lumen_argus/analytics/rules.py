@@ -85,6 +85,8 @@ class RulesRepository:
         detector: Optional[str] = None,
         tier: Optional[str] = None,
         enabled: Optional[bool] = None,
+        severity: Optional[str] = None,
+        tag: Optional[str] = None,
     ) -> tuple:
         """Paginated rules for dashboard. Returns (rules_list, total_count)."""
         conditions = []
@@ -101,6 +103,14 @@ class RulesRepository:
         if enabled is not None:
             conditions.append("enabled = ?")
             params.append(1 if enabled else 0)
+        if severity:
+            conditions.append("severity = ?")
+            params.append(severity)
+        if tag:
+            # Match exact tag in JSON array (e.g. '["cloud", "aws"]')
+            # Using %"tag"% to avoid substring false positives
+            conditions.append("tags LIKE ?")
+            params.append('%"' + tag.replace('"', "") + '"%')
         where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
 
         with self._store._connect() as conn:
@@ -410,6 +420,33 @@ class RulesRepository:
             "by_tier": by_tier,
             "by_detector": by_detector,
         }
+
+    def get_tag_stats(self) -> list:
+        """Return tag counts for category chip display.
+
+        Returns list of {"tag": "cloud", "total": N, "enabled": M}.
+        Parses the JSON tags column and aggregates.
+        """
+        with self._store._connect() as conn:
+            rows = conn.execute("SELECT tags, enabled FROM rules WHERE tags != '[]' AND tags != ''").fetchall()
+
+        tag_counts = {}  # type: dict
+        for row in rows:
+            try:
+                tags = json.loads(row["tags"])
+            except (json.JSONDecodeError, TypeError):
+                continue
+            for t in tags:
+                if t not in tag_counts:
+                    tag_counts[t] = {"total": 0, "enabled": 0}
+                tag_counts[t]["total"] += 1
+                if row["enabled"]:
+                    tag_counts[t]["enabled"] += 1
+
+        return sorted(
+            [{"tag": k, "total": v["total"], "enabled": v["enabled"]} for k, v in tag_counts.items()],
+            key=lambda x: x["tag"],
+        )
 
     def reconcile_yaml(self, custom_rules: list) -> dict:
         """Kubernetes-style reconciliation of YAML custom_rules to DB.
