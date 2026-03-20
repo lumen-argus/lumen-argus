@@ -145,6 +145,66 @@ class RulesDetector(BaseDetector):
         self._compiled_rules = compiled
         log.debug("rules detector: loaded %d rules", len(compiled))
 
+    def on_rules_changed(self, change_type, rule_name=None):
+        """Handle rule changes from store callback.
+
+        "bulk": full reload (import). "delete"/"create"/"update": incremental.
+        Incremental avoids recompiling all rules for a single-rule change.
+
+        Thread safety: all mutations create a new list and assign atomically
+        (single reference swap under CPython GIL). Never mutate in-place —
+        a scan thread may be iterating the old list concurrently.
+        """
+        if change_type == "bulk":
+            self.reload()
+            return
+        if rule_name is None:
+            log.warning("on_rules_changed: rule_name required for %s, falling back to reload", change_type)
+            self.reload()
+            return
+        if change_type == "delete":
+            self._compiled_rules = [r for r in self._compiled_rules if r["name"] != rule_name]
+            return
+        # "create" or "update" — fetch and compile just this one rule
+        if not self._store:
+            return
+        rule = self._store.get_rule_by_name(rule_name)
+        if rule is None or not rule.get("enabled"):
+            self._compiled_rules = [r for r in self._compiled_rules if r["name"] != rule_name]
+            return
+        if rule.get("tier") == "pro":
+            if self._license is None or not self._license.is_valid():
+                self._compiled_rules = [r for r in self._compiled_rules if r["name"] != rule_name]
+                return
+        try:
+            compiled = re.compile(rule["pattern"])
+        except re.error:
+            return
+        validator = None
+        if rule.get("validator"):
+            validator = _VALIDATORS.get(rule["validator"])
+        new_entry = {
+            "name": rule["name"],
+            "compiled": compiled,
+            "detector": rule["detector"],
+            "severity": rule["severity"],
+            "action": rule.get("action", ""),
+            "validator": validator,
+        }
+        # Build new list: replace existing or append. Creates a new list
+        # object for atomic swap — never mutate in-place during concurrent iteration.
+        replaced = False
+        new_list = []
+        for r in self._compiled_rules:
+            if r["name"] == rule_name:
+                new_list.append(new_entry)
+                replaced = True
+            else:
+                new_list.append(r)
+        if not replaced:
+            new_list.append(new_entry)
+        self._compiled_rules = new_list
+
     def scan(self, fields: List[ScanField], allowlist: AllowlistMatcher) -> List[Finding]:
         """Scan fields against all compiled rules."""
         findings = []

@@ -539,5 +539,74 @@ class TestPipelineRulesIntegration(unittest.TestCase):
         self.assertIn("test_key", types)
 
 
+class TestRulesChangeCallback(unittest.TestCase):
+    """Test live rule updates via store callback."""
+
+    def setUp(self):
+        self._tmpdir = tempfile.mkdtemp()
+        self.store = AnalyticsStore(db_path=self._tmpdir + "/test.db")
+        self.store.import_rules(
+            [
+                {"name": "r1", "pattern": "AAA+", "detector": "secrets", "severity": "high"},
+            ],
+            tier="community",
+        )
+        self.detector = RulesDetector(store=self.store)
+        self.store.set_rules_change_callback(self.detector.on_rules_changed)
+
+    def tearDown(self):
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def test_update_rule_action_takes_effect_immediately(self):
+        """Changing a rule's action via API is reflected in next scan."""
+        self.assertEqual(self.detector._compiled_rules[0]["action"], "")
+        self.store.update_rule("r1", {"action": "block"})
+        self.assertEqual(self.detector._compiled_rules[0]["action"], "block")
+
+    def test_create_rule_available_immediately(self):
+        self.store.create_rule(
+            {
+                "name": "r2",
+                "pattern": "BBB+",
+                "source": "dashboard",
+                "tier": "custom",
+                "created_by": "test",
+            }
+        )
+        names = [r["name"] for r in self.detector._compiled_rules]
+        self.assertIn("r2", names)
+
+    def test_delete_rule_removed_immediately(self):
+        self.store.create_rule(
+            {
+                "name": "del_me",
+                "pattern": "ZZZ+",
+                "source": "dashboard",
+                "tier": "custom",
+                "created_by": "test",
+            }
+        )
+        self.assertIn("del_me", [r["name"] for r in self.detector._compiled_rules])
+        self.store.delete_rule("del_me")
+        self.assertNotIn("del_me", [r["name"] for r in self.detector._compiled_rules])
+
+    def test_bulk_import_triggers_full_reload(self):
+        self.store.import_rules(
+            [
+                {"name": "bulk1", "pattern": "X+", "detector": "secrets", "severity": "high"},
+                {"name": "bulk2", "pattern": "Y+", "detector": "secrets", "severity": "high"},
+            ],
+            tier="community",
+        )
+        names = [r["name"] for r in self.detector._compiled_rules]
+        self.assertIn("bulk1", names)
+        self.assertIn("bulk2", names)
+
+    def test_disable_rule_removes_from_compiled(self):
+        self.store.update_rule("r1", {"enabled": False})
+        names = [r["name"] for r in self.detector._compiled_rules]
+        self.assertNotIn("r1", names)
+
+
 if __name__ == "__main__":
     unittest.main()

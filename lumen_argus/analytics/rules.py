@@ -181,6 +181,7 @@ class RulesRepository:
                     )
                 except sqlite3.IntegrityError:
                     raise ValueError("rule '%s' already exists" % name)
+        self._store._notify_rules_changed("create", rule_name=name)
         return self.get_by_name(name)
 
     def update(self, name: str, data: dict) -> Optional[dict]:
@@ -217,6 +218,7 @@ class RulesRepository:
                 )
                 if cursor.rowcount == 0:
                     return None
+        self._store._notify_rules_changed("update", rule_name=name)
         return self.get_by_name(name)
 
     def delete(self, name: str) -> bool:
@@ -227,7 +229,10 @@ class RulesRepository:
                     "DELETE FROM rules WHERE name = ? AND source = 'dashboard'",
                     (name,),
                 )
-                return cursor.rowcount > 0
+                deleted = cursor.rowcount > 0
+        if deleted:
+            self._store._notify_rules_changed("delete", rule_name=name)
+        return deleted
 
     def clone(self, name: str, new_name: str) -> dict:
         """Clone a rule as source='dashboard', tier='custom'."""
@@ -354,6 +359,8 @@ class RulesRepository:
                         )
                         result["created"] += 1
 
+        if result["created"] or result["updated"]:
+            self._store._notify_rules_changed("bulk")
         return result
 
     def export(self, tier: Optional[str] = None, detector: Optional[str] = None) -> list:
@@ -504,4 +511,6 @@ class RulesRepository:
                         )
                         result["created"].append(name)
 
+        if result["created"] or result["updated"] or result["deleted"]:
+            self._store._notify_rules_changed("bulk")
         return result

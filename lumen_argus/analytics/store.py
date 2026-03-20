@@ -44,6 +44,7 @@ class AnalyticsStore:
         self._hmac_key = hmac_key
         self._lock = threading.Lock()
         self._local = threading.local()
+        self._rules_change_callback = None
         self._ensure_db()
         self.findings = FindingsRepository(self)
         self.rules = RulesRepository(self)
@@ -92,6 +93,22 @@ class AnalyticsStore:
 
     def _now(self) -> str:
         return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    def set_rules_change_callback(self, callback) -> None:
+        """Register callback for rule changes.
+
+        callback(change_type, rule_name=None)
+        - change_type: "update" | "create" | "delete" | "bulk"
+        - rule_name: specific rule name for single-rule changes, None for bulk
+        """
+        self._rules_change_callback = callback
+
+    def _notify_rules_changed(self, change_type, rule_name=None):
+        if self._rules_change_callback:
+            try:
+                self._rules_change_callback(change_type, rule_name=rule_name)
+            except Exception:
+                pass
 
     def start_cleanup_scheduler(self, retention_days: int = 365) -> None:
         """Start a background thread that runs cleanup daily."""

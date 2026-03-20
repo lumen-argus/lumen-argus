@@ -282,7 +282,10 @@ class ScannerPipeline:
                 license_checker=extensions.get_license_checker() if extensions else None,
             )
             self._detectors.append(self._rules_detector)
+            store.set_rules_change_callback(self._rules_detector.on_rules_changed)
             log.info("using DB-backed rules detector (%d rules)", count)
+        # Note: if DB starts empty (fallback path), callback is not registered.
+        # Rules imported while running won't take effect until restart/SIGHUP.
         else:
             # Fallback: hardcoded pattern files (no rules imported yet)
             self._detectors.append(SecretsDetector(entropy_threshold=entropy_threshold))
