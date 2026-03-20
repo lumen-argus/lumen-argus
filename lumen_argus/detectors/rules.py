@@ -213,7 +213,9 @@ class RulesDetector(BaseDetector):
                 for match in rule["compiled"].finditer(field.text):
                     # Prefer first capture group (the secret value) over
                     # full match (which may include keyword prefix like "password=")
-                    matched = match.group(1) if match.lastindex else match.group(0)
+                    matched = (match.group(1) if match.lastindex else None) or match.group(0)
+                    if not matched:
+                        continue
                     # Run validator if present
                     if rule["validator"] and not rule["validator"](matched):
                         continue
