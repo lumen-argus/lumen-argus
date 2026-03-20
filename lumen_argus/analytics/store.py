@@ -279,6 +279,25 @@ class AnalyticsStore:
             ).fetchone()
         return dict(row) if row else None
 
+    def get_account_stats(self, limit: int = 10) -> list:
+        """Return top accounts by finding count.
+
+        Returns list of dicts with account_id, finding_count, session_count.
+        Sorted by finding_count descending. Excludes empty account_id.
+        Read-only — no write lock needed.
+        """
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT account_id, "
+                "COUNT(*) as finding_count, "
+                "COUNT(DISTINCT session_id) as session_count "
+                "FROM findings WHERE account_id != '' "
+                "GROUP BY account_id "
+                "ORDER BY finding_count DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
     def get_stats(self) -> dict:
         """Return aggregate statistics for the dashboard."""
         with self._connect() as conn:
