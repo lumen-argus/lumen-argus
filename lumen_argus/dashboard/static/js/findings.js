@@ -99,6 +99,17 @@ function showDetail(f){selectedFindingId=f.id;
     var lbl=document.createElement('label');lbl.textContent=pair[0];
     var val=document.createElement('div');val.className='val';val.textContent=String(pair[1]);
     item.appendChild(lbl);item.appendChild(val);grid.appendChild(item);});
+  var ruleItem=document.createElement('div');ruleItem.className='detail-item';
+  var ruleLbl=document.createElement('label');ruleLbl.textContent='Rule';
+  var ruleVal=document.createElement('div');ruleVal.className='val';
+  var ruleLink=document.createElement('a');
+  var ruleQ=encodeURIComponent(f.finding_type||'');
+  ruleLink.href='#rules?q='+ruleQ;
+  ruleLink.textContent='View Rule \u2192';
+  ruleLink.style.cssText='color:var(--accent);font-size:.78rem;text-decoration:none';
+  ruleLink.addEventListener('click',function(e){e.stopPropagation();});
+  ruleVal.appendChild(ruleLink);ruleItem.appendChild(ruleLbl);ruleItem.appendChild(ruleVal);
+  grid.appendChild(ruleItem);
   renderFindingsTable();}
 document.getElementById('f-sev').addEventListener('change',function(){findPage=0;loadFindings();});
 document.getElementById('f-det').addEventListener('change',function(){findPage=0;loadFindings();});

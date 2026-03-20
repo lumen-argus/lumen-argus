@@ -152,7 +152,8 @@ function navigate(p){
   var el=document.getElementById('page-'+p);if(el)el.classList.add('active');
   var tabs=document.querySelectorAll('.nav-tab');
   for(var i=0;i<tabs.length;i++){if(tabs[i].getAttribute('data-page')===p)tabs[i].classList.add('active');}
-  location.hash=p;
+  var curHash=location.hash.replace('#','');
+  if(curHash.split('?')[0]!==p)location.hash=p;
   /* Call page's loadFn if registered */
   var reg = _registeredPages[p];
   if (reg && reg.loadFn) reg.loadFn();
@@ -165,7 +166,8 @@ document.getElementById('nav').addEventListener('click',function(e){
   var t=e.target.closest('.nav-tab');if(t)navigate(t.getAttribute('data-page'));});
 
 function initRoute(){var h=location.hash.replace('#','');
-  if(VALID_PAGES[h])navigate(h);}
+  var p=h.split('?')[0];
+  if(VALID_PAGES[p])navigate(p);}
 
 function fmtTime(ts){try{var d=new Date(ts),now=new Date(),s=(now-d)/1000;
   if(s<60)return Math.floor(s)+'s ago';if(s<3600)return Math.floor(s/60)+'m ago';
