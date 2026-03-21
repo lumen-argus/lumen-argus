@@ -90,7 +90,7 @@ def handle_community_api(
             return _handle_stats_advanced(params, store, extensions)
 
         if path == "/api/v1/config":
-            return _handle_config(config)
+            return _handle_config(config, store)
 
         if path == "/api/v1/sessions":
             return _handle_sessions(params, store)
@@ -322,30 +322,51 @@ def _handle_stats_advanced(params: dict, store, extensions) -> tuple:
     )
 
 
-def _handle_config(config) -> tuple:
-    """Return sanitized read-only config."""
+def _handle_config(config, store=None) -> tuple:
+    """Return sanitized config with DB overrides applied."""
     if not config:
         return _json_response(200, {"community": {}})
+
+    # Start with YAML values
+    timeout = config.proxy.timeout
+    retries = config.proxy.retries
+    default_action = config.default_action
+    secrets_action = config.secrets.action or config.default_action
+    pii_action = config.pii.action or config.default_action
+    proprietary_action = config.proprietary.action or config.default_action
+
+    # Apply DB overrides on top (same values the running server uses)
+    if store:
+        try:
+            overrides = store.get_config_overrides()
+            if "proxy.timeout" in overrides:
+                timeout = int(overrides["proxy.timeout"])
+            if "proxy.retries" in overrides:
+                retries = int(overrides["proxy.retries"])
+            if "default_action" in overrides:
+                default_action = overrides["default_action"]
+            if "detectors.secrets.action" in overrides:
+                secrets_action = overrides["detectors.secrets.action"]
+            if "detectors.pii.action" in overrides:
+                pii_action = overrides["detectors.pii.action"]
+            if "detectors.proprietary.action" in overrides:
+                proprietary_action = overrides["detectors.proprietary.action"]
+        except Exception:
+            pass
 
     data = {
         "community": {
             "proxy": {
                 "port": config.proxy.port,
                 "bind": config.proxy.bind,
-                "timeout": config.proxy.timeout,
-                "retries": config.proxy.retries,
+                "timeout": timeout,
+                "retries": retries,
             },
-            "default_action": config.default_action,
+            "default_action": default_action,
             "detectors": {
-                "secrets": {
-                    "enabled": config.secrets.enabled,
-                    "action": config.secrets.action or config.default_action,
-                },
-                "pii": {"enabled": config.pii.enabled, "action": config.pii.action or config.default_action},
-                "proprietary": {
-                    "enabled": config.proprietary.enabled,
-                    "action": config.proprietary.action or config.default_action,
-                },
+                "secrets": {"enabled": config.secrets.enabled, "action": secrets_action},
+                "pii": {"enabled": config.pii.enabled, "action": pii_action},
+                "proprietary": {"enabled": config.proprietary.enabled, "action": proprietary_action},
             },
         },
     }

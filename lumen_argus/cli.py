@@ -512,13 +512,6 @@ def _do_reload(server, config_path, file_handler, console_level, root_logger, ex
         from lumen_argus.pool import build_ssl_context
 
         new_config = load_config(config_path=config_path)
-        old = current_config[0]
-        changes = config_diff(old, new_config)
-        if changes:
-            log.info("config reloaded: %d changes", len(changes))
-            for change in changes:
-                log.info("  %s", change)
-        current_config[0] = new_config
 
         new_allowlist = AllowlistMatcher(
             secrets=new_config.allowlist.secrets,
@@ -573,6 +566,17 @@ def _do_reload(server, config_path, file_handler, console_level, root_logger, ex
                     log.info("applied %d config override(s) from DB", len(db_overrides))
             except Exception:
                 log.debug("no config overrides from DB")
+
+        # Diff after DB overrides so phantom changes don't appear
+        old = current_config[0]
+        changes = config_diff(old, new_config)
+        if changes:
+            log.info("config reloaded: %d changes", len(changes))
+            for change in changes:
+                log.info("  %s", change)
+        else:
+            log.info("config reloaded (no changes)")
+        current_config[0] = new_config
 
         server.pipeline.reload(
             allowlist=new_allowlist,
@@ -635,8 +639,6 @@ def _do_reload(server, config_path, file_handler, console_level, root_logger, ex
                     dispatcher.rebuild()
                 except Exception:
                     log.warning("dispatcher rebuild failed on SIGHUP", exc_info=True)
-        if not changes:
-            log.info("config reloaded (no changes)")
     except Exception as e:
         log.error("config reload failed: %s", e)
 
