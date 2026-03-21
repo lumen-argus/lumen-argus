@@ -288,10 +288,13 @@ def main(argv=None):
                     config.default_action = value
                 elif key == "detectors.secrets.action":
                     action_overrides["secrets"] = value
+                    config.secrets.action = value
                 elif key == "detectors.pii.action":
                     action_overrides["pii"] = value
+                    config.pii.action = value
                 elif key == "detectors.proprietary.action":
                     action_overrides["proprietary"] = value
+                    config.proprietary.action = value
             if db_overrides:
                 log.info("applied %d config override(s) from DB", len(db_overrides))
         except Exception:
@@ -558,10 +561,13 @@ def _do_reload(server, config_path, file_handler, console_level, root_logger, ex
                         new_config.default_action = value
                     elif key == "detectors.secrets.action":
                         new_overrides["secrets"] = value
+                        new_config.secrets.action = value
                     elif key == "detectors.pii.action":
                         new_overrides["pii"] = value
+                        new_config.pii.action = value
                     elif key == "detectors.proprietary.action":
                         new_overrides["proprietary"] = value
+                        new_config.proprietary.action = value
                 if db_overrides:
                     log.info("applied %d config override(s) from DB", len(db_overrides))
             except Exception:

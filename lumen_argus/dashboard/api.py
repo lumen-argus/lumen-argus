@@ -351,8 +351,8 @@ def _handle_config(config, store=None) -> tuple:
                 pii_action = overrides["detectors.pii.action"]
             if "detectors.proprietary.action" in overrides:
                 proprietary_action = overrides["detectors.proprietary.action"]
-        except Exception:
-            pass
+        except Exception as e:
+            log.warning("GET /api/v1/config: could not load DB overrides: %s", e)
 
     data = {
         "community": {
