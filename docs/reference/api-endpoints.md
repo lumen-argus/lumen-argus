@@ -216,7 +216,8 @@ The dashboard runs on a separate port (default `8081`) and provides a REST API f
 | `/api/v1/findings/export` | GET | CSV or JSON export (via `?format=csv` or `?format=json`) |
 | `/api/v1/stats` | GET | Aggregated statistics for dashboard charts (`?days=N`, default 30) |
 | `/api/v1/stats/advanced` | GET | Pro analytics: action trend, activity matrix, top accounts/projects, coverage (402 without Pro) |
-| `/api/v1/config` | GET | Sanitized read-only config |
+| `/api/v1/config` | GET | Sanitized config (community + Pro sections) |
+| `/api/v1/config` | PUT | Save settings to DB (community: proxy, actions; Pro: all). Triggers SIGHUP reload. |
 | `/api/v1/audit` | GET | Paginated audit log entries with action/provider/search filters |
 | `/api/v1/audit/export` | GET | Audit log CSV/JSON export |
 | `/api/v1/logs/tail` | GET | Last 100 lines of application log |
