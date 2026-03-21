@@ -30,6 +30,26 @@ CREATE TABLE IF NOT EXISTS schema_version (
 );
 """
 
+_CONFIG_OVERRIDES_SCHEMA = """\
+CREATE TABLE IF NOT EXISTS config_overrides (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+"""
+
+# Community-editable config keys with validation rules
+_VALID_CONFIG_KEYS = {
+    "proxy.timeout",
+    "proxy.retries",
+    "default_action",
+    "detectors.secrets.action",
+    "detectors.pii.action",
+    "detectors.proprietary.action",
+}
+
+_VALID_ACTIONS = {"log", "alert", "block"}
+
 
 class AnalyticsStore:
     """Thread-safe SQLite store for finding history and trend queries.
@@ -59,6 +79,7 @@ class AnalyticsStore:
             conn.executescript(_RULES_SCHEMA)
             conn.executescript(_NOTIFICATION_SCHEMA)
             conn.executescript(_SCHEMA_VERSION)
+            conn.executescript(_CONFIG_OVERRIDES_SCHEMA)
         # Secure file permissions — same 0o600 as audit JSONL files
         try:
             os.chmod(self._db_path, 0o600)
@@ -255,6 +276,67 @@ class AnalyticsStore:
 
     def reconcile_yaml_channels(self, yaml_channels, channel_limit=None):
         return self.channels.reconcile_yaml(yaml_channels, channel_limit=channel_limit)
+
+    # --- Config overrides ---
+
+    def get_config_overrides(self):
+        """Return all config overrides as a dict."""
+        with self._connect() as conn:
+            rows = conn.execute("SELECT key, value FROM config_overrides").fetchall()
+        overrides = {row["key"]: row["value"] for row in rows}
+        log.debug("loaded %d config override(s) from DB", len(overrides))
+        return overrides
+
+    def set_config_override(self, key, value):
+        """Set a config override. Validates key and value."""
+        if key not in _VALID_CONFIG_KEYS:
+            raise ValueError("Invalid config key: %s" % key)
+
+        value = str(value)
+        if key == "proxy.timeout":
+            try:
+                v = int(value)
+            except (ValueError, TypeError):
+                raise ValueError("timeout must be an integer (1-300)")
+            if v < 1 or v > 300:
+                raise ValueError("timeout must be 1-300")
+        elif key == "proxy.retries":
+            try:
+                v = int(value)
+            except (ValueError, TypeError):
+                raise ValueError("retries must be an integer (0-10)")
+            if v < 0 or v > 10:
+                raise ValueError("retries must be 0-10")
+        elif key in (
+            "default_action",
+            "detectors.secrets.action",
+            "detectors.pii.action",
+            "detectors.proprietary.action",
+        ):
+            if value not in _VALID_ACTIONS:
+                raise ValueError("action must be one of: %s" % ", ".join(sorted(_VALID_ACTIONS)))
+
+        now = self._now()
+        with self._lock:
+            with self._connect() as conn:
+                conn.execute(
+                    "INSERT OR REPLACE INTO config_overrides (key, value, updated_at) VALUES (?, ?, ?)",
+                    (key, value, now),
+                )
+        log.debug("config override stored: %s = %s", key, value)
+
+    def delete_config_override(self, key):
+        """Delete a config override (revert to YAML default)."""
+        with self._lock:
+            with self._connect() as conn:
+                cursor = conn.execute(
+                    "DELETE FROM config_overrides WHERE key = ?",
+                    (key,),
+                )
+                deleted = cursor.rowcount > 0
+        if deleted:
+            log.info("config override deleted: %s (reverted to YAML default)", key)
+        return deleted
 
     # --- Private helper kept for backward compat (used by channels internally) ---
 

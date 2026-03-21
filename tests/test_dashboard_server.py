@@ -636,11 +636,11 @@ class TestTierGating(unittest.TestCase):
         data = json.loads(body)
         self.assertEqual(data["error"], "pro_required")
 
-    def test_put_config_returns_402(self):
+    def test_put_config_empty_returns_400(self):
         status, _, body = _put(self.port, "/api/v1/config", body=b"{}")
-        self.assertEqual(status, 402)
+        self.assertEqual(status, 400)
         data = json.loads(body)
-        self.assertEqual(data["error"], "pro_required")
+        self.assertIn("error", data)
 
     def test_unknown_path_returns_404(self):
         status, _, body = _get(self.port, "/api/v1/nonexistent")
@@ -1077,17 +1077,109 @@ class TestCommunityAPIDirect(unittest.TestCase):
             self.assertEqual(status, 402, "Expected 402 for POST %s" % path)
             self.assertEqual(data["error"], "pro_required")
 
-    def test_pro_endpoint_put_config_returns_402(self):
+    def test_put_config_empty_returns_400(self):
         status, body = handle_community_api("/api/v1/config", "PUT", b"{}", None)
         data = json.loads(body)
-        self.assertEqual(status, 402)
-        self.assertEqual(data["error"], "pro_required")
+        self.assertEqual(status, 400)
+        self.assertIn("error", data)
 
     def test_pro_endpoint_delete_returns_402(self):
         status, body = handle_community_api("/api/v1/rules/1", "DELETE", b"", None)
         data = json.loads(body)
         self.assertEqual(status, 402)
         self.assertEqual(data["error"], "pro_required")
+
+
+class TestConfigOverrides(unittest.TestCase):
+    """Tests for community config save (SQLite-backed overrides)."""
+
+    def setUp(self):
+        import tempfile
+
+        from lumen_argus.analytics.store import AnalyticsStore
+
+        self._tmpdir = tempfile.mkdtemp()
+        self.store = AnalyticsStore(db_path=self._tmpdir + "/test.db")
+
+    def tearDown(self):
+        import shutil
+
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def test_set_and_get_override(self):
+        self.store.set_config_override("proxy.timeout", "60")
+        overrides = self.store.get_config_overrides()
+        self.assertEqual(overrides["proxy.timeout"], "60")
+
+    def test_set_override_updates_existing(self):
+        self.store.set_config_override("proxy.timeout", "60")
+        self.store.set_config_override("proxy.timeout", "120")
+        overrides = self.store.get_config_overrides()
+        self.assertEqual(overrides["proxy.timeout"], "120")
+
+    def test_delete_override(self):
+        self.store.set_config_override("proxy.timeout", "60")
+        deleted = self.store.delete_config_override("proxy.timeout")
+        self.assertTrue(deleted)
+        self.assertEqual(self.store.get_config_overrides(), {})
+
+    def test_delete_nonexistent_returns_false(self):
+        deleted = self.store.delete_config_override("proxy.timeout")
+        self.assertFalse(deleted)
+
+    def test_unknown_key_raises(self):
+        with self.assertRaises(ValueError):
+            self.store.set_config_override("unknown.key", "value")
+
+    def test_timeout_validation_rejects_zero(self):
+        with self.assertRaises(ValueError):
+            self.store.set_config_override("proxy.timeout", "0")
+
+    def test_timeout_validation_rejects_over_max(self):
+        with self.assertRaises(ValueError):
+            self.store.set_config_override("proxy.timeout", "999")
+
+    def test_retries_validation_rejects_negative(self):
+        with self.assertRaises(ValueError):
+            self.store.set_config_override("proxy.retries", "-1")
+
+    def test_action_validation_rejects_redact(self):
+        """Community edition does not allow redact action."""
+        with self.assertRaises(ValueError):
+            self.store.set_config_override("default_action", "redact")
+
+    def test_action_validation_accepts_block(self):
+        self.store.set_config_override("default_action", "block")
+        self.assertEqual(self.store.get_config_overrides()["default_action"], "block")
+
+    def test_detector_action_override(self):
+        self.store.set_config_override("detectors.secrets.action", "block")
+        self.store.set_config_override("detectors.pii.action", "alert")
+        overrides = self.store.get_config_overrides()
+        self.assertEqual(overrides["detectors.secrets.action"], "block")
+        self.assertEqual(overrides["detectors.pii.action"], "alert")
+
+    def test_put_config_api_success(self):
+        body = json.dumps({"proxy.timeout": 60, "default_action": "block"}).encode()
+        status, resp = handle_community_api("/api/v1/config", "PUT", body, self.store)
+        data = json.loads(resp)
+        self.assertEqual(status, 200)
+        self.assertIn("proxy.timeout", data["applied"])
+        self.assertIn("default_action", data["applied"])
+
+    def test_put_config_api_invalid_key(self):
+        body = json.dumps({"bad.key": "value"}).encode()
+        status, resp = handle_community_api("/api/v1/config", "PUT", body, self.store)
+        self.assertEqual(status, 400)
+        self.assertIn(b"Invalid config key", resp)
+
+    def test_put_config_api_partial_success(self):
+        body = json.dumps({"proxy.timeout": 60, "bad.key": "value"}).encode()
+        status, resp = handle_community_api("/api/v1/config", "PUT", body, self.store)
+        data = json.loads(resp)
+        self.assertEqual(status, 207)
+        self.assertIn("proxy.timeout", data["applied"])
+        self.assertTrue(len(data["errors"]) > 0)
 
 
 if __name__ == "__main__":

@@ -292,10 +292,7 @@ function _saveSettings(statusEl){
     body:JSON.stringify(changes)}).then(function(r){
     return r.json().then(function(d){return{status:r.status,data:d};});
   }).then(function(res){
-    if(res.status===402){
-      statusEl.textContent=res.data.message||'Pro license required for config changes';
-      statusEl.style.color='var(--warning)';
-    }else if(res.data.applied){
+    if(res.data.applied){
       var n=Object.keys(res.data.applied).length;
       statusEl.textContent=n+' setting(s) saved \u2014 applied immediately';
       statusEl.style.color='var(--accent)';

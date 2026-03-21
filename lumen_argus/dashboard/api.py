@@ -1,13 +1,14 @@
-"""Community dashboard API — read-only endpoints plus license activation.
+"""Community dashboard API — read endpoints, config save, and license activation.
 
-All community API endpoints are GET-only (except POST /api/v1/license).
-Known Pro endpoint paths return 402 instead of 404 when no Pro handler
-is registered, giving API consumers a clear upgrade signal.
+Community endpoints: GET (read), PUT /api/v1/config (save community settings),
+POST /api/v1/license (activate). Known Pro endpoint paths return 402 instead
+of 404 when no Pro handler is registered, giving API consumers a clear upgrade signal.
 """
 
 import json
 import logging
 import os
+import signal
 import time
 
 from lumen_argus import __version__
@@ -122,6 +123,11 @@ def handle_community_api(
         if result is not None:
             return result
 
+    # --- PUT config (community settings) ---
+
+    if path == "/api/v1/config" and method == "PUT":
+        return _handle_config_update(body, config, store)
+
     # --- Tier gating: known Pro paths return 402 ---
 
     if method in ("POST", "PUT", "DELETE"):
@@ -135,21 +141,63 @@ def handle_community_api(
                         "upgrade_url": "https://lumen-argus.com/pro",
                     },
                 )
-        # PUT on config is also Pro-only
-        if path == "/api/v1/config" and method == "PUT":
-            return _json_response(
-                402,
-                {
-                    "error": "pro_required",
-                    "message": "Config changes require a Pro license",
-                    "upgrade_url": "https://lumen-argus.com/pro",
-                },
-            )
 
     return _json_response(404, {"error": "not_found"})
 
 
 # --- Handler implementations ---
+
+
+def _handle_config_update(body: bytes, config, store) -> tuple:
+    """Handle PUT /api/v1/config — save community-editable settings to DB.
+
+    Uses the same config_overrides SQLite table as Pro, so settings
+    survive license transitions without data loss.
+    """
+    try:
+        changes = json.loads(body)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        log.debug("PUT /api/v1/config: invalid JSON body")
+        return _json_response(400, {"error": "invalid JSON"})
+
+    if not isinstance(changes, dict) or not changes:
+        log.debug("PUT /api/v1/config: empty or non-object body")
+        return _json_response(400, {"error": "expected a JSON object with settings to update"})
+
+    if not store:
+        log.error("PUT /api/v1/config: analytics store not available")
+        return _json_response(500, {"error": "analytics store not available"})
+
+    log.debug("PUT /api/v1/config: %d change(s) requested: %s", len(changes), list(changes.keys()))
+    errors = []
+    applied = {}
+
+    for key, value in changes.items():
+        try:
+            store.set_config_override(key, str(value))
+            applied[key] = value
+            log.info("config override saved: %s = %s", key, value)
+        except ValueError as e:
+            log.warning("config override rejected: %s = %s (%s)", key, value, e)
+            errors.append({"key": key, "error": str(e)})
+
+    # Trigger SIGHUP so the running server picks up the changes.
+    # Only send if SIGHUP handler is registered (not default/test).
+    if applied and hasattr(signal, "SIGHUP"):
+        current_handler = signal.getsignal(signal.SIGHUP)
+        if current_handler not in (signal.SIG_DFL, signal.SIG_IGN, None):
+            try:
+                os.kill(os.getpid(), signal.SIGHUP)
+                log.debug("SIGHUP sent for config reload")
+            except OSError:
+                log.warning("could not send SIGHUP for config reload")
+
+    if errors and not applied:
+        return _json_response(400, {"error": "; ".join(e["error"] for e in errors)})
+    if errors:
+        log.info("config update partial: %d applied, %d errors", len(applied), len(errors))
+        return _json_response(207, {"applied": applied, "errors": errors})
+    return _json_response(200, {"applied": applied})
 
 
 def _handle_status(store, extensions=None) -> tuple:

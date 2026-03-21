@@ -225,6 +225,7 @@ def main(argv=None):
 
     # --- Analytics store and rules (must happen before pipeline creation) ---
     dashboard_server = None
+    analytics_store = None
     if config.dashboard.enabled:
         from lumen_argus.analytics.store import AnalyticsStore
         from lumen_argus.dashboard.audit_reader import AuditReader
@@ -273,6 +274,28 @@ def main(argv=None):
                         action_name,
                         ", ".join(rules_result[action_name]),
                     )
+
+    # Apply DB config overrides on top of YAML (dashboard-saved settings)
+    if analytics_store:
+        try:
+            db_overrides = analytics_store.get_config_overrides()
+            for key, value in db_overrides.items():
+                if key == "proxy.timeout":
+                    config.proxy.timeout = int(value)
+                elif key == "proxy.retries":
+                    config.proxy.retries = int(value)
+                elif key == "default_action":
+                    config.default_action = value
+                elif key == "detectors.secrets.action":
+                    action_overrides["secrets"] = value
+                elif key == "detectors.pii.action":
+                    action_overrides["pii"] = value
+                elif key == "detectors.proprietary.action":
+                    action_overrides["proprietary"] = value
+            if db_overrides:
+                log.info("applied %d config override(s) from DB", len(db_overrides))
+        except Exception:
+            pass
 
     # --- Pipeline (created after store + rules so RulesDetector sees imported rules) ---
     pipeline = ScannerPipeline(
@@ -528,6 +551,29 @@ def _do_reload(server, config_path, file_handler, console_level, root_logger, ex
             new_overrides["pii"] = new_config.pii.action
         if new_config.proprietary.action:
             new_overrides["proprietary"] = new_config.proprietary.action
+
+        # Apply DB config overrides on top of YAML (dashboard-saved settings)
+        if analytics_store:
+            try:
+                db_overrides = analytics_store.get_config_overrides()
+                for key, value in db_overrides.items():
+                    if key == "proxy.timeout":
+                        new_config.proxy.timeout = int(value)
+                    elif key == "proxy.retries":
+                        new_config.proxy.retries = int(value)
+                    elif key == "default_action":
+                        new_config.default_action = value
+                    elif key == "detectors.secrets.action":
+                        new_overrides["secrets"] = value
+                    elif key == "detectors.pii.action":
+                        new_overrides["pii"] = value
+                    elif key == "detectors.proprietary.action":
+                        new_overrides["proprietary"] = value
+                if db_overrides:
+                    log.info("applied %d config override(s) from DB", len(db_overrides))
+            except Exception:
+                log.debug("no config overrides from DB")
+
         server.pipeline.reload(
             allowlist=new_allowlist,
             default_action=new_config.default_action,
