@@ -240,7 +240,7 @@ def scan_files(
 
 # Unified diff header: "+++ b/path"
 _DIFF_FILE_RE = re.compile(r"^\+\+\+ b/(.+)$")
-_BINARY_FILE_RE = re.compile(r"^Binary files .+ and b/(.+) differ$")
+_BINARY_FILE_RE = re.compile(r"^Binary files [^\n]+ and b/([^\n]+) differ$")
 
 
 def _parse_diff(diff_text: str) -> Dict[str, str]:
