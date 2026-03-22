@@ -49,6 +49,43 @@ def detect_mcp_request(body: bytes) -> Optional[dict]:
     return None
 
 
+def detect_mcp_method(body: bytes) -> Optional[str]:
+    """Detect the JSON-RPC method in an MCP request body. Returns method or None."""
+    try:
+        msg = json.loads(body)
+        if isinstance(msg, dict) and msg.get("jsonrpc") == "2.0":
+            return msg.get("method")
+    except (json.JSONDecodeError, ValueError, UnicodeDecodeError):
+        pass
+    return None
+
+
+def detect_mcp_tools_list_response(body: bytes) -> Optional[list]:
+    """Detect tools/list response and extract tool metadata.
+
+    Returns list of {name, description, inputSchema} dicts, or None.
+    """
+    try:
+        msg = json.loads(body)
+        if isinstance(msg, dict) and msg.get("jsonrpc") == "2.0":
+            result = msg.get("result")
+            if isinstance(result, dict) and "tools" in result:
+                tools = result.get("tools", [])
+                if isinstance(tools, list):
+                    return [
+                        {
+                            "name": t.get("name", ""),
+                            "description": t.get("description", ""),
+                            "inputSchema": t.get("inputSchema", {}),
+                        }
+                        for t in tools
+                        if isinstance(t, dict) and t.get("name")
+                    ]
+    except (json.JSONDecodeError, ValueError, UnicodeDecodeError):
+        pass
+    return None
+
+
 def detect_mcp_response(body: bytes) -> Optional[dict]:
     """Detect MCP tool response in an HTTP response body.
 

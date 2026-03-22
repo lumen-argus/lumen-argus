@@ -53,10 +53,26 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_mcp_tool_unique
 _MCP_DETECTED_TOOLS_SCHEMA = """\
 CREATE TABLE IF NOT EXISTS mcp_detected_tools (
     tool_name TEXT PRIMARY KEY,
+    description TEXT NOT NULL DEFAULT '',
+    input_schema TEXT NOT NULL DEFAULT '{}',
     first_seen TEXT NOT NULL,
     last_seen TEXT NOT NULL,
     call_count INTEGER NOT NULL DEFAULT 1
 );
+"""
+
+_MCP_TOOL_CALLS_SCHEMA = """\
+CREATE TABLE IF NOT EXISTS mcp_tool_calls (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tool_name TEXT NOT NULL,
+    session_id TEXT NOT NULL DEFAULT '',
+    timestamp TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'allowed',
+    finding_count INTEGER NOT NULL DEFAULT 0,
+    source TEXT NOT NULL DEFAULT 'proxy'
+);
+CREATE INDEX IF NOT EXISTS idx_mcp_calls_session ON mcp_tool_calls(session_id, timestamp);
+CREATE INDEX IF NOT EXISTS idx_mcp_calls_ts ON mcp_tool_calls(timestamp);
 """
 
 # Community-editable config keys with validation rules
@@ -121,6 +137,7 @@ class AnalyticsStore:
             conn.executescript(_CONFIG_OVERRIDES_SCHEMA)
             conn.executescript(_MCP_TOOL_LISTS_SCHEMA)
             conn.executescript(_MCP_DETECTED_TOOLS_SCHEMA)
+            conn.executescript(_MCP_TOOL_CALLS_SCHEMA)
         # Secure file permissions — same 0o600 as audit JSONL files
         try:
             os.chmod(self._db_path, 0o600)
@@ -507,29 +524,79 @@ class AnalyticsStore:
 
     # --- MCP detected tools tracking ---
 
-    def record_mcp_tool_seen(self, tool_name):
-        """Record a tool call seen through the proxy. Upserts call_count."""
+    def record_mcp_tool_seen(self, tool_name, description="", input_schema=""):
+        """Record a tool seen. Upserts call_count, conditionally updates metadata."""
+        if not tool_name:
+            return
+        now = self._now()
+        # Build dynamic UPDATE clause — only overwrite metadata if new values provided
+        update_parts = ["last_seen = excluded.last_seen", "call_count = call_count + 1"]
+        if description:
+            update_parts.append("description = excluded.description")
+        if input_schema:
+            update_parts.append("input_schema = excluded.input_schema")
+        with self._lock:
+            with self._connect() as conn:
+                conn.execute(
+                    "INSERT INTO mcp_detected_tools "
+                    "(tool_name, description, input_schema, first_seen, last_seen, call_count) "
+                    "VALUES (?, ?, ?, ?, ?, 1) "
+                    "ON CONFLICT(tool_name) DO UPDATE SET " + ", ".join(update_parts),
+                    (tool_name, description or "", input_schema or "{}", now, now),
+                )
+        log.debug("mcp tool seen: %s", tool_name)
+
+    def get_mcp_detected_tools(self):
+        """Return all detected MCP tools with metadata and call counts."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT tool_name, description, input_schema, first_seen, last_seen, call_count "
+                "FROM mcp_detected_tools ORDER BY call_count DESC"
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    # --- MCP tool call logging ---
+
+    def record_mcp_tool_call(self, tool_name, session_id="", status="allowed", finding_count=0, source="proxy"):
+        """Log an MCP tool call for chain analysis."""
         if not tool_name:
             return
         now = self._now()
         with self._lock:
             with self._connect() as conn:
                 conn.execute(
-                    "INSERT INTO mcp_detected_tools (tool_name, first_seen, last_seen, call_count) "
-                    "VALUES (?, ?, ?, 1) "
-                    "ON CONFLICT(tool_name) DO UPDATE SET "
-                    "last_seen = excluded.last_seen, call_count = call_count + 1",
-                    (tool_name, now, now),
+                    "INSERT INTO mcp_tool_calls "
+                    "(tool_name, session_id, timestamp, status, finding_count, source) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    (tool_name, session_id, now, status, finding_count, source),
                 )
-        log.debug("mcp tool seen: %s", tool_name)
+        log.debug("mcp tool call: %s status=%s findings=%d source=%s", tool_name, status, finding_count, source)
 
-    def get_mcp_detected_tools(self):
-        """Return all detected MCP tools with call counts."""
+    def get_mcp_tool_calls(self, session_id=None, limit=100):
+        """Return recent MCP tool calls, optionally filtered by session."""
+        query = "SELECT id, tool_name, session_id, timestamp, status, finding_count, source FROM mcp_tool_calls"
+        params = []  # type: list
+        if session_id:
+            query += " WHERE session_id = ?"
+            params.append(session_id)
+        query += " ORDER BY timestamp DESC LIMIT ?"
+        params.append(limit)
         with self._connect() as conn:
-            rows = conn.execute(
-                "SELECT tool_name, first_seen, last_seen, call_count FROM mcp_detected_tools ORDER BY call_count DESC"
-            ).fetchall()
+            rows = conn.execute(query, params).fetchall()
         return [dict(r) for r in rows]
+
+    def cleanup_mcp_tool_calls(self, retention_days=30):
+        """Delete MCP tool calls older than retention_days."""
+        from datetime import datetime, timedelta, timezone
+
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=retention_days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        with self._lock:
+            with self._connect() as conn:
+                cursor = conn.execute("DELETE FROM mcp_tool_calls WHERE timestamp < ?", (cutoff,))
+                deleted = cursor.rowcount
+        if deleted:
+            log.info("mcp tool calls cleanup: %d entries deleted (older than %d days)", deleted, retention_days)
+        return deleted
 
     # --- Private helper kept for backward compat (used by channels internally) ---
 

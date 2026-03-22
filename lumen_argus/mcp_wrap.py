@@ -148,6 +148,11 @@ async def _run_wrapper(
                         findings = scanner.scan_response(m, req_method)
                         if findings:
                             log.debug("mcp response findings: %d", len(findings))
+                    elif req_method == "tools/list":
+                        # Capture tool descriptions for tracking
+                        tools = m.get("result", {}).get("tools", [])
+                        if isinstance(tools, list):
+                            log.debug("mcp-wrap: tools/list response: %d tools", len(tools))
 
             # Always forward responses (async mode — alert, don't block)
             sys.stdout.buffer.write(line)
