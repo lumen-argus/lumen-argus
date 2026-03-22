@@ -458,6 +458,28 @@ def main(argv=None):
                         count,
                     )
 
+    # --- WebSocket proxy ---
+    ws_enabled = config.pipeline.websocket_outbound.enabled or config.pipeline.websocket_inbound.enabled
+    if ws_enabled:
+        from lumen_argus.ws_proxy import WebSocketScanner, start_ws_proxy
+
+        ws_scanner = WebSocketScanner(
+            detectors=pipeline._detectors,
+            allowlist=pipeline._allowlist,
+            response_scanner=server.response_scanner,
+            scan_outbound=config.pipeline.websocket_outbound.enabled,
+            scan_inbound=config.pipeline.websocket_inbound.enabled,
+            max_frame_size=config.websocket.max_frame_size,
+        )
+        ws_port = config.dashboard.port + 2  # 8083 by default (proxy=8080, dashboard=8081)
+        start_ws_proxy(
+            bind=bind,
+            port=ws_port,
+            scanner=ws_scanner,
+            allowed_origins=config.websocket.allowed_origins or None,
+        )
+        log.info("ws proxy listening on ws://%s:%d", bind, ws_port)
+
     # --- Signal-safe shutdown and reload ---
     #
     # Signal handlers must not acquire locks (logging, threading, I/O)

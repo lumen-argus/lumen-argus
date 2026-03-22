@@ -105,6 +105,12 @@ class MCPConfig:
 
 
 @dataclass
+class WebSocketConfig:
+    max_frame_size: int = 1_048_576  # 1MB per frame cap
+    allowed_origins: List[str] = field(default_factory=list)  # empty = all allowed
+
+
+@dataclass
 class CustomRuleConfig:
     name: str = ""
     pattern: str = ""  # raw regex string
@@ -168,14 +174,7 @@ _PIPELINE_STAGE_NAMES = {
 }
 
 # Stages that are implemented and available for toggling
-PIPELINE_AVAILABLE_STAGES = {
-    "outbound_dlp",
-    "encoding_decode",
-    "response_secrets",
-    "response_injection",
-    "mcp_arguments",
-    "mcp_responses",
-}
+PIPELINE_AVAILABLE_STAGES = _PIPELINE_STAGE_NAMES  # all stages are now implemented
 
 
 @dataclass
@@ -197,6 +196,7 @@ class Config:
     dedup: DedupConfig = field(default_factory=DedupConfig)
     pipeline: PipelineConfig = field(default_factory=PipelineConfig)
     mcp: MCPConfig = field(default_factory=MCPConfig)
+    websocket: WebSocketConfig = field(default_factory=WebSocketConfig)
     notifications: List[dict] = field(default_factory=list)
 
 
@@ -220,6 +220,7 @@ _KNOWN_TOP_KEYS = {
     "analytics",
     "pipeline",
     "mcp",
+    "websocket",
     # Pro/Enterprise extension keys
     "license_key",
     "redaction",
@@ -891,6 +892,14 @@ def _apply_config(config: Config, data: dict) -> None:
                     detector=str(rule.get("detector", "custom")),
                 )
             )
+
+    # WebSocket config
+    ws_data = data.get("websocket", {})
+    if isinstance(ws_data, dict):
+        if "max_frame_size" in ws_data:
+            config.websocket.max_frame_size = int(ws_data["max_frame_size"])
+        if "allowed_origins" in ws_data and isinstance(ws_data["allowed_origins"], list):
+            config.websocket.allowed_origins = [str(o) for o in ws_data["allowed_origins"]]
 
     # MCP config
     mcp_data = data.get("mcp", {})

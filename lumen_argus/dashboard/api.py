@@ -759,7 +759,7 @@ _PIPELINE_STAGES = [
         "description": "Scan outbound WebSocket frames for sensitive data",
         "group": "protocol",
         "default_enabled": True,
-        "available": False,
+        "available": True,
         "has_sub_detectors": False,
     },
     {
@@ -768,7 +768,7 @@ _PIPELINE_STAGES = [
         "description": "Scan inbound WebSocket frames for sensitive data",
         "group": "protocol",
         "default_enabled": True,
-        "available": False,
+        "available": True,
         "has_sub_detectors": False,
     },
 ]

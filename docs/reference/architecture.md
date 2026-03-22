@@ -156,6 +156,22 @@ The `MCPScanner` scans MCP stdio traffic bidirectionally. The `mcp-wrap` CLI com
 
 Controlled by `mcp_arguments` and `mcp_responses` pipeline stages (enabled by default). MCP over HTTP already passes through the main proxy — `mcp-wrap` covers the stdio transport gap.
 
+### WebSocket Proxy
+
+**Module:** `lumen_argus/ws_proxy.py`
+
+The `WebSocketScanner` scans WebSocket text frames bidirectionally. A standalone `websockets.serve()` server runs on port 8083 (dashboard port + 2) alongside the HTTP proxy. Clients connect with `ws://localhost:8083/?url=ws://target`.
+
+- **Outbound scanning**: client → server text frames scanned for secrets/PII
+- **Inbound scanning**: server → client text frames scanned for secrets + injection patterns
+- **Binary frames**: passed through without scanning
+- **Origin check**: configurable `websocket.allowed_origins` list
+- **Frame size cap**: `websocket.max_frame_size` (default 1MB)
+- **SSRF protection**: target URL must use `ws://` or `wss://` scheme
+- Findings have `ws.outbound` or `ws.inbound` location prefix
+
+Controlled by `websocket_outbound` and `websocket_inbound` pipeline stages (enabled by default). Runs in a daemon thread — shuts down with the main process.
+
 ### Within-Request Deduplication
 
 After detection, findings with the same `(detector, type, matched_value)` tuple are collapsed into a single finding with an incremented `count`. This reduces noise from secrets repeated across conversation history.

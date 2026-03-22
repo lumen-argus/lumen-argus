@@ -38,10 +38,11 @@ lumen-argus sits between your AI tool and the provider, scanning every outbound 
 - **Encoding-aware scanning** — catches base64, hex, URL, Unicode encoded secrets
 - **Response scanning** — detect secrets and prompt injection in API responses (async, zero latency)
 - **MCP proxy** — wrap stdio MCP servers with DLP scanning (`lumen-argus mcp-wrap`)
+- **WebSocket proxy** — bidirectional frame scanning on proxy port (`/ws?url=ws://target`)
 - **8 PII detectors** with validation (Luhn, SSN ranges, IBAN checksums)
 - **Proprietary code** detection (file patterns + keyword matching)
 - **< 50ms scanning overhead** for typical payloads
-- **Minimal dependencies** — just PyYAML, everything else is stdlib
+- **Minimal dependencies** — PyYAML + websockets, everything else is stdlib
 - **Session tracking** — identify WHO, WHICH project, WHICH conversation per finding
 - **Cross-request dedup** — 3-layer dedup eliminates redundant scanning of conversation history
 - **Web dashboard** with real-time findings, charts, session filtering, and audit log

@@ -288,8 +288,8 @@ Per-stage settings. Each stage accepts:
 | `response_injection` | Response | `false` | Yes | Detect prompt injection in responses (async, zero latency) |
 | `mcp_arguments` | MCP | `true` | Yes | Scan MCP tool call arguments (via mcp-wrap) |
 | `mcp_responses` | MCP | `true` | Yes | Scan MCP tool return values (via mcp-wrap) |
-| `websocket_outbound` | WebSocket | `true` | Coming soon | Scan outbound WebSocket frames |
-| `websocket_inbound` | WebSocket | `true` | Coming soon | Scan inbound WebSocket frames |
+| `websocket_outbound` | WebSocket | `true` | Yes | Scan outbound WebSocket frames (`/ws?url=...`) |
+| `websocket_inbound` | WebSocket | `true` | Yes | Scan inbound WebSocket frames (`/ws?url=...`) |
 
 ### `pipeline.stages.encoding_decode` (extended)
 
@@ -329,6 +329,24 @@ pipeline:
 
 !!! tip "Dashboard Pipeline page"
     All pipeline settings can be configured from the Pipeline page in the dashboard. Changes are saved to the database and applied immediately via hot-reload.
+
+---
+
+## `websocket`
+
+WebSocket proxy settings for the `/ws` endpoint.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `websocket.max_frame_size` | `int` | `1048576` | Maximum text frame size in bytes to scan (1MB). Larger frames are truncated before scanning. |
+| `websocket.allowed_origins` | `list[str]` | `[]` | Allowlist of Origin headers. Empty = all origins allowed. |
+
+```yaml title="Example"
+websocket:
+  max_frame_size: 1048576
+  allowed_origins:
+    - "https://app.company.com"
+```
 
 ---
 

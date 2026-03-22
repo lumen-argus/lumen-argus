@@ -217,12 +217,11 @@ class TestPipelineAPI(unittest.TestCase):
         self.assertIn("sub_detectors", dlp)
         self.assertEqual(len(dlp["sub_detectors"]), 3)
 
-    def test_get_pipeline_unavailable_stages(self):
+    def test_all_stages_available(self):
         status, body = handle_community_api("/api/v1/pipeline", "GET", b"", self.store, config=self.config)
         data = json.loads(body)
-        # WebSocket stages are not yet available
-        ws = next(s for s in data["stages"] if s["name"] == "websocket_outbound")
-        self.assertFalse(ws["available"])
+        for stage in data["stages"]:
+            self.assertTrue(stage["available"], "%s should be available" % stage["name"])
 
     def test_get_pipeline_mcp_stages_available(self):
         status, body = handle_community_api("/api/v1/pipeline", "GET", b"", self.store, config=self.config)
