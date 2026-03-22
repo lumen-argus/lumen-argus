@@ -54,8 +54,9 @@ jobs:
 
       - name: Audit dependencies
         run: |
+          pip freeze --exclude pip --exclude setuptools --exclude lumen-argus > /tmp/audit-reqs.txt
           pip install pip-audit
-          pip-audit --skip-editable --ignore-vuln PYSEC-2022-43012 --ignore-vuln PYSEC-2025-49 --ignore-vuln CVE-2024-6345
+          pip-audit -r /tmp/audit-reqs.txt
 
   benchmark:
     if: github.event_name == 'push'
