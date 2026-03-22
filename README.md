@@ -1,7 +1,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/python-3.9+-blue?logo=python&logoColor=white" alt="Python 3.9+">
   <a href="https://github.com/slima4/lumen-argus/actions/workflows/test.yml"><img src="https://github.com/slima4/lumen-argus/actions/workflows/test.yml/badge.svg" alt="tests"></a>
-  <img src="https://img.shields.io/badge/dependencies-zero-brightgreen" alt="Zero dependencies">
+  <img src="https://img.shields.io/badge/dependencies-minimal-brightgreen" alt="Minimal dependencies">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License">
   <a href="https://slima4.github.io/lumen-argus/docs/"><img src="https://img.shields.io/badge/docs-mkdocs-blue" alt="Documentation"></a>
 </p>
@@ -38,7 +38,7 @@ lumen-argus sits between your AI tool and the provider, scanning every outbound 
 - **8 PII detectors** with validation (Luhn, SSN ranges, IBAN checksums)
 - **Proprietary code** detection (file patterns + keyword matching)
 - **< 50ms scanning overhead** for typical payloads
-- **Zero external dependencies** — Python stdlib only
+- **Minimal dependencies** — just PyYAML, everything else is stdlib
 - **Session tracking** — identify WHO, WHICH project, WHICH conversation per finding
 - **Cross-request dedup** — 3-layer dedup eliminates redundant scanning of conversation history
 - **Web dashboard** with real-time findings, charts, session filtering, and audit log
@@ -176,7 +176,7 @@ Scanning overhead stays under 50ms for typical payloads. Connection pooling elim
 
 Built-in web dashboard at `http://localhost:8081`:
 
-**Community pages:** Dashboard (severity cards, trend chart with 7d/30d/90d toggle, top detectors, top providers, recent findings), Findings (paginated table with filters, CSV/JSON export), Audit (log viewer with search), Settings (config with save, license activation), Notifications (channel management).
+**Community pages:** Dashboard (severity cards, trend chart with 7d/30d/90d toggle, top detectors, top providers, recent findings), Findings (paginated table with filters, CSV/JSON export), Audit (log viewer with search), Pipeline (scanning stage config — toggle stages, detectors, encoding settings, default action), Settings (proxy config, license activation), Notifications (channel management).
 
 **Pro pages:** Rules, Allowlists — unlocked with a Pro license. Pro also adds 6 analytics charts to the Dashboard: actions trend (stacked area), activity heatmap (hour × weekday), top accounts, top projects, detection coverage gauge, and notification health.
 
@@ -190,7 +190,9 @@ Built-in web dashboard at `http://localhost:8081`:
 | `GET /api/v1/stats` | Aggregated statistics (`?days=N` for trend range) |
 | `GET /api/v1/stats/advanced` | Pro analytics (action trend, heatmap, top accounts/projects) |
 | `GET /api/v1/config` | Current configuration |
-| `PUT /api/v1/config` | Save settings (community: proxy, actions; Pro: all) |
+| `PUT /api/v1/config` | Save settings (community: proxy; Pro: all) |
+| `GET /api/v1/pipeline` | Pipeline stage configuration with stats |
+| `PUT /api/v1/pipeline` | Save stage toggles, detector actions, encoding settings |
 | `GET /api/v1/audit` | Audit log entries |
 | `GET /api/v1/live` | SSE real-time feed |
 | `GET /api/v1/notifications/channels` | List notification channels |
@@ -293,12 +295,26 @@ allowlists:
   paths:
     - "test/**"
 
+pipeline:
+  stages:
+    outbound_dlp:
+      enabled: true
+    encoding_decode:
+      enabled: true
+      base64: true
+      hex: true
+      url: true
+      unicode: true
+      max_depth: 2
+
 custom_rules:
   - name: internal_api_token
     pattern: "itk_[a-zA-Z0-9]{32}"
     severity: critical
     action: block
 ```
+
+**Pipeline page:** Configure scanning stages from the dashboard — toggle stages on/off, enable/disable individual detectors, set per-detector actions, configure encoding decode settings. All saved to DB and applied via hot-reload.
 
 **Hot-reload:** `kill -HUP $(pgrep -f lumen_argus)` — updates allowlists, actions, timeouts. No downtime.
 

@@ -5,7 +5,7 @@ lumen-argus loads configuration from YAML files in the following order:
 1. **Global config**: `~/.lumen-argus/config.yaml` (created automatically on first run)
 2. **Project config**: `.lumen-argus.yaml` in the current working directory (optional, can only be more restrictive)
 
-The config uses a bundled YAML-subset parser (no PyYAML dependency). Supported syntax: mappings, sequences, scalars, quoted strings, inline comments. Not supported: anchors, aliases, multi-line block scalars (`|`, `>`), flow mappings (`{}`).
+The config uses PyYAML (`yaml.safe_load`) for full YAML 1.1 spec support including anchors, aliases, block scalars, and flow mappings.
 
 ---
 
@@ -264,6 +264,69 @@ notifications:
 
 ---
 
+## `pipeline`
+
+Pipeline stage configuration. Controls which scanning stages are active and how the encoding decoder behaves. Stages can also be toggled from the Pipeline dashboard page.
+
+### `pipeline.stages.<name>`
+
+Per-stage settings. Each stage accepts:
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `pipeline.stages.<name>.enabled` | `bool` | *(varies)* | Whether the stage is active. |
+| `pipeline.stages.<name>.action` | `str` | `""` | Stage-level action override (Pro). Empty = use `default_action`. |
+
+### Available stages
+
+| Stage | Direction | Default | Available | Description |
+|-------|-----------|---------|-----------|-------------|
+| `outbound_dlp` | Request | `true` | Yes | Secret/PII/proprietary detection on outbound requests |
+| `encoding_decode` | Request | `true` | Yes | Decode base64, hex, URL, Unicode before scanning |
+| `response_secrets` | Response | `false` | Coming soon | Detect secrets in API responses |
+| `response_injection` | Response | `false` | Coming soon | Detect prompt injection in responses |
+| `mcp_arguments` | MCP | `true` | Coming soon | Scan MCP tool call arguments |
+| `mcp_responses` | MCP | `true` | Coming soon | Scan MCP tool return values |
+| `websocket_outbound` | WebSocket | `true` | Coming soon | Scan outbound WebSocket frames |
+| `websocket_inbound` | WebSocket | `true` | Coming soon | Scan inbound WebSocket frames |
+
+### `pipeline.stages.encoding_decode` (extended)
+
+The encoding decode stage has additional settings:
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `base64` | `bool` | `true` | Decode base64-encoded content before scanning. |
+| `hex` | `bool` | `true` | Decode hex-encoded content before scanning. |
+| `url` | `bool` | `true` | Decode URL-encoded content before scanning. |
+| `unicode` | `bool` | `true` | Decode Unicode escape sequences before scanning. |
+| `max_depth` | `int` | `2` | Maximum nested encoding layers to decode (e.g., base64 inside URL-encoding). Range: 1--5. |
+| `min_decoded_length` | `int` | `8` | Ignore decoded strings shorter than this. Range: 1--100. |
+| `max_decoded_length` | `int` | `10000` | Cap decoded output size to prevent memory issues. Range: 100--1000000. |
+
+```yaml title="Example"
+pipeline:
+  stages:
+    outbound_dlp:
+      enabled: true
+    encoding_decode:
+      enabled: true
+      base64: true
+      hex: true
+      url: true
+      unicode: true
+      max_depth: 2
+      min_decoded_length: 8
+      max_decoded_length: 10000
+    response_secrets:
+      enabled: false
+```
+
+!!! tip "Dashboard Pipeline page"
+    All pipeline settings can be configured from the Pipeline page in the dashboard. Changes are saved to the database and applied immediately via hot-reload.
+
+---
+
 ## Full config example
 
 ```yaml
@@ -308,6 +371,20 @@ custom_rules:
     pattern: "INTERNAL-[A-Z0-9]{32}"
     severity: critical
     action: block
+
+pipeline:
+  stages:
+    outbound_dlp:
+      enabled: true
+    encoding_decode:
+      enabled: true
+      base64: true
+      hex: true
+      url: true
+      unicode: true
+      max_depth: 2
+      min_decoded_length: 8
+      max_decoded_length: 10000
 
 dashboard:
   enabled: true

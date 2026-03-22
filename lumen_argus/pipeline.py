@@ -272,6 +272,7 @@ class ScannerPipeline:
         max_scan_bytes: int = MAX_SCAN_TEXT_BYTES,
         custom_rules: list = None,
         dedup_config: dict = None,
+        pipeline_config: dict = None,
     ):
         self._extractor = RequestExtractor()
         self._allowlist = allowlist or AllowlistMatcher()
@@ -281,6 +282,15 @@ class ScannerPipeline:
         )
         self._max_scan_bytes = max_scan_bytes
         self._extensions = extensions
+
+        # Pipeline stage toggles
+        pc = pipeline_config or {}
+        self._outbound_dlp_enabled = bool(pc.get("outbound_dlp_enabled", True))
+        self._encoding_decode_enabled = bool(pc.get("encoding_decode_enabled", True))
+        if not self._outbound_dlp_enabled:
+            log.info("pipeline stage outbound_dlp is DISABLED — scanning will be skipped")
+        if not self._encoding_decode_enabled:
+            log.info("pipeline stage encoding_decode is DISABLED")
 
         # Build detector chain.
         # If DB has rules, use RulesDetector (replaces Secrets/PII/Custom).
@@ -353,9 +363,14 @@ class ScannerPipeline:
             result._pending_hashes = None
 
     def reload(
-        self, allowlist: AllowlistMatcher, default_action: str, action_overrides: dict = None, custom_rules: list = None
+        self,
+        allowlist: AllowlistMatcher,
+        default_action: str,
+        action_overrides: dict = None,
+        custom_rules: list = None,
+        pipeline_config: dict = None,
     ) -> None:
-        """Reload policy, allowlist, and custom rules from new config.
+        """Reload policy, allowlist, custom rules, and pipeline config.
 
         Builds replacement objects then swaps references atomically
         (single assignment under CPython GIL) to avoid races with
@@ -368,6 +383,15 @@ class ScannerPipeline:
         # Atomic swaps — each is a single reference assignment
         self._allowlist = allowlist
         self._policy = new_policy
+        # Pipeline stage toggles
+        if pipeline_config:
+            self._outbound_dlp_enabled = bool(pipeline_config.get("outbound_dlp_enabled", True))
+            self._encoding_decode_enabled = bool(pipeline_config.get("encoding_decode_enabled", True))
+            log.info(
+                "pipeline reload: outbound_dlp=%s encoding_decode=%s",
+                "enabled" if self._outbound_dlp_enabled else "disabled",
+                "enabled" if self._encoding_decode_enabled else "disabled",
+            )
         # Reload rules from DB if using RulesDetector, otherwise update custom rules
         if self._rules_detector:
             self._rules_detector.reload()
@@ -452,17 +476,20 @@ class ScannerPipeline:
             self._max_scan_bytes,
         )
 
-        # Run all detectors
+        # Run all detectors (gated by outbound_dlp stage toggle)
         all_findings = []  # type: List[Finding]
-        for detector in self._detectors:
-            det_findings = detector.scan(fields_to_scan, self._allowlist)
-            if det_findings:
-                log.debug(
-                    "%s: %d findings",
-                    detector.__class__.__name__,
-                    len(det_findings),
-                )
-            all_findings.extend(det_findings)
+        if self._outbound_dlp_enabled:
+            for detector in self._detectors:
+                det_findings = detector.scan(fields_to_scan, self._allowlist)
+                if det_findings:
+                    log.debug(
+                        "%s: %d findings",
+                        detector.__class__.__name__,
+                        len(det_findings),
+                    )
+                all_findings.extend(det_findings)
+        else:
+            log.debug("outbound_dlp stage disabled — skipping all detectors")
 
         # Deduplicate findings — same (detector, type, matched_value) collapsed
         # into one finding with a count. Reduces noise from repeated secrets

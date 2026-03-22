@@ -217,7 +217,9 @@ The dashboard runs on a separate port (default `8081`) and provides a REST API f
 | `/api/v1/stats` | GET | Aggregated statistics for dashboard charts (`?days=N`, default 30) |
 | `/api/v1/stats/advanced` | GET | Pro analytics: action trend, activity matrix, top accounts/projects, coverage (402 without Pro) |
 | `/api/v1/config` | GET | Sanitized config (community + Pro sections) |
-| `/api/v1/config` | PUT | Save settings to DB (community: proxy, actions; Pro: all). Triggers SIGHUP reload. |
+| `/api/v1/config` | PUT | Save settings to DB (community: proxy; Pro: all). Triggers SIGHUP reload. |
+| `/api/v1/pipeline` | GET | Pipeline stage configuration with per-stage stats and encoding settings |
+| `/api/v1/pipeline` | PUT | Save stage toggles, detector enables/actions, encoding settings. Triggers SIGHUP reload. |
 | `/api/v1/audit` | GET | Paginated audit log entries with action/provider/search filters |
 | `/api/v1/audit/export` | GET | Audit log CSV/JSON export |
 | `/api/v1/logs/tail` | GET | Last 100 lines of application log |
@@ -327,6 +329,82 @@ The dashboard trend chart includes a 7d / 30d / 90d toggle that sets this parame
 ```
 
 Pro extends this response with `notification_health` (per-channel dispatch status).
+
+### Pipeline configuration
+
+`GET /api/v1/pipeline` returns the scanning pipeline configuration with per-stage stats:
+
+```json
+{
+  "default_action": "alert",
+  "stages": [
+    {
+      "name": "outbound_dlp",
+      "label": "Outbound DLP",
+      "description": "Secret, PII, and proprietary code detection on outbound requests",
+      "group": "request",
+      "enabled": true,
+      "available": true,
+      "finding_count": 142,
+      "sub_detectors": [
+        {"name": "secrets", "enabled": true, "action": "block", "finding_count": 98},
+        {"name": "pii", "enabled": true, "action": "default", "finding_count": 31},
+        {"name": "proprietary", "enabled": true, "action": "default", "finding_count": 13}
+      ]
+    },
+    {
+      "name": "encoding_decode",
+      "label": "Encoding Decode",
+      "description": "Decode base64, hex, URL, and Unicode before scanning",
+      "group": "request",
+      "enabled": true,
+      "available": true,
+      "finding_count": 0,
+      "encoding_settings": {
+        "base64": true, "hex": true, "url": true, "unicode": true,
+        "max_depth": 2, "min_decoded_length": 8, "max_decoded_length": 10000
+      }
+    },
+    {
+      "name": "response_secrets",
+      "label": "Response Secrets",
+      "group": "response",
+      "enabled": false,
+      "available": false
+    }
+  ]
+}
+```
+
+`PUT /api/v1/pipeline` accepts partial updates:
+
+```json
+{
+  "default_action": "block",
+  "stages": {
+    "outbound_dlp": {"enabled": true},
+    "encoding_decode": {"enabled": false}
+  },
+  "detectors": {
+    "secrets": {"enabled": true, "action": "block"},
+    "pii": {"enabled": false}
+  },
+  "encoding_settings": {
+    "base64": true,
+    "hex": false,
+    "max_depth": 3
+  }
+}
+```
+
+Returns `{"applied": {...}, "errors": [...]}`. Triggers SIGHUP for immediate reload.
+
+Key fields:
+
+- `available`: `false` for stages not yet implemented — dashboard shows "Coming soon"
+- `action`: `"default"` means using the global `default_action`, any other value is an explicit override
+- `sub_detectors`: only present on `outbound_dlp` stage
+- `encoding_settings`: only present on `encoding_decode` stage
 
 ### Channel limit enforcement
 

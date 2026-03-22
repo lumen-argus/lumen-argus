@@ -5,6 +5,7 @@
 registerPage('dashboard', 'Dashboard', {order: 10, loadFn: function(){}});
 registerPage('findings', 'Findings', {order: 15, loadFn: loadFindings});
 registerPage('audit', 'Audit', {order: 60, loadFn: loadAudit});
+registerPage('pipeline', 'Pipeline', {order: 65, loadFn: loadPipeline});
 registerPage('settings', 'Settings', {order: 70, loadFn: loadSettings});
 
 /* Register locked Pro placeholders */

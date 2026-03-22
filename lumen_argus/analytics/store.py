@@ -43,9 +43,27 @@ _VALID_CONFIG_KEYS = {
     "proxy.timeout",
     "proxy.retries",
     "default_action",
+    "detectors.secrets.enabled",
+    "detectors.pii.enabled",
+    "detectors.proprietary.enabled",
     "detectors.secrets.action",
     "detectors.pii.action",
     "detectors.proprietary.action",
+    "pipeline.stages.outbound_dlp.enabled",
+    "pipeline.stages.encoding_decode.enabled",
+    "pipeline.stages.encoding_decode.base64",
+    "pipeline.stages.encoding_decode.hex",
+    "pipeline.stages.encoding_decode.url",
+    "pipeline.stages.encoding_decode.unicode",
+    "pipeline.stages.encoding_decode.max_depth",
+    "pipeline.stages.encoding_decode.min_decoded_length",
+    "pipeline.stages.encoding_decode.max_decoded_length",
+    "pipeline.stages.response_secrets.enabled",
+    "pipeline.stages.response_injection.enabled",
+    "pipeline.stages.mcp_arguments.enabled",
+    "pipeline.stages.mcp_responses.enabled",
+    "pipeline.stages.websocket_outbound.enabled",
+    "pipeline.stages.websocket_inbound.enabled",
 }
 
 _VALID_ACTIONS = {"log", "alert", "block"}
@@ -315,6 +333,31 @@ class AnalyticsStore:
         ):
             if value not in _VALID_ACTIONS:
                 raise ValueError("action must be one of: %s" % ", ".join(sorted(_VALID_ACTIONS)))
+        elif key.endswith(".enabled") or key.endswith((".base64", ".hex", ".url", ".unicode")):
+            if value.lower() not in ("true", "false"):
+                raise ValueError("%s must be true or false" % key)
+            value = value.lower()  # normalize
+        elif key == "pipeline.stages.encoding_decode.max_depth":
+            try:
+                v = int(value)
+            except (ValueError, TypeError):
+                raise ValueError("max_depth must be an integer (1-5)")
+            if v < 1 or v > 5:
+                raise ValueError("max_depth must be 1-5")
+        elif key == "pipeline.stages.encoding_decode.min_decoded_length":
+            try:
+                v = int(value)
+            except (ValueError, TypeError):
+                raise ValueError("min_decoded_length must be an integer (1-100)")
+            if v < 1 or v > 100:
+                raise ValueError("min_decoded_length must be 1-100")
+        elif key == "pipeline.stages.encoding_decode.max_decoded_length":
+            try:
+                v = int(value)
+            except (ValueError, TypeError):
+                raise ValueError("max_decoded_length must be an integer (100-1000000)")
+            if v < 100 or v > 1_000_000:
+                raise ValueError("max_decoded_length must be 100-1000000")
 
         now = self._now()
         with self._lock:

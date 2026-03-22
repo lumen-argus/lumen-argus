@@ -1144,7 +1144,7 @@ class TestConfigOverrides(unittest.TestCase):
             self.store.set_config_override("proxy.retries", "-1")
 
     def test_action_validation_rejects_redact(self):
-        """Community edition does not allow redact action."""
+        """Community store rejects redact — Pro plugin extends _VALID_ACTIONS."""
         with self.assertRaises(ValueError):
             self.store.set_config_override("default_action", "redact")
 

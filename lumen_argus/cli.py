@@ -21,6 +21,14 @@ from lumen_argus.provider import ProviderRouter
 from lumen_argus.proxy import ArgusProxyServer
 
 
+def _build_pipeline_config(cfg):
+    """Build flat dict from PipelineConfig for ScannerPipeline."""
+    return {
+        "outbound_dlp_enabled": cfg.pipeline.outbound_dlp.enabled,
+        "encoding_decode_enabled": cfg.pipeline.encoding_decode.enabled,
+    }
+
+
 def main(argv=None):
     """Main entry point."""
     parser = argparse.ArgumentParser(
@@ -295,6 +303,22 @@ def main(argv=None):
                 elif key == "detectors.proprietary.action":
                     action_overrides["proprietary"] = value
                     config.proprietary.action = value
+                elif key == "detectors.secrets.enabled":
+                    config.secrets.enabled = value.lower() == "true"
+                elif key == "detectors.pii.enabled":
+                    config.pii.enabled = value.lower() == "true"
+                elif key == "detectors.proprietary.enabled":
+                    config.proprietary.enabled = value.lower() == "true"
+                elif key.startswith("pipeline.stages."):
+                    parts = key.split(".")
+                    stage_name = parts[2]
+                    field_name = parts[3] if len(parts) > 3 else ""
+                    stage_cfg = getattr(config.pipeline, stage_name, None)
+                    if stage_cfg is not None and field_name:
+                        if field_name == "enabled" or field_name in ("base64", "hex", "url", "unicode"):
+                            setattr(stage_cfg, field_name, value.lower() == "true")
+                        elif field_name in ("max_depth", "min_decoded_length", "max_decoded_length"):
+                            setattr(stage_cfg, field_name, int(value))
             if db_overrides:
                 log.info("applied %d config override(s) from DB", len(db_overrides))
         except Exception:
@@ -309,6 +333,7 @@ def main(argv=None):
         extensions=extensions,
         custom_rules=config.custom_rules,
         dedup_config=asdict(config.dedup),
+        pipeline_config=_build_pipeline_config(config),
     )
 
     # Start server
@@ -568,6 +593,22 @@ def _do_reload(server, config_path, file_handler, console_level, root_logger, ex
                     elif key == "detectors.proprietary.action":
                         new_overrides["proprietary"] = value
                         new_config.proprietary.action = value
+                    elif key == "detectors.secrets.enabled":
+                        new_config.secrets.enabled = value.lower() == "true"
+                    elif key == "detectors.pii.enabled":
+                        new_config.pii.enabled = value.lower() == "true"
+                    elif key == "detectors.proprietary.enabled":
+                        new_config.proprietary.enabled = value.lower() == "true"
+                    elif key.startswith("pipeline.stages."):
+                        parts = key.split(".")
+                        stage_name = parts[2]
+                        field_name = parts[3] if len(parts) > 3 else ""
+                        stage_cfg = getattr(new_config.pipeline, stage_name, None)
+                        if stage_cfg is not None and field_name:
+                            if field_name == "enabled" or field_name in ("base64", "hex", "url", "unicode"):
+                                setattr(stage_cfg, field_name, value.lower() == "true")
+                            elif field_name in ("max_depth", "min_decoded_length", "max_decoded_length"):
+                                setattr(stage_cfg, field_name, int(value))
                 if db_overrides:
                     log.info("applied %d config override(s) from DB", len(db_overrides))
             except Exception:
@@ -589,6 +630,7 @@ def _do_reload(server, config_path, file_handler, console_level, root_logger, ex
             default_action=new_config.default_action,
             action_overrides=new_overrides,
             custom_rules=new_config.custom_rules,
+            pipeline_config=_build_pipeline_config(new_config),
         )
         server.timeout = new_config.proxy.timeout
         server.retries = new_config.proxy.retries

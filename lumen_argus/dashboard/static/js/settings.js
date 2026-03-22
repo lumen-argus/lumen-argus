@@ -24,20 +24,19 @@ function loadSettings(){
     }
     el.appendChild(proxyGrp);
 
-    /* === 2. Actions (always editable) === */
-    var actGrp=_mkSG('Actions (hot-reloadable)');
-    var defAct=community.default_action||'alert';
-    var actionOpts=isProActive?['log','alert','redact','block']:['log','alert','block'];
-    _addEditRow(actGrp,'Default action','default_action','select',defAct,
-      {options:actionOpts});
-    if(community.detectors){
-      for(var d in community.detectors){if(community.detectors.hasOwnProperty(d)){
-        var det=community.detectors[d];
-        _addEditRow(actGrp,d+' action','detectors.'+d+'.action','select',det.action||defAct,
-          {options:actionOpts});
-      }}
-    }
-    el.appendChild(actGrp);
+    /* === 2. Scanning link === */
+    var scanGrp=_mkSG('Scanning');
+    var scanNote=document.createElement('div');scanNote.className='setting-row';
+    var scanMsg=document.createElement('span');scanMsg.className='setting-val';
+    scanMsg.style.cssText='text-align:left;width:100%';
+    var scanLink=document.createElement('a');scanLink.href='#pipeline';
+    scanLink.textContent='Pipeline page';
+    scanLink.style.cssText='color:var(--accent);text-decoration:none';
+    scanMsg.textContent='Detection stages and actions are configured on the ';
+    scanMsg.appendChild(scanLink);
+    scanNote.appendChild(scanMsg);
+    scanGrp.appendChild(scanNote);
+    el.appendChild(scanGrp);
 
     /* === 3. Save Settings === */
     var saveRow=document.createElement('div');saveRow.style.cssText='display:flex;gap:8px;margin-bottom:24px';
