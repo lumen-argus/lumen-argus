@@ -961,6 +961,8 @@ def _run_mcp_wrap(args):
     """Run the MCP stdio wrapper."""
     import asyncio
 
+    log = logging.getLogger("argus.mcp")
+
     from lumen_argus.allowlist import AllowlistMatcher
     from lumen_argus.config import load_config
     from lumen_argus.mcp_wrap import MCPScanner, _run_wrapper
@@ -1003,10 +1005,32 @@ def _run_mcp_wrap(args):
 
         response_scanner = ResponseScanner(scan_secrets=False, scan_injection=True)
 
-    # Parse allow/block lists from config
+    # Parse allow/block lists from config + DB
     mcp_cfg = getattr(config, "mcp", None)
-    allowed_tools = set(mcp_cfg.allowed_tools) if mcp_cfg and mcp_cfg.allowed_tools else None
-    blocked_tools = set(mcp_cfg.blocked_tools) if mcp_cfg and mcp_cfg.blocked_tools else None
+    allowed_tools = set(mcp_cfg.allowed_tools) if mcp_cfg and mcp_cfg.allowed_tools else set()
+    blocked_tools = set(mcp_cfg.blocked_tools) if mcp_cfg and mcp_cfg.blocked_tools else set()
+
+    # Merge DB entries (dashboard-managed)
+    if config.analytics.enabled:
+        try:
+            from lumen_argus.analytics.store import AnalyticsStore
+
+            _mcp_store = AnalyticsStore(db_path=os.path.expanduser(config.analytics.db_path))
+            db_lists = _mcp_store.get_mcp_tool_lists()
+            for entry in db_lists.get("allowed", []):
+                allowed_tools.add(entry["tool_name"])
+            for entry in db_lists.get("blocked", []):
+                blocked_tools.add(entry["tool_name"])
+            # Reconcile YAML entries to DB
+            _mcp_store.reconcile_mcp_tool_lists(
+                mcp_cfg.allowed_tools if mcp_cfg else [],
+                mcp_cfg.blocked_tools if mcp_cfg else [],
+            )
+        except Exception as e:
+            log.warning("mcp-wrap: could not load tool lists from DB: %s", e)
+
+    allowed_tools = allowed_tools or None
+    blocked_tools = blocked_tools or None
 
     scanner = MCPScanner(
         detectors=detectors,

@@ -126,6 +126,22 @@ def handle_community_api(
         if result is not None:
             return result
 
+    # --- MCP tool list endpoints ---
+
+    if path == "/api/v1/mcp/tools":
+        if method == "GET":
+            return _handle_mcp_tools_list(store, config)
+        if method == "POST":
+            return _handle_mcp_tools_add(body, store)
+
+    if path.startswith("/api/v1/mcp/tools/") and method == "DELETE":
+        entry_id = path.split("/")[-1]
+        try:
+            entry_id = int(entry_id)
+        except (ValueError, TypeError):
+            return _json_response(400, {"error": "invalid entry ID"})
+        return _handle_mcp_tools_delete(entry_id, store)
+
     # --- PUT config (community settings) ---
 
     if path == "/api/v1/config" and method == "PUT":
@@ -880,6 +896,27 @@ def _handle_pipeline_get(config, store=None) -> tuple:
         else:
             stage["finding_count"] = 0
 
+        # MCP tool list counts for mcp_arguments stage
+        # DB includes both source='config' (reconciled from YAML) and source='api'
+        # (dashboard-managed). Don't double-count by also adding config object entries.
+        if name == "mcp_arguments" and store:
+            try:
+                tool_lists = store.get_mcp_tool_lists()
+                allowed_count = len(tool_lists.get("allowed", []))
+                blocked_count = len(tool_lists.get("blocked", []))
+                # If DB is empty (no reconciliation yet), fall back to config
+                if allowed_count == 0 and blocked_count == 0:
+                    mcp_cfg = getattr(config, "mcp", None)
+                    if mcp_cfg:
+                        allowed_count = len(mcp_cfg.allowed_tools)
+                        blocked_count = len(mcp_cfg.blocked_tools)
+                stage["mcp_tools"] = {
+                    "allowed_count": allowed_count,
+                    "blocked_count": blocked_count,
+                }
+            except Exception:
+                stage["mcp_tools"] = {"allowed_count": 0, "blocked_count": 0}
+
         stages.append(stage)
 
     return _json_response(
@@ -1004,3 +1041,84 @@ def _handle_pipeline_update(body: bytes, config, store) -> tuple:
 
     status = 200 if not errors else 207
     return _json_response(status, {"applied": applied, "errors": errors})
+
+
+# ---------------------------------------------------------------------------
+# MCP tool lists
+# ---------------------------------------------------------------------------
+
+
+def _handle_mcp_tools_list(store, config) -> tuple:
+    """Return merged MCP tool lists (config + DB)."""
+    log.debug("GET /api/v1/mcp/tools")
+    if not store:
+        return _json_response(200, {"allowed": [], "blocked": []})
+
+    try:
+        db_lists = store.get_mcp_tool_lists()
+    except Exception as e:
+        log.warning("GET /api/v1/mcp/tools: DB error: %s", e)
+        db_lists = {"allowed": [], "blocked": []}
+
+    # Merge config entries (read-only, source=config)
+    config_allowed = []
+    config_blocked = []
+    if config:
+        mcp_cfg = getattr(config, "mcp", None)
+        if mcp_cfg:
+            for t in mcp_cfg.allowed_tools:
+                config_allowed.append({"tool_name": t, "source": "config"})
+            for t in mcp_cfg.blocked_tools:
+                config_blocked.append({"tool_name": t, "source": "config"})
+
+    return _json_response(
+        200,
+        {
+            "allowed": config_allowed + db_lists.get("allowed", []),
+            "blocked": config_blocked + db_lists.get("blocked", []),
+        },
+    )
+
+
+def _handle_mcp_tools_add(body: bytes, store) -> tuple:
+    """Add a tool to the allowed or blocked list."""
+    if not store:
+        log.error("POST /api/v1/mcp/tools: analytics store not available")
+        return _json_response(500, {"error": "analytics store not available"})
+
+    try:
+        data = json.loads(body)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        log.debug("POST /api/v1/mcp/tools: invalid JSON body")
+        return _json_response(400, {"error": "invalid JSON"})
+
+    list_type = data.get("list_type", "")
+    tool_name = data.get("tool_name", "")
+
+    try:
+        entry_id = store.add_mcp_tool_entry(list_type, tool_name)
+    except ValueError as e:
+        log.warning("POST /api/v1/mcp/tools: rejected '%s' %s (%s)", tool_name, list_type, e)
+        return _json_response(400, {"error": str(e)})
+
+    if not entry_id:
+        log.debug("POST /api/v1/mcp/tools: '%s' already in %s list", tool_name, list_type)
+        return _json_response(409, {"error": "tool already in list"})
+
+    log.info("POST /api/v1/mcp/tools: added '%s' to %s list (id=%d)", tool_name, list_type, entry_id)
+    return _json_response(201, {"id": entry_id, "list_type": list_type, "tool_name": tool_name})
+
+
+def _handle_mcp_tools_delete(entry_id: int, store) -> tuple:
+    """Remove an API-managed MCP tool list entry."""
+    if not store:
+        log.error("DELETE /api/v1/mcp/tools: analytics store not available")
+        return _json_response(500, {"error": "analytics store not available"})
+
+    deleted = store.delete_mcp_tool_entry(entry_id)
+    if not deleted:
+        log.debug("DELETE /api/v1/mcp/tools/%d: not found or config-managed", entry_id)
+        return _json_response(404, {"error": "entry not found or config-managed (read-only)"})
+
+    log.info("DELETE /api/v1/mcp/tools/%d: deleted", entry_id)
+    return _json_response(200, {"deleted": True})
