@@ -25,35 +25,25 @@ Client Request
 
 ## Stage 1: Proxy Server
 
-**Module:** `lumen_argus/proxy.py`
+**Module:** `lumen_argus/async_proxy.py`
 
-The proxy is built on Python's `http.server.ThreadingHTTPServer` with daemon threads. It accepts plain HTTP on `127.0.0.1` and forwards requests over HTTPS to upstream AI providers.
+The proxy uses `aiohttp.web` with non-blocking I/O. Each request is handled by a coroutine, and CPU-bound scanning runs in a thread pool via `asyncio.to_thread()`.
 
 | Property | Detail |
 |----------|--------|
 | **Bind address** | `127.0.0.1` by default. Use `--host 0.0.0.0` for Docker (logs a warning for non-loopback). |
 | **Protocol** | Plain HTTP in, HTTPS out |
-| **Threading** | One thread per request (daemon threads) |
-| **SSE streaming** | Passthrough via `read1()` for low-latency chunk forwarding |
-| **Body buffering** | Full request body buffered in memory before scanning |
-| **Session extraction** | `SessionContext` populated from headers, body metadata, and system prompt before each scan |
-| **Local endpoints** | `/health` and `/metrics` handled directly, not forwarded |
+| **Concurrency** | Coroutine per request (non-blocking I/O) |
+| **SSE streaming** | Async iteration via `StreamResponse` |
+| **Connection pooling** | `aiohttp.ClientSession` with `TCPConnector(limit=max_connections)` |
+| **Scanning** | Thread pool via `asyncio.to_thread()` (~30ms, doesn't block event loop) |
+| **Signal handling** | `loop.add_signal_handler()` for SIGINT, SIGTERM, SIGHUP |
+| **Retry** | Connection errors retried up to `proxy.retries` times |
+| **WebSocket** | Native upgrade on same port (`/ws?url=ws://target`) — no separate port needed |
+| **Thread safety** | Free-threaded Python 3.13+ safe — `ScannerPipeline.scan()` snapshots shared references under `_reload_lock`, `_active_requests` uses lock |
 
 !!! info "Backpressure"
-    The proxy limits concurrent upstream connections via a semaphore (`proxy.max_connections`). When the limit is reached, new requests queue until a slot opens.
-
-### Connection pool
-
-**Module:** `lumen_argus/pool.py`
-
-Upstream connections are managed by a thread-safe per-host connection pool:
-
-- Non-streaming responses return their connection to the pool for reuse
-- SSE streaming connections are **not** pooled (the stream must be fully consumed first)
-- Idle connections are evicted after `timeout * 2` seconds
-- Pool size is configurable per host (default: 4 idle connections)
-- On retry after a stale-connection failure, a fresh connection is created bypassing the pool
-- SSL context is shared across all connections and rebuilt on config reload
+    The proxy limits concurrent upstream connections via `aiohttp.TCPConnector(limit=max_connections)`.
 
 ---
 
@@ -170,9 +160,9 @@ Controlled by `mcp_arguments` and `mcp_responses` pipeline stages (enabled by de
 
 ### WebSocket Proxy
 
-**Module:** `lumen_argus/ws_proxy.py`
+**Modules:** `lumen_argus/ws_proxy.py` (scanner), `lumen_argus/async_proxy.py` (relay)
 
-The `WebSocketScanner` scans WebSocket text frames bidirectionally. A standalone `websockets.serve()` server runs on port 8083 (dashboard port + 2) alongside the HTTP proxy. Clients connect with `ws://localhost:8083/?url=ws://target`.
+The `WebSocketScanner` scans WebSocket text frames bidirectionally. The relay runs on the same port as the proxy — clients connect with `ws://localhost:8080/ws?url=ws://target`.
 
 - **Outbound scanning**: client → server text frames scanned for secrets/PII
 - **Inbound scanning**: server → client text frames scanned for secrets + injection patterns
@@ -182,7 +172,7 @@ The `WebSocketScanner` scans WebSocket text frames bidirectionally. A standalone
 - **SSRF protection**: target URL must use `ws://` or `wss://` scheme
 - Findings have `ws.outbound` or `ws.inbound` location prefix
 
-Controlled by `websocket_outbound` and `websocket_inbound` pipeline stages (disabled by default, opt-in). Runs in a daemon thread with `WebSocketProxyHandle` for SIGHUP lifecycle — starts/stops dynamically when toggled from the Pipeline dashboard. Graceful fallback if `websockets` package is not installed.
+Controlled by `websocket_outbound` and `websocket_inbound` pipeline stages (disabled by default, opt-in). Runs on the same port as the proxy (`ws://localhost:8080/ws?url=ws://target`). SIGHUP reloads the scanner configuration without server restart.
 
 ### Within-Request Deduplication
 

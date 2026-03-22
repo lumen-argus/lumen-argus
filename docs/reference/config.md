@@ -288,8 +288,8 @@ Per-stage settings. Each stage accepts:
 | `response_injection` | Response | `false` | Yes | Detect prompt injection in responses (async, zero latency) |
 | `mcp_arguments` | MCP | `true` | Yes | Scan MCP tool call arguments (via mcp-wrap) |
 | `mcp_responses` | MCP | `true` | Yes | Scan MCP tool return values (via mcp-wrap) |
-| `websocket_outbound` | WebSocket | `false` | Yes | Scan outbound WebSocket frames (opt-in, port 8083) |
-| `websocket_inbound` | WebSocket | `false` | Yes | Scan inbound WebSocket frames (opt-in, port 8083) |
+| `websocket_outbound` | WebSocket | `false` | Yes | Scan outbound WebSocket frames (opt-in, same port) |
+| `websocket_inbound` | WebSocket | `false` | Yes | Scan inbound WebSocket frames (opt-in, same port) |
 
 ### `pipeline.stages.encoding_decode` (extended)
 

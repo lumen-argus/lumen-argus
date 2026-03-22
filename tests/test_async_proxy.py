@@ -1,0 +1,657 @@
+"""Integration tests for the async (aiohttp) proxy server."""
+
+import asyncio
+import json
+import threading
+import unittest
+import http.server
+
+import aiohttp
+
+from lumen_argus.async_proxy import AsyncArgusProxy
+from lumen_argus.audit import AuditLogger
+from lumen_argus.display import TerminalDisplay
+from lumen_argus.pipeline import ScannerPipeline
+from lumen_argus.provider import ProviderRouter
+
+
+class MockUpstreamHandler(http.server.BaseHTTPRequestHandler):
+    """Minimal mock that returns a fixed response."""
+
+    def log_message(self, format, *args):
+        pass
+
+    def do_POST(self):
+        content_length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(content_length)
+
+        # Check if streaming is requested
+        try:
+            data = json.loads(body)
+            is_streaming = data.get("stream", False)
+        except Exception:
+            is_streaming = False
+
+        if is_streaming:
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.end_headers()
+            # Send a few SSE chunks
+            events = [
+                'data: {"type":"content_block_delta","delta":{"text":"Hello"}}\n\n',
+                'data: {"type":"content_block_delta","delta":{"text":" World"}}\n\n',
+                "data: [DONE]\n\n",
+            ]
+            for event in events:
+                self.wfile.write(event.encode())
+                self.wfile.flush()
+        else:
+            response = json.dumps(
+                {
+                    "id": "msg_mock",
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "Hello!"}],
+                    "model": "claude-opus-4-6",
+                    "usage": {"input_tokens": 100, "output_tokens": 10},
+                }
+            ).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(response)))
+            self.end_headers()
+            self.wfile.write(response)
+
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        body = b'{"status":"ok"}'
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+
+def _get_free_port():
+    """Get a free ephemeral port."""
+    import socket
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+class TestAsyncProxy(unittest.TestCase):
+    """Integration tests for AsyncArgusProxy."""
+
+    @classmethod
+    def setUpClass(cls):
+        import tempfile
+
+        # Start mock upstream
+        cls.upstream = http.server.ThreadingHTTPServer(("127.0.0.1", 0), MockUpstreamHandler)
+        cls.upstream.daemon_threads = True
+        cls.upstream_port = cls.upstream.server_address[1]
+        cls.upstream_thread = threading.Thread(target=cls.upstream.serve_forever, daemon=True)
+        cls.upstream_thread.start()
+
+        cls.tmpdir = tempfile.mkdtemp()
+
+        # Configure
+        cls.upstreams = {
+            "anthropic": "http://127.0.0.1:%d" % cls.upstream_port,
+        }
+        cls.proxy_port = _get_free_port()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.upstream.shutdown()
+
+    def _create_proxy(self, **kwargs):
+        """Create an AsyncArgusProxy instance."""
+        defaults = {
+            "default_action": "alert",
+            "action_overrides": {"secrets": "block"},
+        }
+        defaults.update(kwargs)
+        pipeline = ScannerPipeline(**defaults)
+        router = ProviderRouter(upstreams=self.upstreams)
+        audit = AuditLogger(log_dir=self.tmpdir)
+        display = TerminalDisplay(no_color=True)
+
+        port = _get_free_port()
+        proxy = AsyncArgusProxy(
+            bind="127.0.0.1",
+            port=port,
+            pipeline=pipeline,
+            router=router,
+            audit=audit,
+            display=display,
+        )
+        return proxy, port
+
+    _session_counter = 0
+
+    async def _post(self, port, body_dict, session_id=None):
+        """Send a POST to the async proxy."""
+        if session_id is None:
+            TestAsyncProxy._session_counter += 1
+            session_id = "test-async-%d" % TestAsyncProxy._session_counter
+        body = json.dumps(body_dict).encode()
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                "http://127.0.0.1:%d/v1/messages" % port,
+                data=body,
+                headers={
+                    "Content-Type": "application/json",
+                    "x-api-key": "test-key",
+                    "anthropic-version": "2024-01-01",
+                    "x-session-id": session_id,
+                },
+            ) as resp:
+                data = await resp.json()
+                return resp.status, data
+
+    async def _run_with_proxy(self, proxy, coro_fn):
+        """Start proxy, run a test coroutine, then stop."""
+        await proxy.start()
+        try:
+            return await coro_fn()
+        finally:
+            await proxy.stop()
+
+    def test_clean_request_forwarded(self):
+        """Clean request should be forwarded to upstream and return 200."""
+        proxy, port = self._create_proxy()
+
+        async def _test():
+            async def _inner():
+                status, data = await self._post(
+                    port,
+                    {
+                        "model": "claude-opus-4-6",
+                        "messages": [{"role": "user", "content": "What is 2+2?"}],
+                    },
+                )
+                self.assertEqual(status, 200)
+                self.assertEqual(data["type"], "message")
+                return status
+
+            return await self._run_with_proxy(proxy, _inner)
+
+        asyncio.run(_test())
+
+    def test_secret_blocked(self):
+        """Request containing a secret should be blocked with 400."""
+        proxy, port = self._create_proxy()
+
+        async def _test():
+            async def _inner():
+                status, data = await self._post(
+                    port,
+                    {
+                        "model": "claude-opus-4-6",
+                        "messages": [
+                            {"role": "user", "content": "My key: AKIAIOSFODNN7EXAMPLE"},
+                        ],
+                    },
+                )
+                self.assertEqual(status, 400)
+                self.assertEqual(data["error"]["type"], "invalid_request_error")
+                self.assertIn("lumen-argus", data["error"]["message"])
+
+            return await self._run_with_proxy(proxy, _inner)
+
+        asyncio.run(_test())
+
+    def test_pii_alerted_but_forwarded(self):
+        """PII with alert action should forward (not block)."""
+        proxy, port = self._create_proxy()
+
+        async def _test():
+            async def _inner():
+                status, data = await self._post(
+                    port,
+                    {
+                        "model": "claude-opus-4-6",
+                        "messages": [
+                            {"role": "user", "content": "Contact john.smith@company.com"},
+                        ],
+                    },
+                )
+                self.assertEqual(status, 200)
+
+            return await self._run_with_proxy(proxy, _inner)
+
+        asyncio.run(_test())
+
+    def test_streaming_secret_blocked_as_400(self):
+        """Blocked streaming request returns 400 JSON, not SSE."""
+        proxy, port = self._create_proxy()
+
+        async def _test():
+            async def _inner():
+                status, data = await self._post(
+                    port,
+                    {
+                        "model": "claude-opus-4-6",
+                        "stream": True,
+                        "messages": [
+                            {"role": "user", "content": "My key: AKIAI44QH8DHBEXAMPLE"},
+                        ],
+                    },
+                )
+                self.assertEqual(status, 400)
+                self.assertIn("invalid_request_error", json.dumps(data))
+
+            return await self._run_with_proxy(proxy, _inner)
+
+        asyncio.run(_test())
+
+    def test_history_strip_forwards_request(self):
+        """Blocked finding in history only → strip and forward, get 200."""
+        proxy, port = self._create_proxy()
+
+        async def _test():
+            async def _inner():
+                status, data = await self._post(
+                    port,
+                    {
+                        "model": "claude-opus-4-6",
+                        "messages": [
+                            {"role": "user", "content": "My key: AKIAI44QH8DHBEXAMPLE"},
+                            {"role": "assistant", "content": "Error: blocked."},
+                            {"role": "user", "content": "What is 2+2?"},
+                        ],
+                    },
+                )
+                self.assertEqual(status, 200)
+                self.assertEqual(data["type"], "message")
+
+            return await self._run_with_proxy(proxy, _inner)
+
+        asyncio.run(_test())
+
+    def test_health_endpoint(self):
+        """GET /health should return 200 with status ok."""
+        proxy, port = self._create_proxy()
+
+        async def _test():
+            async def _inner():
+                async with aiohttp.ClientSession() as session:
+                    async with session.get("http://127.0.0.1:%d/health" % port) as resp:
+                        self.assertEqual(resp.status, 200)
+                        data = await resp.json()
+                        self.assertEqual(data["status"], "ok")
+                        self.assertIn("version", data)
+                        self.assertIn("uptime", data)
+
+            return await self._run_with_proxy(proxy, _inner)
+
+        asyncio.run(_test())
+
+    def test_metrics_endpoint(self):
+        """GET /metrics should return Prometheus text."""
+        proxy, port = self._create_proxy()
+
+        async def _test():
+            async def _inner():
+                async with aiohttp.ClientSession() as session:
+                    async with session.get("http://127.0.0.1:%d/metrics" % port) as resp:
+                        self.assertEqual(resp.status, 200)
+                        text = await resp.text()
+                        self.assertIn("argus_", text)
+
+            return await self._run_with_proxy(proxy, _inner)
+
+        asyncio.run(_test())
+
+    def test_sse_streaming(self):
+        """SSE streaming response should be forwarded chunk by chunk."""
+        proxy, port = self._create_proxy()
+
+        async def _test():
+            async def _inner():
+                TestAsyncProxy._session_counter += 1
+                session_id = "test-sse-%d" % TestAsyncProxy._session_counter
+                body = json.dumps(
+                    {
+                        "model": "claude-opus-4-6",
+                        "stream": True,
+                        "messages": [{"role": "user", "content": "Hi"}],
+                    }
+                ).encode()
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(
+                        "http://127.0.0.1:%d/v1/messages" % port,
+                        data=body,
+                        headers={
+                            "Content-Type": "application/json",
+                            "x-api-key": "test-key",
+                            "anthropic-version": "2024-01-01",
+                            "x-session-id": session_id,
+                        },
+                    ) as resp:
+                        self.assertEqual(resp.status, 200)
+                        text = await resp.text()
+                        self.assertIn("Hello", text)
+                        self.assertIn("World", text)
+
+            return await self._run_with_proxy(proxy, _inner)
+
+        asyncio.run(_test())
+
+    def test_active_requests_tracking(self):
+        """Active request counter should increment/decrement correctly."""
+        proxy, port = self._create_proxy()
+
+        async def _test():
+            async def _inner():
+                self.assertEqual(proxy.active_requests, 0)
+                # After a request completes, should be back to 0
+                status, _ = await self._post(
+                    port,
+                    {
+                        "model": "claude-opus-4-6",
+                        "messages": [{"role": "user", "content": "test"}],
+                    },
+                )
+                self.assertEqual(status, 200)
+                # Brief delay for counter decrement
+                await asyncio.sleep(0.05)
+                self.assertEqual(proxy.active_requests, 0)
+
+            return await self._run_with_proxy(proxy, _inner)
+
+        asyncio.run(_test())
+
+    def test_stats_recorded(self):
+        """Request stats should be recorded after forwarding."""
+        proxy, port = self._create_proxy()
+
+        async def _test():
+            async def _inner():
+                self.assertEqual(proxy.stats.total_requests, 0)
+                await self._post(
+                    port,
+                    {
+                        "model": "claude-opus-4-6",
+                        "messages": [{"role": "user", "content": "test"}],
+                    },
+                )
+                self.assertEqual(proxy.stats.total_requests, 1)
+                self.assertIn("anthropic", proxy.stats.providers)
+
+            return await self._run_with_proxy(proxy, _inner)
+
+        asyncio.run(_test())
+
+    def test_server_address_property(self):
+        """server_address should return (bind, port) tuple."""
+        proxy, port = self._create_proxy()
+        self.assertEqual(proxy.server_address, ("127.0.0.1", port))
+
+    def test_multiple_concurrent_requests(self):
+        """Multiple concurrent requests should all succeed."""
+        proxy, port = self._create_proxy()
+
+        async def _test():
+            async def _inner():
+                tasks = []
+                for i in range(5):
+                    tasks.append(
+                        self._post(
+                            port,
+                            {
+                                "model": "claude-opus-4-6",
+                                "messages": [{"role": "user", "content": "Request %d" % i}],
+                            },
+                            session_id="concurrent-%d" % i,
+                        )
+                    )
+                results = await asyncio.gather(*tasks)
+                for status, data in results:
+                    self.assertEqual(status, 200)
+                self.assertEqual(proxy.stats.total_requests, 5)
+
+            return await self._run_with_proxy(proxy, _inner)
+
+        asyncio.run(_test())
+
+    def test_oversized_body_skipped(self):
+        """Body exceeding max_body_size should skip scanning but forward."""
+        proxy, port = self._create_proxy()
+        proxy.max_body_size = 100  # Very small limit
+
+        async def _test():
+            async def _inner():
+                # Build a body larger than 100 bytes
+                status, data = await self._post(
+                    port,
+                    {
+                        "model": "claude-opus-4-6",
+                        "messages": [{"role": "user", "content": "x" * 200}],
+                    },
+                )
+                self.assertEqual(status, 200)
+
+            return await self._run_with_proxy(proxy, _inner)
+
+        asyncio.run(_test())
+
+    def test_update_timeout(self):
+        """update_timeout should update the timeout value."""
+        proxy, port = self._create_proxy()
+        self.assertEqual(proxy.timeout, 30)
+        proxy.update_timeout(60)
+        self.assertEqual(proxy.timeout, 60)
+
+    def test_upstream_connection_refused(self):
+        """Upstream connection refused should return 502, not crash."""
+        # Point at a port that's not listening
+        dead_upstreams = {"anthropic": "http://127.0.0.1:1"}
+        pipeline = ScannerPipeline(default_action="alert")
+        router = ProviderRouter(upstreams=dead_upstreams)
+        import tempfile
+
+        tmpdir = tempfile.mkdtemp()
+        audit = AuditLogger(log_dir=tmpdir)
+        display = TerminalDisplay(no_color=True)
+        port = _get_free_port()
+        proxy = AsyncArgusProxy(
+            bind="127.0.0.1",
+            port=port,
+            pipeline=pipeline,
+            router=router,
+            audit=audit,
+            display=display,
+            retries=0,  # no retries — fail fast
+            timeout=2,
+        )
+
+        async def _test():
+            async def _inner():
+                TestAsyncProxy._session_counter += 1
+                session_id = "test-dead-%d" % TestAsyncProxy._session_counter
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(
+                        "http://127.0.0.1:%d/v1/messages" % port,
+                        data=json.dumps({"model": "test", "messages": [{"role": "user", "content": "hi"}]}).encode(),
+                        headers={
+                            "Content-Type": "application/json",
+                            "x-api-key": "test",
+                            "anthropic-version": "2024-01-01",
+                            "x-session-id": session_id,
+                        },
+                    ) as resp:
+                        self.assertEqual(resp.status, 502)
+                        data = await resp.json()
+                        self.assertIn("error", data)
+
+            return await self._run_with_proxy(proxy, _inner)
+
+        asyncio.run(_test())
+
+
+class TestAsyncProxyWebSocket(unittest.TestCase):
+    """Integration tests for WebSocket relay on same port."""
+
+    @classmethod
+    def setUpClass(cls):
+        import tempfile
+
+        cls.tmpdir = tempfile.mkdtemp()
+
+    def _create_proxy_with_ws(self):
+        """Create an async proxy with WebSocket scanning enabled."""
+        from lumen_argus.ws_proxy import WebSocketScanner
+        from lumen_argus.detectors.secrets import SecretsDetector
+        from lumen_argus.allowlist import AllowlistMatcher
+
+        pipeline = ScannerPipeline(default_action="alert", action_overrides={"secrets": "block"})
+        router = ProviderRouter()
+        audit = AuditLogger(log_dir=self.tmpdir)
+        display = TerminalDisplay(no_color=True)
+        port = _get_free_port()
+        proxy = AsyncArgusProxy(
+            bind="127.0.0.1",
+            port=port,
+            pipeline=pipeline,
+            router=router,
+            audit=audit,
+            display=display,
+        )
+        proxy.ws_scanner = WebSocketScanner(
+            detectors=[SecretsDetector()],
+            allowlist=AllowlistMatcher(),
+            scan_outbound=True,
+            scan_inbound=True,
+        )
+        return proxy, port
+
+    def test_ws_missing_url_param(self):
+        """WebSocket without url param should return 400."""
+        proxy, port = self._create_proxy_with_ws()
+
+        async def _test():
+            await proxy.start()
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.ws_connect(
+                        "http://127.0.0.1:%d/ws" % port,
+                    ) as _ws:
+                        # Should never get here — server rejects with 400
+                        pass
+            except aiohttp.WSServerHandshakeError as e:
+                self.assertEqual(e.status, 400)
+            finally:
+                await proxy.stop()
+
+        asyncio.run(_test())
+
+    def test_ws_invalid_scheme(self):
+        """WebSocket with non-ws scheme should return 400."""
+        proxy, port = self._create_proxy_with_ws()
+
+        async def _test():
+            await proxy.start()
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.ws_connect(
+                        "http://127.0.0.1:%d/ws?url=http://example.com" % port,
+                    ) as _ws:
+                        pass
+            except aiohttp.WSServerHandshakeError as e:
+                self.assertEqual(e.status, 400)
+            finally:
+                await proxy.stop()
+
+        asyncio.run(_test())
+
+    def test_ws_scanner_not_configured(self):
+        """WebSocket without scanner configured should return 503."""
+        pipeline = ScannerPipeline(default_action="alert")
+        router = ProviderRouter()
+        audit = AuditLogger(log_dir=self.tmpdir)
+        display = TerminalDisplay(no_color=True)
+        port = _get_free_port()
+        proxy = AsyncArgusProxy(
+            bind="127.0.0.1",
+            port=port,
+            pipeline=pipeline,
+            router=router,
+            audit=audit,
+            display=display,
+        )
+        # ws_scanner is None by default
+
+        async def _test():
+            await proxy.start()
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.ws_connect(
+                        "http://127.0.0.1:%d/ws?url=ws://example.com" % port,
+                    ) as _ws:
+                        pass
+            except aiohttp.WSServerHandshakeError as e:
+                self.assertEqual(e.status, 503)
+            finally:
+                await proxy.stop()
+
+        asyncio.run(_test())
+
+
+class TestAsyncProxySessionExtraction(unittest.TestCase):
+    """Test session context extraction in async proxy."""
+
+    def test_extract_session_anthropic(self):
+        from lumen_argus.async_proxy import _extract_session
+
+        req_data = {
+            "model": "claude-opus-4-6",
+            "metadata": {"user_id": '{"account_uuid":"acc-123","device_id":"dev-456","session_id":"sess-789"}'},
+            "system": "Primary working directory: /home/user/project\nCurrent branch: main\nPlatform: linux",
+            "messages": [],
+        }
+        headers = {
+            "x-api-key": "test-key-123",
+            "user-agent": "claude-code/1.0",
+        }
+        ctx = _extract_session(req_data, "anthropic", headers, "127.0.0.1")
+        self.assertEqual(ctx.account_id, "acc-123")
+        self.assertEqual(ctx.device_id, "dev-456")
+        self.assertEqual(ctx.session_id, "sess-789")
+        self.assertEqual(ctx.working_directory, "/home/user/project")
+        self.assertEqual(ctx.git_branch, "main")
+        self.assertEqual(ctx.os_platform, "linux")
+        self.assertEqual(ctx.client_name, "claude-code/1.0")
+        self.assertTrue(ctx.api_key_hash)
+
+    def test_extract_session_explicit_header(self):
+        from lumen_argus.async_proxy import _extract_session
+
+        headers = {"x-session-id": "explicit-session"}
+        ctx = _extract_session(None, "anthropic", headers, "10.0.0.1")
+        self.assertEqual(ctx.session_id, "explicit-session")
+        self.assertEqual(ctx.source_ip, "10.0.0.1")
+
+    def test_extract_session_xff(self):
+        from lumen_argus.async_proxy import _extract_session
+
+        headers = {"x-forwarded-for": "1.2.3.4, 10.0.0.1"}
+        ctx = _extract_session(None, "anthropic", headers, "10.0.0.1")
+        self.assertEqual(ctx.source_ip, "1.2.3.4")
+
+    def test_extract_session_openai(self):
+        from lumen_argus.async_proxy import _extract_session
+
+        req_data = {
+            "model": "gpt-4",
+            "user": "user-abc",
+            "messages": [{"role": "system", "content": "You are a helper"}],
+        }
+        ctx = _extract_session(req_data, "openai", {}, "")
+        self.assertEqual(ctx.account_id, "user-abc")
+
+
+if __name__ == "__main__":
+    unittest.main()

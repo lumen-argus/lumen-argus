@@ -67,7 +67,7 @@ These must never be violated:
 ```
 lumen_argus/
 ├── cli.py              # CLI entry point, arg parsing, serve lifecycle
-├── proxy.py            # HTTP proxy server (ThreadingHTTPServer)
+├── async_proxy.py      # Async HTTP proxy server (aiohttp.web)
 ├── pipeline.py         # Scan pipeline: extract → detect → evaluate
 ├── extractor.py        # Parse Anthropic/OpenAI/Gemini JSON
 ├── provider.py         # Provider auto-detection and routing

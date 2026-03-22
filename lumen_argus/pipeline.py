@@ -277,6 +277,7 @@ class ScannerPipeline:
         pipeline_config: dict = None,
     ):
         self._extractor = RequestExtractor()
+        self._reload_lock = threading.Lock()  # Protects reference swaps for free-threaded Python
         self._allowlist = allowlist or AllowlistMatcher()
         self._policy = PolicyEngine(
             default_action=default_action,
@@ -377,27 +378,36 @@ class ScannerPipeline:
     ) -> None:
         """Reload policy, allowlist, custom rules, and pipeline config.
 
-        Builds replacement objects then swaps references atomically
-        (single assignment under CPython GIL) to avoid races with
-        request handler threads.
+        Builds replacement objects then swaps references under lock.
+        Lock ensures free-threaded Python (3.13+ no-GIL) sees consistent
+        state — scan() snapshots references under the same lock.
         """
         new_policy = PolicyEngine(
             default_action=default_action,
             action_overrides=action_overrides,
         )
-        # Atomic swaps — each is a single reference assignment
-        self._allowlist = allowlist
-        self._policy = new_policy
-        # Pipeline stage toggles
+        new_decoder = None
+        new_outbound_dlp = self._outbound_dlp_enabled
+        new_encoding_decode = self._encoding_decode_enabled
         if pipeline_config:
-            self._outbound_dlp_enabled = bool(pipeline_config.get("outbound_dlp_enabled", True))
-            self._encoding_decode_enabled = bool(pipeline_config.get("encoding_decode_enabled", True))
-            self._decoder = self._build_decoder(pipeline_config) if self._encoding_decode_enabled else None
+            new_outbound_dlp = bool(pipeline_config.get("outbound_dlp_enabled", True))
+            new_encoding_decode = bool(pipeline_config.get("encoding_decode_enabled", True))
+            if new_encoding_decode:
+                new_decoder = self._build_decoder(pipeline_config)
             log.info(
                 "pipeline reload: outbound_dlp=%s encoding_decode=%s",
-                "enabled" if self._outbound_dlp_enabled else "disabled",
-                "enabled" if self._encoding_decode_enabled else "disabled",
+                "enabled" if new_outbound_dlp else "disabled",
+                "enabled" if new_encoding_decode else "disabled",
             )
+
+        with self._reload_lock:
+            self._allowlist = allowlist
+            self._policy = new_policy
+            self._outbound_dlp_enabled = new_outbound_dlp
+            self._encoding_decode_enabled = new_encoding_decode
+            if pipeline_config:
+                self._decoder = new_decoder
+
         # Reload rules from DB if using RulesDetector, otherwise update custom rules
         if self._rules_detector:
             self._rules_detector.reload()
@@ -432,13 +442,22 @@ class ScannerPipeline:
         t0 = time.monotonic()
         stage_timings = {}  # type: dict
 
+        # Snapshot mutable references under lock — ensures consistency
+        # when reload() swaps them from another thread (free-threaded Python).
+        with self._reload_lock:
+            allowlist = self._allowlist
+            policy = self._policy
+            decoder = self._decoder
+            detectors = self._detectors
+            outbound_dlp_enabled = self._outbound_dlp_enabled
+
         # Extract scannable fields
         t_stage = time.monotonic()
         fields = self._extractor.extract(body, provider)
         log.debug("extracted %d fields from %s request (%d bytes)", len(fields), provider, len(body))
 
         # Filter out allowlisted paths
-        fields = [f for f in fields if not (f.source_filename and self._allowlist.is_allowed_path(f.source_filename))]
+        fields = [f for f in fields if not (f.source_filename and allowlist.is_allowed_path(f.source_filename))]
         stage_timings["extraction"] = (time.monotonic() - t_stage) * 1000
 
         # Sanitize — strip zero-width chars and normalize Unicode homoglyphs
@@ -451,11 +470,11 @@ class ScannerPipeline:
         stage_timings["sanitize"] = (time.monotonic() - t_stage) * 1000
 
         # Encoding decode stage — expand fields with decoded variants
-        if self._decoder:
+        if decoder:
             t_stage = time.monotonic()
             expanded = []
             for field in fields:
-                variants = self._decoder.decode_field(field.text)
+                variants = decoder.decode_field(field.text)
                 for v in variants:
                     # Sanitize decoded variants — encoded payloads may contain
                     # zero-width chars that would evade detection after decoding
@@ -539,9 +558,9 @@ class ScannerPipeline:
         # Run all detectors (gated by outbound_dlp stage toggle)
         t_stage = time.monotonic()
         all_findings = []  # type: List[Finding]
-        if self._outbound_dlp_enabled:
-            for detector in self._detectors:
-                det_findings = detector.scan(fields_to_scan, self._allowlist)
+        if outbound_dlp_enabled:
+            for detector in detectors:
+                det_findings = detector.scan(fields_to_scan, allowlist)
                 if det_findings:
                     log.debug(
                         "%s: %d findings",
@@ -562,12 +581,12 @@ class ScannerPipeline:
         eval_hook = self._extensions.get_evaluate_hook() if self._extensions else None
         if eval_hook:
             try:
-                decision = eval_hook(all_findings, self._policy)
+                decision = eval_hook(all_findings, policy)
             except Exception:
                 log.warning("evaluate_hook raised, falling back to default policy")
-                decision = self._policy.evaluate(all_findings)
+                decision = policy.evaluate(all_findings)
         else:
-            decision = self._policy.evaluate(all_findings)
+            decision = policy.evaluate(all_findings)
 
         elapsed_ms = (time.monotonic() - t0) * 1000
 

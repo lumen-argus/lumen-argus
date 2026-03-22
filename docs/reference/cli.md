@@ -34,6 +34,7 @@ lumen-argus serve [OPTIONS]
 | `--format` | `-f` | `str` | `text` | Output format for terminal display. Choices: `text`, `json`. |
 | `--log-level` | | `str` | `warning` | Console logging verbosity. Choices: `debug`, `info`, `warning`, `error`. |
 | `--no-color` | | `bool` | `false` | Disable ANSI color codes in terminal output. |
+| `--no-default-rules` | | `bool` | `false` | Skip auto-import of community rules on first run. |
 
 ### Examples
 

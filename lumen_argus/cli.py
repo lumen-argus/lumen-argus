@@ -18,7 +18,6 @@ from lumen_argus.extensions import ExtensionRegistry
 from lumen_argus.log_utils import setup_file_logging
 from lumen_argus.pipeline import ScannerPipeline
 from lumen_argus.provider import ProviderRouter
-from lumen_argus.proxy import ArgusProxyServer
 
 
 def _build_pipeline_config(cfg):
@@ -80,7 +79,6 @@ def main(argv=None):
         action="store_true",
         help="Skip auto-import of community rules on first run",
     )
-
     # --- "scan" command ---
     scan_parser = subparsers.add_parser("scan", help="Scan files or stdin for secrets/PII (pre-commit hook)")
     scan_parser.add_argument("files", nargs="*", help="Files to scan (reads stdin if none)")
@@ -365,9 +363,28 @@ def main(argv=None):
         pipeline_config=_build_pipeline_config(config),
     )
 
+    # --- Build response scanner ---
+    response_scanner = None
+    resp_secrets = config.pipeline.response_secrets.enabled
+    resp_injection = config.pipeline.response_injection.enabled
+    if resp_secrets or resp_injection:
+        from lumen_argus.response_scanner import ResponseScanner
+
+        response_scanner = ResponseScanner(
+            detectors=pipeline._detectors if resp_secrets else [],
+            allowlist=pipeline._allowlist if resp_secrets else None,
+            store=analytics_store,
+            scan_secrets=resp_secrets,
+            scan_injection=resp_injection,
+            max_response_size=config.pipeline.response_max_size,
+        )
+        log.info("response scanning enabled: secrets=%s injection=%s", resp_secrets, resp_injection)
+
     # Start server
     try:
-        server = ArgusProxyServer(
+        from lumen_argus.async_proxy import AsyncArgusProxy
+
+        server = AsyncArgusProxy(
             bind=bind,
             port=port,
             pipeline=pipeline,
@@ -383,26 +400,7 @@ def main(argv=None):
         )
         extensions.set_proxy_server(server)
         server.extensions = extensions
-
-        # Response scanner — enabled when either response stage is active
-        resp_secrets = config.pipeline.response_secrets.enabled
-        resp_injection = config.pipeline.response_injection.enabled
-        if resp_secrets or resp_injection:
-            from lumen_argus.response_scanner import ResponseScanner
-
-            server.response_scanner = ResponseScanner(
-                detectors=pipeline._detectors if resp_secrets else [],
-                allowlist=pipeline._allowlist if resp_secrets else None,
-                store=analytics_store,
-                scan_secrets=resp_secrets,
-                scan_injection=resp_injection,
-                max_response_size=config.pipeline.response_max_size,
-            )
-            log.info(
-                "response scanning enabled: secrets=%s injection=%s",
-                resp_secrets,
-                resp_injection,
-            )
+        server.response_scanner = response_scanner
     except OSError as e:
         print("Error: Could not bind to %s:%d — %s" % (bind, port, e), file=sys.stderr)
         sys.exit(1)
@@ -495,13 +493,12 @@ def main(argv=None):
             mcp_resp_enabled,
         )
 
-    # --- WebSocket proxy ---
-    from lumen_argus.ws_proxy import WebSocketScanner, start_ws_proxy, _HAS_WEBSOCKETS
+    # --- WebSocket scanning (same port, handled by async proxy) ---
+    from lumen_argus.ws_proxy import WebSocketScanner
 
-    server._ws_handle = None  # WebSocketProxyHandle for SIGHUP start/stop
     ws_enabled = config.pipeline.websocket_outbound.enabled or config.pipeline.websocket_inbound.enabled
-    if ws_enabled and _HAS_WEBSOCKETS:
-        ws_scanner = WebSocketScanner(
+    if ws_enabled:
+        server.ws_scanner = WebSocketScanner(
             detectors=pipeline._detectors,
             allowlist=pipeline._allowlist,
             response_scanner=server.response_scanner,
@@ -509,106 +506,67 @@ def main(argv=None):
             scan_inbound=config.pipeline.websocket_inbound.enabled,
             max_frame_size=config.websocket.max_frame_size,
         )
-        ws_port = config.dashboard.port + 2  # 8083 by default
-        server._ws_handle = start_ws_proxy(
-            bind=bind,
-            port=ws_port,
-            scanner=ws_scanner,
-            allowed_origins=config.websocket.allowed_origins or None,
+        server.ws_allowed_origins = config.websocket.allowed_origins or []
+        log.info(
+            "WebSocket scanning enabled on same port: outbound=%s inbound=%s",
+            config.pipeline.websocket_outbound.enabled,
+            config.pipeline.websocket_inbound.enabled,
         )
-
-    # --- Signal-safe shutdown and reload ---
-    #
-    # Signal handlers must not acquire locks (logging, threading, I/O)
-    # because the signal may arrive while a request thread holds a lock,
-    # causing deadlock. Instead, handlers only set flags and wake the
-    # main loop. All lock-acquiring work runs in the main thread.
-    shutting_down = [False]
-    reload_requested = [False]
-
-    def shutdown_handler(signum, frame):
-        if shutting_down[0]:
-            os._exit(1)  # Second signal — force exit
-        shutting_down[0] = True
-        # Close the listening socket to wake select() — no locks needed
-        try:
-            server.socket.close()
-        except Exception:
-            pass
-
-    def reload_handler(signum, frame):
-        reload_requested[0] = True
-        # set_wakeup_fd pipe write wakes select() automatically
-
-    signal.signal(signal.SIGINT, shutdown_handler)
-    signal.signal(signal.SIGTERM, shutdown_handler)
-
-    # Self-pipe trick: signal.set_wakeup_fd writes a byte to the pipe
-    # on any signal, waking select() in serve_forever() immediately
-    # (PEP 475 auto-retries select on EINTR, so without this SIGHUP
-    # would not wake the main loop until the next poll_interval).
-    wakeup_r, wakeup_w = os.pipe()
-    os.set_blocking(wakeup_r, False)
-    os.set_blocking(wakeup_w, False)
-    signal.set_wakeup_fd(wakeup_w)
-    if hasattr(signal, "SIGHUP"):
-        signal.signal(signal.SIGHUP, reload_handler)
 
     # Track current config for diff on reload
     current_config = [config]
 
-    # Patch service_actions to handle reload in the main thread.
-    # service_actions() is called by serve_forever() on every poll
-    # cycle (~0.5s), safe for locks since it runs in the main thread.
-    _orig_service_actions = server.service_actions
+    # --- Async run loop ---
+    import asyncio
 
-    def _service_actions():
-        _orig_service_actions()
-        # Drain the wakeup pipe
-        try:
-            os.read(wakeup_r, 1024)
-        except OSError:
-            pass
-        if reload_requested[0]:
-            reload_requested[0] = False
-            _do_reload(
-                server,
-                args.config,
-                file_handler,
-                console_level,
-                root_logger,
-                extensions,
-                current_config,
-                log,
+    async def _run_async():
+        await server.start()
+
+        loop = asyncio.get_running_loop()
+        shutdown_event = asyncio.Event()
+
+        def _shutdown():
+            shutdown_event.set()
+
+        def _reload():
+            # Run reload in thread pool to avoid blocking event loop
+            # with file I/O (YAML load) and SQLite reads (config overrides).
+            asyncio.ensure_future(
+                asyncio.to_thread(
+                    _do_reload,
+                    server,
+                    args.config,
+                    file_handler,
+                    console_level,
+                    root_logger,
+                    extensions,
+                    current_config,
+                    log,
+                )
             )
 
-    server.service_actions = _service_actions
+        loop.add_signal_handler(signal.SIGINT, _shutdown)
+        loop.add_signal_handler(signal.SIGTERM, _shutdown)
+        if hasattr(signal, "SIGHUP"):
+            loop.add_signal_handler(signal.SIGHUP, _reload)
 
-    try:
-        server.serve_forever()
-    except KeyboardInterrupt:
-        pass
-    except OSError:
-        if not shutting_down[0]:
-            raise
+        # Wait for shutdown signal
+        await shutdown_event.wait()
 
-    # Graceful drain — wait for in-flight requests to finish
-    drain_timeout = config.proxy.drain_timeout
-    remaining = server.drain(timeout=drain_timeout)
-    if remaining and drain_timeout > 0:
-        log.warning("shutdown: %d requests force-closed after %ds drain timeout", remaining, drain_timeout)
+        # Graceful drain — wait for in-flight requests to finish
+        drain_timeout = config.proxy.drain_timeout
+        remaining = await server.drain(timeout=drain_timeout)
+        if remaining and drain_timeout > 0:
+            log.warning("shutdown: %d requests force-closed after %ds drain timeout", remaining, drain_timeout)
 
-    uptime = time.monotonic() - start_time
-    log.info("shutdown: %d requests, uptime %.0fs", server.stats.total_requests, uptime)
-    display.show_shutdown(server.stats.summary())
-    server.pool.close_all()
-    audit.close()
-    # Close wakeup pipe
-    try:
-        os.close(wakeup_r)
-        os.close(wakeup_w)
-    except OSError:
-        pass
+        await server.stop()
+
+        uptime = time.monotonic() - start_time
+        log.info("shutdown: %d requests, uptime %.0fs", server.stats.total_requests, uptime)
+        display.show_shutdown(server.stats.summary())
+        audit.close()
+
+    asyncio.run(_run_async())
 
 
 def _load_hmac_key() -> bytes:
@@ -645,7 +603,6 @@ def _do_reload(server, config_path, file_handler, console_level, root_logger, ex
     """Reload config from disk — runs in main thread, safe for locks."""
     try:
         from lumen_argus.log_utils import config_diff
-        from lumen_argus.pool import build_ssl_context
 
         new_config = load_config(config_path=config_path)
 
@@ -794,17 +751,12 @@ def _do_reload(server, config_path, file_handler, console_level, root_logger, ex
         else:
             server.mcp_scanner = None
 
-        # Rebuild WebSocket proxy on reload (start/stop/restart)
-        from lumen_argus.ws_proxy import WebSocketScanner, start_ws_proxy, _HAS_WEBSOCKETS
+        # Rebuild WebSocket scanner on reload (same port — no server restart needed)
+        from lumen_argus.ws_proxy import WebSocketScanner
 
         ws_enabled = new_config.pipeline.websocket_outbound.enabled or new_config.pipeline.websocket_inbound.enabled
-        ws_running = hasattr(server, "_ws_handle") and server._ws_handle and server._ws_handle.running
-
-        if ws_enabled and _HAS_WEBSOCKETS:
-            # Stop existing if running (config may have changed)
-            if ws_running:
-                server._ws_handle.stop()
-            ws_scanner = WebSocketScanner(
+        if ws_enabled:
+            server.ws_scanner = WebSocketScanner(
                 detectors=server.pipeline._detectors,
                 allowlist=server.pipeline._allowlist,
                 response_scanner=server.response_scanner,
@@ -812,29 +764,16 @@ def _do_reload(server, config_path, file_handler, console_level, root_logger, ex
                 scan_inbound=new_config.pipeline.websocket_inbound.enabled,
                 max_frame_size=new_config.websocket.max_frame_size,
             )
-            ws_port = new_config.dashboard.port + 2
-            server._ws_handle = start_ws_proxy(
-                bind=server.server_address[0],
-                port=ws_port,
-                scanner=ws_scanner,
-                allowed_origins=new_config.websocket.allowed_origins or None,
-            )
+            server.ws_allowed_origins = new_config.websocket.allowed_origins or []
             log.info(
-                "ws proxy reloaded: outbound=%s inbound=%s",
+                "ws scanner reloaded: outbound=%s inbound=%s",
                 new_config.pipeline.websocket_outbound.enabled,
                 new_config.pipeline.websocket_inbound.enabled,
             )
-        elif ws_enabled and not _HAS_WEBSOCKETS:
-            # WS enabled but package missing — stop stale handle if any
-            if ws_running:
-                server._ws_handle.stop()
-                server._ws_handle = None
-            log.warning("ws proxy enabled but websockets package not installed")
-        elif ws_running:
-            # WS now disabled — stop it
-            server._ws_handle.stop()
-            server._ws_handle = None
-            log.info("ws proxy stopped (disabled via config)")
+        else:
+            server.ws_scanner = None
+            server.ws_allowed_origins = []
+            log.info("ws scanning disabled via config")
 
         if old.proxy.max_connections != new_config.proxy.max_connections:
             log.warning(
@@ -843,13 +782,10 @@ def _do_reload(server, config_path, file_handler, console_level, root_logger, ex
                 new_config.proxy.max_connections,
             )
 
-        # Rebuild SSL context if ca_bundle or verify_ssl changed
-        new_ssl_ctx = build_ssl_context(
-            ca_bundle=new_config.proxy.ca_bundle,
-            verify_ssl=new_config.proxy.verify_ssl,
-        )
-        server.pool._ssl_ctx = new_ssl_ctx
-        server.pool.close_all()
+        # SSL context changes require restart — aiohttp.TCPConnector holds
+        # its own SSL state and cannot be hot-reloaded.
+        if old.proxy.ca_bundle != new_config.proxy.ca_bundle or old.proxy.verify_ssl != new_config.proxy.verify_ssl:
+            log.warning("proxy.ca_bundle or proxy.verify_ssl changed — requires restart to take effect")
 
         new_file_level = getattr(logging, new_config.logging_config.file_level.upper())
         if file_handler.level != new_file_level:

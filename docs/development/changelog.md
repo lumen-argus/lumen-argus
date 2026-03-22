@@ -2,6 +2,39 @@
 
 All notable changes to lumen-argus are documented here.
 
+## 0.5.0 (2026-03-22)
+
+### Async Proxy (Phase 1)
+
+- New `async_proxy.py` — `aiohttp.web`-based proxy server replacing `ThreadingHTTPServer`
+- Non-blocking I/O with coroutine per request instead of thread per request
+- CPU-bound scanning runs in thread pool via `asyncio.to_thread()`
+- SSE streaming via `StreamResponse` + async iteration
+- Built-in connection pooling via `aiohttp.ClientSession` with `TCPConnector`
+- Retry on connection errors (`aiohttp.ClientConnectionError`)
+- SIGHUP reload via `loop.add_signal_handler()`
+- All existing functionality preserved: MCP detection, history stripping, session extraction, response scanning
+- `aiohttp>=3.9` added as dependency
+- 18 new integration tests, 867 total tests passing
+
+### WebSocket Unification (Phase 2)
+
+- WebSocket relay moved from standalone port 8083 into the main proxy on port 8080
+- Client connects via `ws://localhost:8080/ws?url=ws://target`
+- Uses `aiohttp.web.WebSocketResponse` + `ClientSession.ws_connect()` — no separate `websockets` package needed
+- `websockets` dependency removed — `aiohttp` handles both HTTP and WebSocket
+- SSRF protection: only `ws://` and `wss://` schemes allowed
+- Origin validation configurable via `websocket.allowed_origins`
+- SIGHUP reloads scanner config without server restart (same port)
+- Dependencies reduced from 3 (`pyyaml`, `aiohttp`, `websockets`) to 2 (`pyyaml`, `aiohttp`)
+
+### Thread Safety (Python 3.13+ free-threaded / no-GIL)
+
+- `ScannerPipeline.scan()` snapshots shared references (`_allowlist`, `_policy`, `_decoder`, `_detectors`) under `_reload_lock` before scanning — prevents torn reads during `reload()`
+- `ScannerPipeline.reload()` swaps references under the same `_reload_lock`
+- `AsyncArgusProxy._active_requests` uses `threading.Lock` for atomic increment/decrement
+- Safe for `PYTHON_GIL=0` (PEP 703) — all shared mutable state is properly synchronized
+
 ## 0.4.0 (2026-03-20)
 
 ### Rules Engine
