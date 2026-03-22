@@ -600,6 +600,118 @@ class TestAsyncProxyWebSocket(unittest.TestCase):
         asyncio.run(_test())
 
 
+class TestAsyncProxyWebSocketHooks(unittest.TestCase):
+    """Tests for WebSocket connection lifecycle hooks."""
+
+    @classmethod
+    def setUpClass(cls):
+        import tempfile
+
+        cls.tmpdir = tempfile.mkdtemp()
+
+    def test_ws_hook_called_on_validation_failure(self):
+        """Hook should fire open+close even when upstream fails."""
+        from lumen_argus.extensions import ExtensionRegistry
+        from lumen_argus.ws_proxy import WebSocketScanner
+        from lumen_argus.detectors.secrets import SecretsDetector
+        from lumen_argus.allowlist import AllowlistMatcher
+
+        hook_events = []
+
+        def _test_hook(event_type, connection_id, metadata):
+            hook_events.append((event_type, connection_id, metadata))
+
+        pipeline = ScannerPipeline(default_action="alert")
+        router = ProviderRouter()
+        audit = AuditLogger(log_dir=self.tmpdir)
+        display = TerminalDisplay(no_color=True)
+        port = _get_free_port()
+        proxy = AsyncArgusProxy(
+            bind="127.0.0.1",
+            port=port,
+            pipeline=pipeline,
+            router=router,
+            audit=audit,
+            display=display,
+        )
+        proxy.ws_scanner = WebSocketScanner(
+            detectors=[SecretsDetector()],
+            allowlist=AllowlistMatcher(),
+            scan_outbound=True,
+            scan_inbound=True,
+        )
+        extensions = ExtensionRegistry()
+        extensions.set_ws_connection_hook(_test_hook)
+        proxy.extensions = extensions
+
+        async def _test():
+            await proxy.start()
+            try:
+                async with aiohttp.ClientSession() as session:
+                    # Connect to a non-existent upstream — will fail after open hook
+                    try:
+                        async with session.ws_connect(
+                            "http://127.0.0.1:%d/ws?url=ws://127.0.0.1:1/nope" % port,
+                        ) as _ws:
+                            pass
+                    except Exception:
+                        pass
+            finally:
+                await proxy.stop()
+
+        asyncio.run(_test())
+
+        # Should have open and close events
+        event_types = [e[0] for e in hook_events]
+        self.assertIn("open", event_types)
+        self.assertIn("close", event_types)
+
+        # All events share the same connection_id
+        conn_ids = set(e[1] for e in hook_events)
+        self.assertEqual(len(conn_ids), 1)
+
+        # Close event has duration and frame counts
+        close_meta = [e[2] for e in hook_events if e[0] == "close"][0]
+        self.assertIn("duration_seconds", close_meta)
+        self.assertIn("frames_sent", close_meta)
+        self.assertIn("frames_received", close_meta)
+        self.assertEqual(close_meta["frames_sent"], 0)
+        self.assertEqual(close_meta["frames_received"], 0)
+
+    def test_ws_hook_not_called_without_extensions(self):
+        """No crash when extensions is None."""
+        pipeline = ScannerPipeline(default_action="alert")
+        router = ProviderRouter()
+        audit = AuditLogger(log_dir=self.tmpdir)
+        display = TerminalDisplay(no_color=True)
+        port = _get_free_port()
+        proxy = AsyncArgusProxy(
+            bind="127.0.0.1",
+            port=port,
+            pipeline=pipeline,
+            router=router,
+            audit=audit,
+            display=display,
+        )
+        # extensions is None, ws_scanner is None — should return 503
+
+        async def _test():
+            await proxy.start()
+            try:
+                async with aiohttp.ClientSession() as session:
+                    try:
+                        async with session.ws_connect(
+                            "http://127.0.0.1:%d/ws?url=ws://example.com" % port,
+                        ) as _ws:
+                            pass
+                    except aiohttp.WSServerHandshakeError as e:
+                        self.assertEqual(e.status, 503)
+            finally:
+                await proxy.stop()
+
+        asyncio.run(_test())
+
+
 class TestAsyncProxySessionExtraction(unittest.TestCase):
     """Test session context extraction in async proxy."""
 

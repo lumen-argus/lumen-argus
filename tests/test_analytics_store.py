@@ -615,5 +615,101 @@ class TestAdvancedAnalytics(unittest.TestCase):
         self.assertEqual(result["pro_imported"], 0)
 
 
+class TestWebSocketConnections(unittest.TestCase):
+    """Tests for WebSocket connection lifecycle store methods."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+        self.db_path = os.path.join(self.tmpdir, "test_analytics.db")
+        self.store = AnalyticsStore(db_path=self.db_path)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def test_record_open_and_close(self):
+        """Record WS connection open then close."""
+        conn_id = "test-conn-001"
+        t0 = time.time()
+        self.store.record_ws_connection_open(conn_id, "ws://example.com/ws", "http://localhost", t0)
+
+        conns = self.store.get_ws_connections(limit=10)
+        self.assertEqual(len(conns), 1)
+        self.assertEqual(conns[0]["id"], conn_id)
+        self.assertEqual(conns[0]["target_url"], "ws://example.com/ws")
+        self.assertIsNone(conns[0]["disconnected_at"])
+
+        # Close
+        t1 = t0 + 5.0
+        self.store.record_ws_connection_close(conn_id, t1, 5.0, 10, 20, 0, 1000)
+
+        conns = self.store.get_ws_connections(limit=10)
+        self.assertEqual(conns[0]["duration_seconds"], 5.0)
+        self.assertEqual(conns[0]["frames_sent"], 10)
+        self.assertEqual(conns[0]["frames_received"], 20)
+        self.assertEqual(conns[0]["close_code"], 1000)
+
+    def test_increment_findings(self):
+        """Increment findings count for a connection."""
+        conn_id = "test-conn-002"
+        self.store.record_ws_connection_open(conn_id, "ws://example.com", "", time.time())
+        self.store.increment_ws_findings(conn_id, 3)
+        self.store.increment_ws_findings(conn_id, 2)
+
+        conns = self.store.get_ws_connections(limit=10)
+        self.assertEqual(conns[0]["findings_count"], 5)
+
+    def test_get_ws_stats(self):
+        """Aggregate stats over multiple connections."""
+        t = time.time()
+        self.store.record_ws_connection_open("c1", "ws://a.com", "", t)
+        self.store.record_ws_connection_close("c1", t + 10, 10.0, 5, 8, 0, 1000)
+        self.store.record_ws_connection_open("c2", "ws://b.com", "", t)
+        self.store.record_ws_connection_close("c2", t + 20, 20.0, 3, 4, 0, 1000)
+        self.store.increment_ws_findings("c1", 2)
+
+        stats = self.store.get_ws_stats(days=7)
+        self.assertEqual(stats["total_connections"], 2)
+        self.assertEqual(stats["total_frames_sent"], 8)
+        self.assertEqual(stats["total_frames_received"], 12)
+        self.assertEqual(stats["avg_duration"], 15.0)
+        self.assertEqual(stats["total_findings"], 2)
+
+    def test_cleanup_old_connections(self):
+        """Cleanup removes old connections."""
+        old_time = time.time() - (400 * 86400)  # 400 days ago
+        self.store.record_ws_connection_open("old", "ws://old.com", "", old_time)
+        self.store.record_ws_connection_open("new", "ws://new.com", "", time.time())
+
+        deleted = self.store.cleanup_ws_connections(retention_days=365)
+        self.assertEqual(deleted, 1)
+
+        conns = self.store.get_ws_connections()
+        self.assertEqual(len(conns), 1)
+        self.assertEqual(conns[0]["id"], "new")
+
+    def test_get_ws_connections_pagination(self):
+        """Pagination works for WS connections."""
+        t = time.time()
+        for i in range(5):
+            self.store.record_ws_connection_open("c%d" % i, "ws://x.com", "", t + i)
+
+        page1 = self.store.get_ws_connections(limit=2, offset=0)
+        page2 = self.store.get_ws_connections(limit=2, offset=2)
+        self.assertEqual(len(page1), 2)
+        self.assertEqual(len(page2), 2)
+        # Newest first
+        self.assertEqual(page1[0]["id"], "c4")
+        self.assertEqual(page1[1]["id"], "c3")
+
+    def test_duplicate_open_ignored(self):
+        """Duplicate connection ID on open is ignored (INSERT OR IGNORE)."""
+        conn_id = "dup-conn"
+        self.store.record_ws_connection_open(conn_id, "ws://a.com", "", time.time())
+        self.store.record_ws_connection_open(conn_id, "ws://b.com", "", time.time())
+        conns = self.store.get_ws_connections()
+        self.assertEqual(len(conns), 1)
+        self.assertEqual(conns[0]["target_url"], "ws://a.com")
+
+
 if __name__ == "__main__":
     unittest.main()

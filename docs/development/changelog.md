@@ -28,6 +28,15 @@ All notable changes to lumen-argus are documented here.
 - SIGHUP reloads scanner config without server restart (same port)
 - Dependencies reduced from 3 (`pyyaml`, `aiohttp`, `websockets`) to 2 (`pyyaml`, `aiohttp`)
 
+### WebSocket Connection Lifecycle Hooks
+
+- Each WebSocket connection assigned a unique `connection_id` (UUID)
+- Extension hook fires on `open`, `frame_scanned`, and `close` events
+- `ws_connections` SQLite table tracks connection history (target URL, origin, duration, frame counts, findings, close code)
+- Default community hook records to analytics store; Pro can override for richer analytics
+- Hook calls run in thread pool via `asyncio.to_thread()` — no event loop blocking
+- Connection data included in daily retention cleanup
+
 ### Thread Safety (Python 3.13+ free-threaded / no-GIL)
 
 - `ScannerPipeline.scan()` snapshots shared references (`_allowlist`, `_policy`, `_decoder`, `_detectors`) under `_reload_lock` before scanning — prevents torn reads during `reload()`

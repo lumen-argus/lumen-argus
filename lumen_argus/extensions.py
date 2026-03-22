@@ -59,6 +59,7 @@ class ExtensionRegistry:
         self._trace_request_hook = None  # type: Optional[Callable]
         self._license_checker = None  # type: Optional[object]
         self._response_scan_hook = None  # type: Optional[Callable]
+        self._ws_connection_hook = None  # type: Optional[Callable]
 
     def add_detector(self, detector: BaseDetector, priority: bool = False) -> None:
         """Register an additional detector.
@@ -301,6 +302,24 @@ class ExtensionRegistry:
 
     def get_response_scan_hook(self) -> Optional[Callable]:
         return self._response_scan_hook
+
+    def set_ws_connection_hook(self, hook: Callable) -> None:
+        """Register: hook(event_type, connection_id, metadata).
+
+        event_type: "open" | "close" | "frame_scanned"
+        connection_id: unique ID per WebSocket connection (uuid4)
+        metadata: dict with event-specific fields
+
+        "frame_scanned" fires only for text frames with findings (findings_count > 0).
+        Hook runs in thread pool via asyncio.to_thread() — safe for blocking I/O.
+
+        Pro can override or wrap the default community hook to add
+        per-connection analytics, dashboard charts, etc.
+        """
+        self._ws_connection_hook = hook
+
+    def get_ws_connection_hook(self) -> Optional[Callable]:
+        return self._ws_connection_hook
 
     def set_license_checker(self, checker) -> None:
         """Register a license checker with is_valid() method for rule-tier gating."""

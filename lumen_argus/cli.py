@@ -513,6 +513,34 @@ def main(argv=None):
             config.pipeline.websocket_inbound.enabled,
         )
 
+    # Register default WS connection lifecycle hook (records to analytics store).
+    # Pro can override via extensions.set_ws_connection_hook() to add richer analytics.
+    if analytics_store and not extensions.get_ws_connection_hook():
+
+        def _default_ws_hook(event_type, connection_id, metadata):
+            if event_type == "open":
+                analytics_store.record_ws_connection_open(
+                    connection_id,
+                    metadata["target_url"],
+                    metadata.get("origin", ""),
+                    metadata["timestamp"],
+                )
+            elif event_type == "close":
+                analytics_store.record_ws_connection_close(
+                    connection_id,
+                    metadata["timestamp"],
+                    metadata["duration_seconds"],
+                    metadata["frames_sent"],
+                    metadata["frames_received"],
+                    0,
+                    metadata.get("close_code", 1000),
+                )
+            elif event_type == "frame_scanned" and metadata["findings_count"] > 0:
+                analytics_store.increment_ws_findings(connection_id, metadata["findings_count"])
+
+        extensions.set_ws_connection_hook(_default_ws_hook)
+        log.debug("default WebSocket connection hook registered")
+
     # Track current config for diff on reload
     current_config = [config]
 
