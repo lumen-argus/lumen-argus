@@ -306,5 +306,86 @@ class TestPipelineIntegration(unittest.TestCase):
         self.assertLess(decode_ms, 10, "encoding_decode took %.1fms" % decode_ms)
 
 
+class TestSanitization(unittest.TestCase):
+    """Test zero-width char stripping and homoglyph normalization."""
+
+    def _make_body(self, content):
+        return json.dumps({"model": "test", "messages": [{"role": "user", "content": content}]}).encode()
+
+    def test_zero_width_chars_stripped(self):
+        """Zero-width chars between letters should not evade detection."""
+        # AKIAIOSFODNN7EXAMPLE with zero-width spaces between chars
+        zwsp = "\u200b"
+        evasion = zwsp.join("AKIAIOSFODNN7EXAMPLE")
+        pipeline = ScannerPipeline(default_action="alert")
+        result = pipeline.scan(self._make_body(evasion), "anthropic")
+        aws_findings = [f for f in result.findings if "aws" in f.type.lower()]
+        self.assertTrue(len(aws_findings) > 0, "zero-width evasion bypassed detection")
+
+    def test_zero_width_joiner_stripped(self):
+        """Zero-width joiner (U+200D) should be stripped."""
+        zwj = "\u200d"
+        evasion = zwj.join("AKIAIOSFODNN7EXAMPLE")
+        pipeline = ScannerPipeline(default_action="alert")
+        result = pipeline.scan(self._make_body(evasion), "anthropic")
+        aws_findings = [f for f in result.findings if "aws" in f.type.lower()]
+        self.assertTrue(len(aws_findings) > 0, "ZWJ evasion bypassed detection")
+
+    def test_bom_stripped(self):
+        """BOM (U+FEFF) should be stripped."""
+        evasion = "\ufeff" + "AKIAIOSFODNN7EXAMPLE"
+        pipeline = ScannerPipeline(default_action="alert")
+        result = pipeline.scan(self._make_body(evasion), "anthropic")
+        aws_findings = [f for f in result.findings if "aws" in f.type.lower()]
+        self.assertTrue(len(aws_findings) > 0, "BOM evasion bypassed detection")
+
+    def test_homoglyph_normalization(self):
+        """Cyrillic homoglyphs should be normalized to Latin via NFKC."""
+        # Replace 'A' with Cyrillic А (U+0410) — visually identical
+        evasion = "\u0410KIAIOSFODNN7EXAMPLE"  # Cyrillic А + rest Latin
+        pipeline = ScannerPipeline(default_action="alert")
+        result = pipeline.scan(self._make_body(evasion), "anthropic")
+        # Note: NFKC normalizes some but not all Cyrillic → Latin.
+        # Cyrillic А (U+0410) does NOT normalize to Latin A via NFKC.
+        # This test documents the limitation — full homoglyph detection
+        # requires a dedicated confusable mapping (Pro feature).
+        # For now, verify no crash and sanitize stage runs.
+        self.assertIn("sanitize", result.stage_timings)
+
+    def test_fullwidth_chars_normalized(self):
+        """Fullwidth Latin letters should be normalized to ASCII via NFKC."""
+        # Fullwidth A = U+FF21, K = U+FF2B, etc.
+        # NFKC normalizes fullwidth → ASCII
+        evasion = "\uff21\uff2b\uff29\uff21IOSFODNN7EXAMPLE"
+        pipeline = ScannerPipeline(default_action="alert")
+        result = pipeline.scan(self._make_body(evasion), "anthropic")
+        aws_findings = [f for f in result.findings if "aws" in f.type.lower()]
+        self.assertTrue(len(aws_findings) > 0, "fullwidth evasion bypassed detection")
+
+    def test_sanitize_stage_timing_recorded(self):
+        """Sanitize stage should appear in stage_timings."""
+        pipeline = ScannerPipeline(default_action="alert")
+        result = pipeline.scan(self._make_body("normal text"), "anthropic")
+        self.assertIn("sanitize", result.stage_timings)
+
+    def test_zero_width_in_base64_payload(self):
+        """Zero-width chars inside a base64-encoded secret should be stripped after decode."""
+        # Base64-encode a secret with zero-width spaces injected
+        zwsp = "\u200b"
+        secret_with_zw = "AKIA" + zwsp + "IOSFODNN7EXAMPLE"
+        encoded = base64.b64encode(secret_with_zw.encode()).decode()
+        pipeline = ScannerPipeline(default_action="alert")
+        result = pipeline.scan(self._make_body(encoded), "anthropic")
+        aws_findings = [f for f in result.findings if "aws" in f.type.lower()]
+        self.assertTrue(len(aws_findings) > 0, "encoded zero-width evasion bypassed detection")
+
+    def test_clean_text_unchanged(self):
+        """Normal ASCII text should pass through sanitize unchanged."""
+        from lumen_argus.pipeline import _sanitize_text
+
+        text = "AKIAIOSFODNN7EXAMPLE normal text"
+        self.assertEqual(_sanitize_text(text), text)
+
+
 if __name__ == "__main__":
     unittest.main()

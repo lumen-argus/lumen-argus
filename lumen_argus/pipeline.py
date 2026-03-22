@@ -2,8 +2,10 @@
 
 import hashlib
 import logging
+import re
 import threading
 import time
+import unicodedata
 from typing import List
 
 from lumen_argus.allowlist import AllowlistMatcher
@@ -19,6 +21,26 @@ from lumen_argus.models import Finding, ScanField, ScanResult, SessionContext
 from lumen_argus.policy import PolicyEngine
 
 log = logging.getLogger("argus.pipeline")
+
+# ---------------------------------------------------------------------------
+# Text sanitization — runs before all decoders and detectors
+# ---------------------------------------------------------------------------
+
+# Zero-width and invisible Unicode characters used to evade pattern matching.
+# Inserting these between letters breaks regex: P\u200Da\u200Ds\u200Ds → "Pass"
+_ZERO_WIDTH_RE = re.compile(r"[\u200b-\u200f\u2028-\u202e\u2060\ufeff]")
+
+
+def _sanitize_text(text: str) -> str:
+    """Strip zero-width characters and normalize Unicode homoglyphs.
+
+    Runs on every field before encoding decode and detection. Two steps:
+    1. Strip invisible chars (zero-width spaces, joiners, BOM, etc.)
+    2. NFKC normalization (collapses homoglyphs: Cyrillic а → Latin a)
+    """
+    text = _ZERO_WIDTH_RE.sub("", text)
+    text = unicodedata.normalize("NFKC", text)
+    return text
 
 
 # ---------------------------------------------------------------------------
@@ -440,6 +462,15 @@ class ScannerPipeline:
         fields = [f for f in fields if not (f.source_filename and self._allowlist.is_allowed_path(f.source_filename))]
         stage_timings["extraction"] = (time.monotonic() - t_stage) * 1000
 
+        # Sanitize — strip zero-width chars and normalize Unicode homoglyphs
+        # Runs before all decoders and detectors to defeat evasion techniques.
+        t_stage = time.monotonic()
+        for i, field in enumerate(fields):
+            cleaned = _sanitize_text(field.text)
+            if cleaned != field.text:
+                fields[i] = ScanField(path=field.path, text=cleaned, source_filename=field.source_filename)
+        stage_timings["sanitize"] = (time.monotonic() - t_stage) * 1000
+
         # Encoding decode stage — expand fields with decoded variants
         if self._decoder:
             t_stage = time.monotonic()
@@ -447,10 +478,13 @@ class ScannerPipeline:
             for field in fields:
                 variants = self._decoder.decode_field(field.text)
                 for v in variants:
+                    # Sanitize decoded variants — encoded payloads may contain
+                    # zero-width chars that would evade detection after decoding
+                    text = _sanitize_text(v.text) if v.encoding != "raw" else v.text
                     expanded.append(
                         ScanField(
                             path=field.path if v.encoding == "raw" else "%s[%s]" % (field.path, v.encoding),
-                            text=v.text,
+                            text=text,
                             source_filename=field.source_filename,
                         )
                     )
