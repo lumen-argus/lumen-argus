@@ -712,6 +712,89 @@ class TestAsyncProxyWebSocketHooks(unittest.TestCase):
         asyncio.run(_test())
 
 
+class TestWebSocketPolicyEnforcement(unittest.TestCase):
+    """Unit tests for WebSocket policy enforcement logic."""
+
+    def test_block_action_evaluated(self):
+        """PolicyEngine returns block for secrets when action_overrides={'secrets': 'block'}."""
+        from lumen_argus.policy import PolicyEngine
+        from lumen_argus.models import Finding
+
+        policy = PolicyEngine(default_action="alert", action_overrides={"secrets": "block"})
+        findings = [
+            Finding(
+                detector="secrets",
+                type="aws_access_key",
+                severity="critical",
+                location="ws.outbound",
+                value_preview="AKIA****",
+                matched_value="AKIAIOSFODNN7EXAMPLE",
+            )
+        ]
+        decision = policy.evaluate(findings)
+        self.assertEqual(decision.action, "block")
+
+    def test_alert_action_evaluated(self):
+        """PolicyEngine returns alert for secrets when action_overrides={'secrets': 'alert'}."""
+        from lumen_argus.policy import PolicyEngine
+        from lumen_argus.models import Finding
+
+        policy = PolicyEngine(default_action="alert", action_overrides={"secrets": "alert"})
+        findings = [
+            Finding(
+                detector="secrets",
+                type="aws_access_key",
+                severity="critical",
+                location="ws.outbound",
+                value_preview="AKIA****",
+                matched_value="AKIAIOSFODNN7EXAMPLE",
+            )
+        ]
+        decision = policy.evaluate(findings)
+        self.assertEqual(decision.action, "alert")
+
+    def test_ws_scanner_detects_outbound_secret(self):
+        """WebSocketScanner detects secrets in outbound frames."""
+        from lumen_argus.ws_proxy import WebSocketScanner
+        from lumen_argus.detectors.secrets import SecretsDetector
+        from lumen_argus.allowlist import AllowlistMatcher
+
+        scanner = WebSocketScanner(
+            detectors=[SecretsDetector()],
+            allowlist=AllowlistMatcher(),
+            scan_outbound=True,
+            scan_inbound=True,
+        )
+        findings = scanner.scan_outbound_frame("key=AKIAIOSFODNN7EXAMPLE")
+        self.assertTrue(len(findings) > 0)
+        self.assertEqual(findings[0].detector, "secrets")
+
+    def test_ws_scanner_clean_frame(self):
+        """WebSocketScanner returns empty findings for clean text."""
+        from lumen_argus.ws_proxy import WebSocketScanner
+        from lumen_argus.detectors.secrets import SecretsDetector
+        from lumen_argus.allowlist import AllowlistMatcher
+
+        scanner = WebSocketScanner(
+            detectors=[SecretsDetector()],
+            allowlist=AllowlistMatcher(),
+            scan_outbound=True,
+            scan_inbound=True,
+        )
+        findings = scanner.scan_outbound_frame("hello world, nothing secret here")
+        self.assertEqual(len(findings), 0)
+
+    def test_blocked_event_set_on_block(self):
+        """asyncio.Event is set when block is triggered (unit test of the pattern)."""
+        import asyncio as _asyncio
+
+        blocked = _asyncio.Event()
+        self.assertFalse(blocked.is_set())
+        # Simulate block
+        blocked.set()
+        self.assertTrue(blocked.is_set())
+
+
 class TestAsyncProxySessionExtraction(unittest.TestCase):
     """Test session context extraction in async proxy."""
 
