@@ -174,7 +174,9 @@ The `WebSocketScanner` scans WebSocket text frames bidirectionally. The relay ru
 
 Controlled by `websocket_outbound` and `websocket_inbound` pipeline stages (disabled by default, opt-in). Runs on the same port as the proxy (`ws://localhost:8080/ws?url=ws://target`). SIGHUP reloads the scanner configuration without server restart.
 
-**Connection lifecycle hooks**: Each WebSocket connection gets a unique `connection_id` (UUID). Extension hooks fire on `open`, `frame_scanned` (text frames with findings), and `close` events. Community records connection data to `ws_connections` SQLite table (target URL, origin, duration, frame counts, findings count, close code). Pro can override via `extensions.set_ws_connection_hook()` for richer per-connection analytics. Hook calls run in thread pool via `asyncio.to_thread()` to avoid blocking the event loop.
+**Connection lifecycle hooks**: Each WebSocket connection gets a unique `connection_id` (UUID). Extension hooks fire on `open`, `finding_detected` (text frames with findings), and `close` events. Community records connection data to `ws_connections` SQLite table (target URL, origin, duration, frame counts, findings count, close code). Pro can override via `extensions.set_ws_connection_hook()` for richer per-connection analytics. Hook calls run in thread pool via `asyncio.to_thread()` to avoid blocking the event loop.
+
+**Policy enforcement**: WebSocket findings are evaluated against the same policy as HTTP requests. Block action closes the connection immediately (frame not forwarded). Alert/log actions record findings and continue forwarding.
 
 ### Within-Request Deduplication
 

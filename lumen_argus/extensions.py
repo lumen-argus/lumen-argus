@@ -306,11 +306,11 @@ class ExtensionRegistry:
     def set_ws_connection_hook(self, hook: Callable) -> None:
         """Register: hook(event_type, connection_id, metadata).
 
-        event_type: "open" | "close" | "frame_scanned"
+        event_type: "open" | "close" | "finding_detected"
         connection_id: unique ID per WebSocket connection (uuid4)
         metadata: dict with event-specific fields
 
-        "frame_scanned" fires only for text frames with findings (findings_count > 0).
+        "finding_detected" fires only for text frames with findings (findings_count > 0).
         Hook runs in thread pool via asyncio.to_thread() — safe for blocking I/O.
 
         Pro can override or wrap the default community hook to add

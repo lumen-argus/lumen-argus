@@ -15,6 +15,7 @@ import hashlib
 import itertools
 import json
 import logging
+import os
 import re
 import ssl
 import threading
@@ -36,6 +37,32 @@ from lumen_argus.provider import ProviderRouter
 from lumen_argus.stats import SessionStats
 
 log = logging.getLogger("argus.proxy")
+
+
+def build_ssl_context(ca_bundle: str = "", verify_ssl: bool = True) -> ssl.SSLContext:
+    """Build an SSL context for upstream connections.
+
+    Args:
+        ca_bundle: Path to a CA cert file or directory. Empty = system default.
+        verify_ssl: If False, disable certificate verification (dev/testing only).
+    """
+    if not verify_ssl:
+        log.warning("TLS certificate verification is disabled — do not use in production")
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        return ctx
+
+    ctx = ssl.create_default_context()
+    if ca_bundle:
+        ca_path = os.path.expanduser(ca_bundle)
+        if os.path.isdir(ca_path):
+            ctx.load_verify_locations(capath=ca_path)
+        else:
+            ctx.load_verify_locations(cafile=ca_path)
+        log.info("loaded custom CA bundle: %s", ca_path)
+    return ctx
+
 
 # Typed app key for storing the proxy reference (avoids aiohttp AppKey warning).
 _PROXY_KEY = _AppKey("proxy", t="AsyncArgusProxy")
@@ -415,34 +442,73 @@ async def _handle_websocket(request: web.Request, server: "AsyncArgusProxy") -> 
     # Connect to upstream via aiohttp client session
     try:
         async with server.client_session.ws_connect(target_url) as ws_upstream:
+            log.debug("ws: upstream connected to %s (conn=%s)", target_url, connection_id[:8])
+
+            # Snapshot policy under reload lock for thread safety.
+            # Note: long-lived connections keep this snapshot — policy changes
+            # via SIGHUP only take effect on new connections.
+            with server.pipeline._reload_lock:
+                ws_policy = server.pipeline._policy
+
+            # Shared event: set on block to cancel both relay directions
+            _blocked = asyncio.Event()
+
+            async def _evaluate_ws_findings(findings, direction):
+                """Evaluate findings against policy. Returns True if connection should close."""
+                decision = await asyncio.to_thread(ws_policy.evaluate, findings)
+                if decision.action == "block":
+                    log.warning(
+                        "ws %s: BLOCKED — %d finding(s), closing connection (conn=%s)",
+                        direction,
+                        len(findings),
+                        connection_id[:8],
+                    )
+                    _blocked.set()
+                    return True
+                # alert/log — findings are recorded, frame is forwarded
+                log.info(
+                    "ws %s: %s — %d finding(s) (conn=%s)",
+                    direction,
+                    decision.action.upper(),
+                    len(findings),
+                    connection_id[:8],
+                )
+                return False
+
+            async def _fire_finding_hook(direction, frame_size, fc):
+                """Fire finding_detected hook in thread pool."""
+                if ws_hook:
+                    try:
+                        await asyncio.to_thread(
+                            ws_hook,
+                            "finding_detected",
+                            connection_id,
+                            {
+                                "direction": direction,
+                                "frame_size": frame_size,
+                                "findings_count": fc,
+                                "timestamp": time.time(),
+                            },
+                        )
+                    except Exception as e:
+                        log.debug("ws hook finding error: %s", e)
 
             async def _client_to_server():
                 """Relay client → upstream with outbound scanning."""
                 nonlocal frames_sent, findings_total
                 try:
                     async for msg in ws_client:
+                        if _blocked.is_set():
+                            break
                         if msg.type == aiohttp.WSMsgType.TEXT:
                             findings = server.ws_scanner.scan_outbound_frame(msg.data)
                             frames_sent += 1
                             fc = len(findings) if findings else 0
                             if fc:
                                 findings_total += fc
-                                log.info("ws outbound: %d finding(s)", fc)
-                                if ws_hook:
-                                    try:
-                                        await asyncio.to_thread(
-                                            ws_hook,
-                                            "frame_scanned",
-                                            connection_id,
-                                            {
-                                                "direction": "outbound",
-                                                "frame_size": len(msg.data),
-                                                "findings_count": fc,
-                                                "timestamp": time.time(),
-                                            },
-                                        )
-                                    except Exception as e:
-                                        log.debug("ws hook frame error: %s", e)
+                                await _fire_finding_hook("outbound", len(msg.data), fc)
+                                if await _evaluate_ws_findings(findings, "outbound"):
+                                    break  # block — stop relaying
                             await ws_upstream.send_str(msg.data)
                         elif msg.type == aiohttp.WSMsgType.BINARY:
                             frames_sent += 1
@@ -457,28 +523,17 @@ async def _handle_websocket(request: web.Request, server: "AsyncArgusProxy") -> 
                 nonlocal frames_received, findings_total
                 try:
                     async for msg in ws_upstream:
+                        if _blocked.is_set():
+                            break
                         if msg.type == aiohttp.WSMsgType.TEXT:
                             findings = server.ws_scanner.scan_inbound_frame(msg.data)
                             frames_received += 1
                             fc = len(findings) if findings else 0
                             if fc:
                                 findings_total += fc
-                                log.info("ws inbound: %d finding(s)", fc)
-                                if ws_hook:
-                                    try:
-                                        await asyncio.to_thread(
-                                            ws_hook,
-                                            "frame_scanned",
-                                            connection_id,
-                                            {
-                                                "direction": "inbound",
-                                                "frame_size": len(msg.data),
-                                                "findings_count": fc,
-                                                "timestamp": time.time(),
-                                            },
-                                        )
-                                    except Exception as e:
-                                        log.debug("ws hook frame error: %s", e)
+                                await _fire_finding_hook("inbound", len(msg.data), fc)
+                                if await _evaluate_ws_findings(findings, "inbound"):
+                                    break  # block — stop relaying
                             await ws_client.send_str(msg.data)
                         elif msg.type == aiohttp.WSMsgType.BINARY:
                             frames_received += 1
@@ -495,8 +550,22 @@ async def _handle_websocket(request: web.Request, server: "AsyncArgusProxy") -> 
                 return_exceptions=True,
             )
 
-            # Capture actual close code from upstream or client
-            close_code = ws_upstream.close_code or ws_client.close_code or 1000
+            # On block: close both ends with policy violation code (1008)
+            if _blocked.is_set():
+                close_code = 1008
+                log.warning(
+                    "ws: closing both ends after block (conn=%s, %d/%d frames)",
+                    connection_id[:8],
+                    frames_sent,
+                    frames_received,
+                )
+                if not ws_upstream.closed:
+                    await ws_upstream.close()
+                if not ws_client.closed:
+                    await ws_client.close(code=1008, message=b"Policy violation")
+            else:
+                # Capture actual close code from upstream or client
+                close_code = ws_upstream.close_code or ws_client.close_code or 1000
 
     except aiohttp.ClientError as e:
         log.error("ws upstream connection failed for %s: %s", target_url, e)

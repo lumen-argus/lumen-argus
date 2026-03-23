@@ -251,7 +251,7 @@ def main(argv=None):
     router = ProviderRouter(upstreams=config.upstreams or None)
 
     # Build SSL context for upstream connections
-    from lumen_argus.pool import build_ssl_context
+    from lumen_argus.async_proxy import build_ssl_context
 
     ssl_context = build_ssl_context(
         ca_bundle=config.proxy.ca_bundle,
@@ -535,7 +535,7 @@ def main(argv=None):
                     0,
                     metadata.get("close_code", 1000),
                 )
-            elif event_type == "frame_scanned" and metadata["findings_count"] > 0:
+            elif event_type == "finding_detected" and metadata["findings_count"] > 0:
                 analytics_store.increment_ws_findings(connection_id, metadata["findings_count"])
 
         extensions.set_ws_connection_hook(_default_ws_hook)

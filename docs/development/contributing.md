@@ -87,7 +87,6 @@ lumen_argus/
 ├── allowlist.py        # Allowlist matching (exact + glob)
 ├── audit.py            # Thread-safe JSONL audit logger
 ├── baseline.py         # Baseline file for known findings
-├── pool.py             # Connection pooling + SSL context
 ├── stats.py            # Session statistics + Prometheus metrics
 ├── log_utils.py        # Logging setup, sanitization, config diff
 ├── display.py          # Terminal output formatting

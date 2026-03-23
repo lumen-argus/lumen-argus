@@ -31,11 +31,19 @@ All notable changes to lumen-argus are documented here.
 ### WebSocket Connection Lifecycle Hooks
 
 - Each WebSocket connection assigned a unique `connection_id` (UUID)
-- Extension hook fires on `open`, `frame_scanned`, and `close` events
+- Extension hook fires on `open`, `finding_detected`, and `close` events
 - `ws_connections` SQLite table tracks connection history (target URL, origin, duration, frame counts, findings, close code)
 - Default community hook records to analytics store; Pro can override for richer analytics
 - Hook calls run in thread pool via `asyncio.to_thread()` — no event loop blocking
 - Connection data included in daily retention cleanup
+- WebSocket findings now enforced by policy (block closes connection, alert logs + continues)
+- REST API: `GET /api/v1/ws/connections`, `GET /api/v1/ws/stats`
+
+### Cleanup
+
+- Removed dead `proxy.py` (old ThreadingHTTPServer) and `pool.py` (old connection pool)
+- Removed legacy test files (`test_proxy_integration.py`, `test_pool.py`)
+- Session tracking tests updated to use `async_proxy` module
 
 ### Thread Safety (Python 3.13+ free-threaded / no-GIL)
 

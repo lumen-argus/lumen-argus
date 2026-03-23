@@ -126,6 +126,14 @@ def handle_community_api(
         if result is not None:
             return result
 
+    # --- WebSocket connection endpoints ---
+
+    if method == "GET":
+        if path == "/api/v1/ws/connections":
+            return _handle_ws_connections(params, store)
+        if path == "/api/v1/ws/stats":
+            return _handle_ws_stats(params, store)
+
     # --- MCP tool list endpoints ---
 
     if path == "/api/v1/mcp/tools":
@@ -1122,3 +1130,37 @@ def _handle_mcp_tools_delete(entry_id: int, store) -> tuple:
 
     log.info("DELETE /api/v1/mcp/tools/%d: deleted", entry_id)
     return _json_response(200, {"deleted": True})
+
+
+# --- WebSocket connection endpoints ---
+
+
+def _handle_ws_connections(params: dict, store) -> tuple:
+    """Return recent WebSocket connections, newest first."""
+    if not store:
+        return _json_response(500, {"error": "analytics store not available"})
+
+    try:
+        limit = min(int(params.get("limit", 50)), 200)
+        offset = max(int(params.get("offset", 0)), 0)
+    except (ValueError, TypeError):
+        return _json_response(400, {"error": "invalid limit or offset"})
+
+    connections = store.get_ws_connections(limit=limit, offset=offset)
+    log.debug("GET /api/v1/ws/connections: %d result(s) (limit=%d, offset=%d)", len(connections), limit, offset)
+    return _json_response(200, {"connections": connections, "count": len(connections)})
+
+
+def _handle_ws_stats(params: dict, store) -> tuple:
+    """Return aggregate WebSocket stats for the given period."""
+    if not store:
+        return _json_response(500, {"error": "analytics store not available"})
+
+    try:
+        days = min(max(int(params.get("days", 7)), 1), 365)
+    except (ValueError, TypeError):
+        return _json_response(400, {"error": "invalid days parameter"})
+
+    stats = store.get_ws_stats(days=days)
+    log.debug("GET /api/v1/ws/stats: days=%d, %d connections", days, stats.get("total_connections", 0))
+    return _json_response(200, stats)

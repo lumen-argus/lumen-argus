@@ -20,8 +20,9 @@ import unittest
 from unittest.mock import MagicMock
 
 from lumen_argus.models import AuditEntry, Finding, SessionContext
-from lumen_argus.proxy import (
+from lumen_argus.async_proxy import (
     _derive_session_fingerprint,
+    _extract_session,
     _extract_system_field,
     _extract_working_directory,
     _get_system_text,
@@ -31,13 +32,18 @@ from lumen_argus.proxy import (
 )
 
 
-def _make_handler(client_address=("127.0.0.1", 54321)):
-    """Create a minimal mock of ArgusProxyHandler for testing _extract_session."""
-    from lumen_argus.proxy import ArgusProxyHandler
+class _HandlerShim:
+    """Thin shim: adapts module-level _extract_session to handler.method() pattern."""
 
-    handler = object.__new__(ArgusProxyHandler)
-    handler.client_address = client_address
-    return handler
+    def __init__(self, client_address=("127.0.0.1", 54321)):
+        self.client_address = client_address
+
+    def _extract_session(self, data, provider, headers):
+        return _extract_session(data, provider, headers, self.client_address[0])
+
+
+def _make_handler(client_address=("127.0.0.1", 54321)):
+    return _HandlerShim(client_address)
 
 
 # --- Session extraction priority ---
