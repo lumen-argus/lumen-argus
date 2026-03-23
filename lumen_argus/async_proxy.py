@@ -544,12 +544,18 @@ async def _handle_websocket(request: web.Request, server: "AsyncArgusProxy") -> 
                 except Exception as e:
                     log.debug("ws server->client relay ended: %s", e)
 
-            # Run both relay directions concurrently
-            await asyncio.gather(
-                _client_to_server(),
-                _server_to_client(),
-                return_exceptions=True,
-            )
+            # Run both relay directions concurrently.
+            # When one direction ends (client disconnect, block, error),
+            # cancel the other to avoid hanging on the remaining async for.
+            task_c2s = asyncio.create_task(_client_to_server())
+            task_s2c = asyncio.create_task(_server_to_client())
+            done, pending = await asyncio.wait([task_c2s, task_s2c], return_when=asyncio.FIRST_COMPLETED)
+            for task in pending:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
 
             # On block: close both ends with policy violation code (1008)
             if _blocked.is_set():

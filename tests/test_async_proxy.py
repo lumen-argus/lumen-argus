@@ -712,6 +712,160 @@ class TestAsyncProxyWebSocketHooks(unittest.TestCase):
         asyncio.run(_test())
 
 
+class TestAsyncProxyWebSocketRelay(unittest.TestCase):
+    """E2E tests for WebSocket relay with policy enforcement."""
+
+    @classmethod
+    def setUpClass(cls):
+        import tempfile
+
+        cls.tmpdir = tempfile.mkdtemp()
+
+    def _create_proxy(self, default_action="alert", action_overrides=None):
+        from lumen_argus.ws_proxy import WebSocketScanner
+        from lumen_argus.detectors.secrets import SecretsDetector
+        from lumen_argus.allowlist import AllowlistMatcher
+        from lumen_argus.extensions import ExtensionRegistry
+
+        pipeline = ScannerPipeline(
+            default_action=default_action,
+            action_overrides=action_overrides or {},
+        )
+        port = _get_free_port()
+        proxy = AsyncArgusProxy(
+            bind="127.0.0.1",
+            port=port,
+            pipeline=pipeline,
+            router=ProviderRouter(),
+            audit=AuditLogger(log_dir=self.tmpdir),
+            display=TerminalDisplay(no_color=True),
+        )
+        proxy.ws_scanner = WebSocketScanner(
+            detectors=[SecretsDetector()],
+            allowlist=AllowlistMatcher(),
+            scan_outbound=True,
+            scan_inbound=True,
+        )
+        proxy.extensions = ExtensionRegistry()
+        return proxy, port
+
+    def test_clean_frame_forwarded(self):
+        """Clean text frame is relayed to upstream and back."""
+        proxy, proxy_port = self._create_proxy()
+        echo_port = _get_free_port()
+
+        async def _test():
+            async def echo_handler(request):
+                ws = aiohttp.web.WebSocketResponse()
+                await ws.prepare(request)
+                async for msg in ws:
+                    if msg.type == aiohttp.WSMsgType.TEXT:
+                        await ws.send_str("echo:" + msg.data)
+                return ws
+
+            echo_app = aiohttp.web.Application()
+            echo_app.router.add_get("/ws", echo_handler)
+            echo_runner = aiohttp.web.AppRunner(echo_app)
+            await echo_runner.setup()
+            await aiohttp.web.TCPSite(echo_runner, "127.0.0.1", echo_port).start()
+            await proxy.start()
+
+            session = aiohttp.ClientSession()
+            try:
+                url = "http://127.0.0.1:%d/ws?url=ws://127.0.0.1:%d/ws" % (proxy_port, echo_port)
+                ws = await session.ws_connect(url)
+                await ws.send_str("hello world")
+                msg = await asyncio.wait_for(ws.receive(), timeout=3)
+                self.assertEqual(msg.type, aiohttp.WSMsgType.TEXT)
+                self.assertEqual(msg.data, "echo:hello world")
+                await ws.close()
+            finally:
+                await session.close()
+                await asyncio.sleep(0.1)  # let relay coroutines finish
+                await proxy.stop()
+                await echo_runner.cleanup()
+
+        asyncio.run(_test())
+
+    def test_block_closes_connection(self):
+        """Frame with secret + block action closes the WS connection."""
+        proxy, proxy_port = self._create_proxy(default_action="block", action_overrides={"secrets": "block"})
+        echo_port = _get_free_port()
+
+        async def _test():
+            async def echo_handler(request):
+                ws = aiohttp.web.WebSocketResponse()
+                await ws.prepare(request)
+                async for msg in ws:
+                    if msg.type == aiohttp.WSMsgType.TEXT:
+                        await ws.send_str("echo:" + msg.data)
+                return ws
+
+            echo_app = aiohttp.web.Application()
+            echo_app.router.add_get("/ws", echo_handler)
+            echo_runner = aiohttp.web.AppRunner(echo_app)
+            await echo_runner.setup()
+            await aiohttp.web.TCPSite(echo_runner, "127.0.0.1", echo_port).start()
+            await proxy.start()
+
+            session = aiohttp.ClientSession()
+            try:
+                url = "http://127.0.0.1:%d/ws?url=ws://127.0.0.1:%d/ws" % (proxy_port, echo_port)
+                ws = await session.ws_connect(url)
+                await ws.send_str("key=AKIAIOSFODNN7EXAMPLE")
+                msg = await asyncio.wait_for(ws.receive(), timeout=3)
+                # Block should close the connection
+                self.assertIn(
+                    msg.type,
+                    (aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR),
+                )
+            finally:
+                await session.close()
+                await asyncio.sleep(0.1)
+                await proxy.stop()
+                await echo_runner.cleanup()
+
+        asyncio.run(_test())
+
+    def test_alert_forwards_frame(self):
+        """Frame with secret + alert action is forwarded (not blocked)."""
+        proxy, proxy_port = self._create_proxy(default_action="alert", action_overrides={"secrets": "alert"})
+        echo_port = _get_free_port()
+
+        async def _test():
+            async def echo_handler(request):
+                ws = aiohttp.web.WebSocketResponse()
+                await ws.prepare(request)
+                async for msg in ws:
+                    if msg.type == aiohttp.WSMsgType.TEXT:
+                        await ws.send_str("echo:" + msg.data)
+                return ws
+
+            echo_app = aiohttp.web.Application()
+            echo_app.router.add_get("/ws", echo_handler)
+            echo_runner = aiohttp.web.AppRunner(echo_app)
+            await echo_runner.setup()
+            await aiohttp.web.TCPSite(echo_runner, "127.0.0.1", echo_port).start()
+            await proxy.start()
+
+            session = aiohttp.ClientSession()
+            try:
+                url = "http://127.0.0.1:%d/ws?url=ws://127.0.0.1:%d/ws" % (proxy_port, echo_port)
+                ws = await session.ws_connect(url)
+                await ws.send_str("key=AKIAIOSFODNN7EXAMPLE")
+                msg = await asyncio.wait_for(ws.receive(), timeout=3)
+                self.assertEqual(msg.type, aiohttp.WSMsgType.TEXT)
+                self.assertIn("AKIAIOSFODNN7EXAMPLE", msg.data)
+                await ws.close()
+            finally:
+                await session.close()
+                await asyncio.sleep(0.1)
+                await proxy.stop()
+                await echo_runner.cleanup()
+
+        asyncio.run(_test())
+
+
 class TestWebSocketPolicyEnforcement(unittest.TestCase):
     """Unit tests for WebSocket policy enforcement logic."""
 
