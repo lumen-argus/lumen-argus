@@ -104,6 +104,13 @@ class MCPConfig:
     blocked_tools: List[str] = field(default_factory=list)  # deny-list
     env_filter: bool = True  # restrict subprocess environment
     env_allowlist: List[str] = field(default_factory=list)  # additional safe vars
+    request_tracking: bool = True  # confused deputy protection
+    unsolicited_response_action: str = "warn"  # warn|block
+    scan_tool_descriptions: bool = True  # poisoning detection
+    detect_drift: bool = True  # rug-pull detection
+    drift_action: str = "alert"  # alert|block
+    session_binding: bool = False  # tool inventory validation (opt-in)
+    unknown_tool_action: str = "warn"  # warn|block
 
 
 @dataclass
@@ -915,6 +922,20 @@ def _apply_config(config: Config, data: dict) -> None:
             config.mcp.env_filter = bool(mcp_data["env_filter"])
         if "env_allowlist" in mcp_data and isinstance(mcp_data["env_allowlist"], list):
             config.mcp.env_allowlist = [str(v) for v in mcp_data["env_allowlist"]]
+        if "request_tracking" in mcp_data:
+            config.mcp.request_tracking = bool(mcp_data["request_tracking"])
+        if "unsolicited_response_action" in mcp_data:
+            config.mcp.unsolicited_response_action = str(mcp_data["unsolicited_response_action"])
+        if "scan_tool_descriptions" in mcp_data:
+            config.mcp.scan_tool_descriptions = bool(mcp_data["scan_tool_descriptions"])
+        if "detect_drift" in mcp_data:
+            config.mcp.detect_drift = bool(mcp_data["detect_drift"])
+        if "drift_action" in mcp_data:
+            config.mcp.drift_action = str(mcp_data["drift_action"])
+        if "session_binding" in mcp_data:
+            config.mcp.session_binding = bool(mcp_data["session_binding"])
+        if "unknown_tool_action" in mcp_data:
+            config.mcp.unknown_tool_action = str(mcp_data["unknown_tool_action"])
 
     # Pipeline stages
     pipeline = data.get("pipeline", {})

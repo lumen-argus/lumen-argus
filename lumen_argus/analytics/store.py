@@ -91,6 +91,18 @@ CREATE INDEX IF NOT EXISTS idx_mcp_calls_session ON mcp_tool_calls(session_id, t
 CREATE INDEX IF NOT EXISTS idx_mcp_calls_ts ON mcp_tool_calls(timestamp);
 """
 
+_MCP_TOOL_BASELINES_SCHEMA = """\
+CREATE TABLE IF NOT EXISTS mcp_tool_baselines (
+    tool_name TEXT PRIMARY KEY,
+    definition_hash TEXT NOT NULL,
+    description TEXT,
+    param_names TEXT,
+    first_seen TEXT NOT NULL,
+    last_seen TEXT NOT NULL,
+    drift_count INTEGER DEFAULT 0
+);
+"""
+
 # Community-editable config keys with validation rules
 _VALID_CONFIG_KEYS = {
     "proxy.timeout",
@@ -155,6 +167,7 @@ class AnalyticsStore:
             conn.executescript(_MCP_TOOL_LISTS_SCHEMA)
             conn.executescript(_MCP_DETECTED_TOOLS_SCHEMA)
             conn.executescript(_MCP_TOOL_CALLS_SCHEMA)
+            conn.executescript(_MCP_TOOL_BASELINES_SCHEMA)
             conn.executescript(_WS_CONNECTIONS_SCHEMA)
         # Secure file permissions — same 0o600 as audit JSONL files
         try:
@@ -709,6 +722,53 @@ class AnalyticsStore:
         if deleted:
             log.info("mcp tool calls cleanup: %d entries deleted (older than %d days)", deleted, retention_days)
         return deleted
+
+    # --- MCP Tool Baselines (drift detection) ---
+
+    def get_mcp_tool_baseline(self, tool_name):
+        """Get stored baseline for a tool. Returns dict or None."""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT tool_name, definition_hash, description, param_names, "
+                "first_seen, last_seen, drift_count FROM mcp_tool_baselines WHERE tool_name = ?",
+                (tool_name,),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def record_mcp_tool_baseline(self, tool_name, definition_hash, description, param_names):
+        """Insert or replace a tool baseline."""
+        import json as _json
+
+        now = self._now()
+        params_json = _json.dumps(param_names)
+        with self._lock:
+            with self._connect() as conn:
+                conn.execute(
+                    "INSERT INTO mcp_tool_baselines (tool_name, definition_hash, description, "
+                    "param_names, first_seen, last_seen, drift_count) VALUES (?, ?, ?, ?, ?, ?, 0) "
+                    "ON CONFLICT(tool_name) DO UPDATE SET definition_hash=excluded.definition_hash, "
+                    "description=excluded.description, param_names=excluded.param_names, last_seen=excluded.last_seen",
+                    (tool_name, definition_hash, description, params_json, now, now),
+                )
+
+    def update_mcp_tool_baseline_seen(self, tool_name):
+        """Update last_seen timestamp for a tool baseline."""
+        now = self._now()
+        with self._lock:
+            with self._connect() as conn:
+                conn.execute(
+                    "UPDATE mcp_tool_baselines SET last_seen = ? WHERE tool_name = ?",
+                    (now, tool_name),
+                )
+
+    def increment_mcp_tool_drift_count(self, tool_name):
+        """Increment drift_count for a tool that changed."""
+        with self._lock:
+            with self._connect() as conn:
+                conn.execute(
+                    "UPDATE mcp_tool_baselines SET drift_count = drift_count + 1 WHERE tool_name = ?",
+                    (tool_name,),
+                )
 
     # --- Private helper kept for backward compat (used by channels internally) ---
 

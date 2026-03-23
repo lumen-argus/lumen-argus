@@ -1176,6 +1176,29 @@ def _run_mcp(args):
     action_override = getattr(args, "action", None)
     action = action_override or config.pipeline.mcp_arguments.action or config.default_action
 
+    # Phase 2 security features
+    request_tracker = None
+    if mcp_cfg and mcp_cfg.request_tracking:
+        from lumen_argus.mcp.request_tracker import RequestTracker
+
+        request_tracker = RequestTracker(action=mcp_cfg.unsolicited_response_action)
+
+    session_binding_obj = None
+    if mcp_cfg and mcp_cfg.session_binding:
+        from lumen_argus.mcp.session_binding import SessionBinding
+
+        session_binding_obj = SessionBinding(action=mcp_cfg.unknown_tool_action)
+
+    # Analytics store for drift detection
+    mcp_store = None
+    if mcp_cfg and mcp_cfg.detect_drift and config.analytics.enabled:
+        try:
+            from lumen_argus.analytics.store import AnalyticsStore
+
+            mcp_store = AnalyticsStore(db_path=os.path.expanduser(config.analytics.db_path))
+        except Exception as e:
+            log.warning("mcp: could not open store for drift detection: %s", e)
+
     scanner = MCPScanner(
         detectors=detectors,
         allowlist=allowlist,
@@ -1185,6 +1208,12 @@ def _run_mcp(args):
         allowed_tools=allowed_tools,
         blocked_tools=blocked_tools,
         action=action,
+        request_tracker=request_tracker,
+        session_binding=session_binding_obj,
+        scan_tool_descriptions=mcp_cfg.scan_tool_descriptions if mcp_cfg else True,
+        detect_drift=mcp_cfg.detect_drift if mcp_cfg else True,
+        drift_action=mcp_cfg.drift_action if mcp_cfg else "alert",
+        store=mcp_store,
     )
 
     # Dispatch to appropriate transport mode

@@ -123,6 +123,12 @@ class MCPScanner:
         allowed_tools: Optional[Set[str]] = None,
         blocked_tools: Optional[Set[str]] = None,
         action: str = "alert",
+        request_tracker=None,
+        session_binding=None,
+        scan_tool_descriptions: bool = True,
+        detect_drift: bool = True,
+        drift_action: str = "alert",
+        store=None,
     ):
         self._detectors = detectors or []
         self._allowlist = allowlist
@@ -132,6 +138,13 @@ class MCPScanner:
         self._allowed_tools = allowed_tools
         self._blocked_tools = blocked_tools
         self._action = action
+        # Phase 2 security features
+        self.request_tracker = request_tracker
+        self.session_binding = session_binding
+        self._scan_tool_descriptions = scan_tool_descriptions
+        self._detect_drift = detect_drift
+        self._drift_action = drift_action
+        self._store = store  # for drift detection DB access
 
     def is_tool_allowed(self, tool_name: str) -> bool:
         """Check if a tool is allowed based on allow/block lists."""
@@ -262,5 +275,50 @@ class MCPScanner:
 
         if findings:
             log.info("mcp: %d finding(s) in tool response", len(findings))
+
+        return findings
+
+    def process_tools_list(self, tools: list) -> List[Finding]:
+        """Process a tools/list response: poisoning scan, drift check, session binding.
+
+        Args:
+            tools: List of tool dicts (name, description, inputSchema).
+
+        Returns:
+            List of findings from poisoning detection.
+        """
+        findings = []
+
+        # Poisoning detection
+        if self._scan_tool_descriptions:
+            from lumen_argus.mcp.tool_scanner import scan_tool_descriptions
+
+            findings.extend(scan_tool_descriptions(tools, action=self._action))
+
+        # Drift detection
+        if self._detect_drift and self._store:
+            from lumen_argus.mcp.tool_scanner import check_tool_drift
+
+            try:
+                drifted = check_tool_drift(tools, self._store)
+                for tool_name, summary in drifted:
+                    findings.append(
+                        Finding(
+                            detector="mcp_tool_drift",
+                            type="tool_drift",
+                            severity="high",
+                            location="mcp.tools/list.%s" % tool_name,
+                            value_preview=summary[:80],
+                            matched_value=summary,
+                            action=self._drift_action,
+                        )
+                    )
+            except Exception as e:
+                log.warning("mcp: drift detection failed: %s", e)
+
+        # Session binding
+        if self.session_binding:
+            tool_names = [t.get("name", "") for t in tools if t.get("name")]
+            self.session_binding.set_baseline(tool_names)
 
         return findings

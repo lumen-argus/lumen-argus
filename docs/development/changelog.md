@@ -4,6 +4,21 @@ All notable changes to lumen-argus are documented here.
 
 ## 0.6.0 (2026-03-23)
 
+### MCP Security Hardening (Phase 2)
+
+- Confused deputy protection: `RequestTracker` tracks outbound request IDs, rejects unsolicited
+  responses from MCP servers (FIFO eviction at 10K, seeding gate, configurable warn/block)
+- Tool description poisoning detection: 7 pattern categories (instruction tags, file exfiltration,
+  cross-tool manipulation, dangerous exec, download+exec, script injection, command injection)
+- Tool drift/rug-pull detection: SHA-256 baselines in `mcp_tool_baselines` DB table, human-readable
+  diff summary on change (description length, added text, parameter changes)
+- Session binding: validates `tools/call` against tool inventory from first `tools/list` response
+  (opt-in via `mcp.session_binding`, 10K tool cap, configurable warn/block)
+- All 4 proxy modes (stdio, HTTP bridge, HTTP listener, WS bridge) wired with all security features
+- Config: `mcp.request_tracking`, `mcp.unsolicited_response_action`, `mcp.scan_tool_descriptions`,
+  `mcp.detect_drift`, `mcp.drift_action`, `mcp.session_binding`, `mcp.unknown_tool_action`
+- 31 new tests (935 total)
+
 ### MCP Proxy Unification (Phase 1)
 
 - Unified `lumen-argus mcp` subcommand replaces `mcp-wrap` with flag-based transport modes

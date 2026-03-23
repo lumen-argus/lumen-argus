@@ -102,6 +102,21 @@ async def run_stdio_proxy(
                 msg_id = m.get("id")
 
                 if method == "tools/call":
+                    # Session binding check
+                    tool_name = m.get("params", {}).get("name", "")
+                    if scanner.session_binding and not scanner.session_binding.validate_tool(tool_name):
+                        if scanner.session_binding.should_block:
+                            error_resp = {
+                                "jsonrpc": "2.0",
+                                "id": msg_id,
+                                "error": {
+                                    "code": -32600,
+                                    "message": "Tool '%s' not in session baseline" % tool_name,
+                                },
+                            }
+                            await _write_stdout(json.dumps(error_resp).encode() + b"\n")
+                            continue
+
                     findings = scanner.scan_request(m)
                     if findings and action == "block":
                         error_resp = {
@@ -116,10 +131,14 @@ async def run_stdio_proxy(
                     else:
                         if msg_id is not None:
                             pending_requests[msg_id] = "tools/call"
+                        if scanner.request_tracker:
+                            scanner.request_tracker.track(msg_id)
                         forward.append(m)
                 else:
                     if msg_id is not None and method:
                         pending_requests[msg_id] = method
+                    if scanner.request_tracker:
+                        scanner.request_tracker.track(msg_id)
                     forward.append(m)
 
             if forward:
@@ -148,23 +167,32 @@ async def run_stdio_proxy(
                 await _write_stdout(line)
                 continue
 
-            messages = msg if isinstance(msg, list) else [msg]
+            # MCP uses single messages per line (not JSON-RPC batches)
+            if not isinstance(msg, dict):
+                await _write_stdout(line)
+                continue
 
-            for m in messages:
-                if isinstance(m, dict) and "result" in m:
-                    msg_id = m.get("id")
-                    req_method = pending_requests.pop(msg_id, "")
-                    if req_method == "tools/call":
-                        findings = scanner.scan_response(m, req_method)
-                        if findings:
-                            log.debug("mcp response findings: %d", len(findings))
-                    elif req_method == "tools/list":
-                        tools = m.get("result", {}).get("tools", [])
-                        if isinstance(tools, list):
-                            log.debug("mcp: tools/list response: %d tools", len(tools))
+            msg_id = msg.get("id")
+
+            # Confused deputy check
+            if scanner.request_tracker and "result" in msg:
+                if not scanner.request_tracker.validate(msg_id):
+                    if scanner.request_tracker.should_block:
+                        continue  # drop unsolicited response
+
+            if "result" in msg:
+                req_method = pending_requests.pop(msg_id, "")
+                if req_method == "tools/call":
+                    findings = scanner.scan_response(msg, req_method)
+                    if findings:
+                        log.debug("mcp response findings: %d", len(findings))
+                elif req_method == "tools/list":
+                    tools = msg.get("result", {}).get("tools", [])
+                    if isinstance(tools, list):
+                        log.debug("mcp: tools/list response: %d tools", len(tools))
+                        scanner.process_tools_list(tools)
 
             await _write_stdout(line)
-            sys.stdout.buffer.flush()
 
     async def _relay_stderr():
         """Pipe subprocess stderr to our stderr."""
@@ -229,6 +257,21 @@ async def run_http_bridge(
                     msg_id = msg.get("id")
 
                     if method == "tools/call":
+                        tool_name = msg.get("params", {}).get("name", "")
+                        if scanner.session_binding and not scanner.session_binding.validate_tool(tool_name):
+                            if scanner.session_binding.should_block:
+                                error_resp = {
+                                    "jsonrpc": "2.0",
+                                    "id": msg_id,
+                                    "error": {
+                                        "code": -32600,
+                                        "message": "Tool '%s' not in session baseline" % tool_name,
+                                    },
+                                }
+                                sys.stdout.buffer.write(json.dumps(error_resp).encode() + b"\n")
+                                sys.stdout.buffer.flush()
+                                continue
+
                         findings = scanner.scan_request(msg)
                         if findings and action == "block":
                             error_resp = {
@@ -245,6 +288,8 @@ async def run_http_bridge(
 
                     if msg_id is not None and method:
                         pending_requests[msg_id] = method
+                    if scanner.request_tracker:
+                        scanner.request_tracker.track(msg_id)
 
                 # POST to upstream
                 resp_data = await transport.send_and_receive(data)
@@ -252,24 +297,33 @@ async def run_http_bridge(
                     continue
 
                 # Scan response
+                should_forward = True
                 try:
                     resp_msg = json.loads(resp_data)
-                    if isinstance(resp_msg, dict) and "result" in resp_msg:
+                    if isinstance(resp_msg, dict):
                         resp_id = resp_msg.get("id")
-                        req_method = pending_requests.pop(resp_id, "")
-                        if req_method == "tools/call":
-                            findings = scanner.scan_response(resp_msg, req_method)
-                            if findings:
-                                log.debug("mcp response findings: %d", len(findings))
-                        elif req_method == "tools/list":
-                            tools = resp_msg.get("result", {}).get("tools", [])
-                            if isinstance(tools, list):
-                                log.debug("mcp: tools/list response: %d tools", len(tools))
+                        # Confused deputy check
+                        if scanner.request_tracker and "result" in resp_msg:
+                            if not scanner.request_tracker.validate(resp_id):
+                                if scanner.request_tracker.should_block:
+                                    should_forward = False
+                        if "result" in resp_msg and should_forward:
+                            req_method = pending_requests.pop(resp_id, "")
+                            if req_method == "tools/call":
+                                findings = scanner.scan_response(resp_msg, req_method)
+                                if findings:
+                                    log.debug("mcp response findings: %d", len(findings))
+                            elif req_method == "tools/list":
+                                tools = resp_msg.get("result", {}).get("tools", [])
+                                if isinstance(tools, list):
+                                    log.debug("mcp: tools/list response: %d tools", len(tools))
+                                    scanner.process_tools_list(tools)
                 except (json.JSONDecodeError, ValueError):
                     pass
 
-                sys.stdout.buffer.write(resp_data + b"\n")
-                sys.stdout.buffer.flush()
+                if should_forward:
+                    sys.stdout.buffer.write(resp_data + b"\n")
+                    sys.stdout.buffer.flush()
 
         except Exception as e:
             log.error("mcp http bridge error: %s", e)
@@ -343,7 +397,21 @@ async def run_http_listener(
 
         # Scan request
         msg_id = msg.get("id") if isinstance(msg, dict) else None
-        if isinstance(msg, dict) and msg.get("method") == "tools/call":
+        method = msg.get("method", "") if isinstance(msg, dict) else ""
+
+        if isinstance(msg, dict) and method == "tools/call":
+            tool_name = msg.get("params", {}).get("name", "")
+            if scanner.session_binding and not scanner.session_binding.validate_tool(tool_name):
+                if scanner.session_binding.should_block:
+                    return web.json_response(
+                        {
+                            "jsonrpc": "2.0",
+                            "id": msg_id,
+                            "error": {"code": -32600, "message": "Tool '%s' not in session baseline" % tool_name},
+                        },
+                        status=400,
+                    )
+
             findings = scanner.scan_request(msg)
             if findings and action == "block":
                 return web.json_response(
@@ -358,6 +426,9 @@ async def run_http_listener(
                     status=400,
                 )
 
+        if scanner.request_tracker:
+            scanner.request_tracker.track(msg_id)
+
         # Forward to upstream
         resp_data = await upstream.send_and_receive(body)
         if resp_data is None:
@@ -366,10 +437,26 @@ async def run_http_listener(
         # Scan response
         try:
             resp_msg = json.loads(resp_data)
-            if isinstance(resp_msg, dict) and "result" in resp_msg:
-                method = msg.get("method", "") if isinstance(msg, dict) else ""
-                if method == "tools/call":
-                    scanner.scan_response(resp_msg, method)
+            if isinstance(resp_msg, dict):
+                resp_id = resp_msg.get("id")
+                if scanner.request_tracker and "result" in resp_msg:
+                    if not scanner.request_tracker.validate(resp_id):
+                        if scanner.request_tracker.should_block:
+                            return web.json_response(
+                                {
+                                    "jsonrpc": "2.0",
+                                    "id": resp_id,
+                                    "error": {"code": -32600, "message": "Unsolicited response rejected"},
+                                },
+                                status=400,
+                            )
+                if "result" in resp_msg:
+                    if method == "tools/call":
+                        scanner.scan_response(resp_msg, method)
+                    elif method == "tools/list":
+                        tools = resp_msg.get("result", {}).get("tools", [])
+                        if isinstance(tools, list):
+                            scanner.process_tools_list(tools)
         except (json.JSONDecodeError, ValueError):
             pass
 
@@ -453,6 +540,21 @@ async def run_ws_bridge(
                         msg_id = msg.get("id")
 
                         if method == "tools/call":
+                            tool_name = msg.get("params", {}).get("name", "")
+                            if scanner.session_binding and not scanner.session_binding.validate_tool(tool_name):
+                                if scanner.session_binding.should_block:
+                                    error_resp = {
+                                        "jsonrpc": "2.0",
+                                        "id": msg_id,
+                                        "error": {
+                                            "code": -32600,
+                                            "message": "Tool '%s' not in session baseline" % tool_name,
+                                        },
+                                    }
+                                    sys.stdout.buffer.write(json.dumps(error_resp).encode() + b"\n")
+                                    sys.stdout.buffer.flush()
+                                    continue
+
                             findings = scanner.scan_request(msg)
                             if findings and action == "block":
                                 error_resp = {
@@ -469,6 +571,8 @@ async def run_ws_bridge(
 
                         if msg_id is not None and method:
                             pending_requests[msg_id] = method
+                        if scanner.request_tracker:
+                            scanner.request_tracker.track(msg_id)
 
                     await ws_transport.write_message(data)
 
@@ -481,25 +585,33 @@ async def run_ws_bridge(
                     if data is None:
                         break
                     line_str = data.decode("utf-8", errors="ignore")
+                    blocked = False
 
                     try:
                         msg = json.loads(line_str)
-                        if isinstance(msg, dict) and "result" in msg:
+                        if isinstance(msg, dict):
                             msg_id = msg.get("id")
-                            req_method = pending_requests.pop(msg_id, "")
-                            if req_method == "tools/call":
-                                findings = scanner.scan_response(msg, req_method)
-                                if findings:
-                                    log.debug("mcp response findings: %d", len(findings))
-                            elif req_method == "tools/list":
-                                tools = msg.get("result", {}).get("tools", [])
-                                if isinstance(tools, list):
-                                    log.debug("mcp: tools/list response: %d tools", len(tools))
+                            if scanner.request_tracker and "result" in msg:
+                                if not scanner.request_tracker.validate(msg_id):
+                                    if scanner.request_tracker.should_block:
+                                        blocked = True
+                            if "result" in msg and not blocked:
+                                req_method = pending_requests.pop(msg_id, "")
+                                if req_method == "tools/call":
+                                    findings = scanner.scan_response(msg, req_method)
+                                    if findings:
+                                        log.debug("mcp response findings: %d", len(findings))
+                                elif req_method == "tools/list":
+                                    tools = msg.get("result", {}).get("tools", [])
+                                    if isinstance(tools, list):
+                                        log.debug("mcp: tools/list response: %d tools", len(tools))
+                                        scanner.process_tools_list(tools)
                     except (json.JSONDecodeError, ValueError):
                         pass
 
-                    sys.stdout.buffer.write(data + b"\n")
-                    sys.stdout.buffer.flush()
+                    if not blocked:
+                        sys.stdout.buffer.write(data + b"\n")
+                        sys.stdout.buffer.flush()
 
             done, pending = await asyncio.wait(
                 [
