@@ -32,16 +32,16 @@ document.getElementById('export-csv').addEventListener('click',function(){export
 document.getElementById('export-json').addEventListener('click',function(){exportFindings('json')});
 
 /* TIME RANGE TOGGLE */
-var trendDays=parseInt(localStorage.getItem('lumen_trend_days'))||30;
+var trendDays=Number.parseInt(localStorage.getItem('lumen_trend_days'))||30;
 (function initRange(){
   var btns=document.querySelectorAll('#range-toggle .range-btn');
   btns.forEach(function(b){
-    if(parseInt(b.getAttribute('data-days'))===trendDays)
+    if(Number.parseInt(b.getAttribute('data-days'))===trendDays)
       {b.classList.add('active');}else{b.classList.remove('active');}
     b.addEventListener('click',function(){
       btns.forEach(function(x){x.classList.remove('active')});
       b.classList.add('active');
-      trendDays=parseInt(b.getAttribute('data-days'));
+      trendDays=Number.parseInt(b.getAttribute('data-days'));
       localStorage.setItem('lumen_trend_days',String(trendDays));
       document.getElementById('trend-title').textContent=trendDays+'-day trend';
       _forceProCharts=true;loadData();

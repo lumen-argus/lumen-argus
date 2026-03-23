@@ -213,7 +213,7 @@ SECRETS_PATTERNS = (
     ),
     SecretPattern(
         "generic_api_key",
-        re.compile(r"(?i)(?:api[_\-]?key|apikey|secret[_\-]?key)\s*[:=]\s*['\"]([^'\"]{16,})['\"]"),
+        re.compile(r"(?i)(?:api[_\-]?key|secret[_\-]?key)\s*[:=]\s*['\"]([^'\"]{16,})['\"]"),
         "high",
         True,
     ),

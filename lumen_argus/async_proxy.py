@@ -343,7 +343,8 @@ async def _handle_health(request: web.Request) -> web.Response:
     health_hook = server.extensions.get_health_hook() if server.extensions else None
     if health_hook:
         try:
-            data.update(health_hook())
+            extra = await asyncio.to_thread(health_hook)
+            data.update(extra)
         except Exception:
             pass
     return web.json_response(data)
@@ -358,7 +359,7 @@ async def _handle_metrics(request: web.Request) -> web.Response:
     metrics_hook = server.extensions.get_metrics_hook() if server.extensions else None
     if metrics_hook:
         try:
-            extra = metrics_hook()
+            extra = await asyncio.to_thread(metrics_hook)
             if extra:
                 text += extra
         except Exception:
