@@ -61,6 +61,7 @@ class ExtensionRegistry:
         self._response_scan_hook = None  # type: Optional[Callable]
         self._ws_connection_hook = None  # type: Optional[Callable]
         self._rule_metrics_collector = None  # type: Optional[object]
+        self._accelerator_factory = None  # type: Optional[Callable]
 
     def add_detector(self, detector: BaseDetector, priority: bool = False) -> None:
         """Register an additional detector.
@@ -321,6 +322,18 @@ class ExtensionRegistry:
 
     def get_ws_connection_hook(self) -> Optional[Callable]:
         return self._ws_connection_hook
+
+    def set_accelerator_factory(self, factory) -> None:
+        """Register a factory callable that returns an accelerator instance.
+
+        Factory signature: factory() -> accelerator
+        Accelerator must implement: build(compiled_rules), filter(text) -> Set[int],
+        filter_ratio(candidates) -> float, available (property), stats (property)
+        """
+        self._accelerator_factory = factory
+
+    def get_accelerator_factory(self):
+        return self._accelerator_factory
 
     def set_rule_metrics_collector(self, collector) -> None:
         """Register a rule metrics collector for Pro performance dashboard.

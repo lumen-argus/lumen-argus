@@ -20,6 +20,9 @@ All notable changes to lumen-argus are documented here.
 - `RulesDetector.set_parallel(bool)` for runtime toggle from Pipeline page
 - Pipeline page: "Parallel rule evaluation" toggle in Advanced section
 - Config: `pipeline.parallel_batching` in YAML + DB overrides, applied at startup and SIGHUP
+- Accelerator factory hook: `extensions.set_accelerator_factory(factory)` — Pro/Enterprise
+  can swap Aho-Corasick with a custom pre-filter engine (e.g., Hyperscan/Vectorscan);
+  graceful fallback if factory raises
 
 ## 0.5.0 (2026-03-22)
 

@@ -127,22 +127,43 @@ class RulesDetector(BaseDetector):
     # Below this threshold, thread pool overhead outweighs the benefit.
     _PARALLEL_THRESHOLD = 50
 
-    def __init__(self, store=None, license_checker=None, metrics_collector=None, parallel=False):
+    def __init__(
+        self, store=None, license_checker=None, metrics_collector=None, parallel=False, accelerator_factory=None
+    ):
         self._store = store
         self._license = license_checker
         self._metrics = metrics_collector
+        self._accelerator_factory = accelerator_factory
         self._parallel = parallel
         self._pool = None  # type: ThreadPoolExecutor | None
         if parallel:
             self._pool = ThreadPoolExecutor(max_workers=4)
         self._compiled_rules = []  # type: list
-        self._accelerator = AhoCorasickAccelerator()
+        self._accelerator = self._new_accelerator()
         # In-memory hit count accumulation: {rule_name: count}
         self._hit_counts = {}  # type: dict
         self._hit_counts_lock = threading.Lock()
         self._last_flush = time.monotonic()
         if store:
             self.reload()
+
+    def _new_accelerator(self):
+        """Create a new accelerator via factory or default AhoCorasickAccelerator.
+
+        The returned object must implement:
+          build(compiled_rules: List[dict]) -> None
+          filter(text: str) -> Set[int]
+          filter_ratio(candidates: Set[int]) -> float
+          available: bool (property)
+          stats: dict (property)
+        """
+        factory = self._accelerator_factory
+        if factory:
+            try:
+                return factory()
+            except Exception as exc:
+                log.warning("accelerator_factory raised %s, falling back to AhoCorasickAccelerator", exc)
+        return AhoCorasickAccelerator()
 
     def reload(self):
         """Reload rules from DB, compile patterns, and rebuild accelerator."""
@@ -184,7 +205,7 @@ class RulesDetector(BaseDetector):
 
         # Build new accelerator, then swap both atomically.
         # scan() snapshots both — they must be consistent.
-        new_acc = AhoCorasickAccelerator()
+        new_acc = self._new_accelerator()
         new_acc.build(compiled)
         self._accelerator = new_acc
         self._compiled_rules = compiled
@@ -261,7 +282,7 @@ class RulesDetector(BaseDetector):
             return
         if change_type == "delete":
             new_rules = [r for r in self._compiled_rules if r["name"] != rule_name]
-            new_acc = AhoCorasickAccelerator()
+            new_acc = self._new_accelerator()
             new_acc.build(new_rules)
             self._accelerator = new_acc
             self._compiled_rules = new_rules
@@ -272,7 +293,7 @@ class RulesDetector(BaseDetector):
         rule = self._store.get_rule_by_name(rule_name)
         if rule is None or not rule.get("enabled"):
             new_rules = [r for r in self._compiled_rules if r["name"] != rule_name]
-            new_acc = AhoCorasickAccelerator()
+            new_acc = self._new_accelerator()
             new_acc.build(new_rules)
             self._accelerator = new_acc
             self._compiled_rules = new_rules
@@ -280,7 +301,7 @@ class RulesDetector(BaseDetector):
         if rule.get("tier") == "pro":
             if self._license is None or not self._license.is_valid():
                 new_rules = [r for r in self._compiled_rules if r["name"] != rule_name]
-                new_acc = AhoCorasickAccelerator()
+                new_acc = self._new_accelerator()
                 new_acc.build(new_rules)
                 self._accelerator = new_acc
                 self._compiled_rules = new_rules
@@ -313,7 +334,7 @@ class RulesDetector(BaseDetector):
                 new_list.append(r)
         if not replaced:
             new_list.append(new_entry)
-        new_acc = AhoCorasickAccelerator()
+        new_acc = self._new_accelerator()
         new_acc.build(new_list)
         self._accelerator = new_acc
         self._compiled_rules = new_list
