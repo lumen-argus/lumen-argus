@@ -16,6 +16,7 @@ import logging
 import re
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import List
 
 from lumen_argus.allowlist import AllowlistMatcher
@@ -122,10 +123,15 @@ class RulesDetector(BaseDetector):
     - In-memory hit count accumulation with periodic batch flush
     """
 
-    def __init__(self, store=None, license_checker=None, metrics_collector=None):
+    # Minimum candidates to trigger parallel evaluation.
+    # Below this threshold, thread pool overhead outweighs the benefit.
+    _PARALLEL_THRESHOLD = 50
+
+    def __init__(self, store=None, license_checker=None, metrics_collector=None, parallel=False):
         self._store = store
         self._license = license_checker
         self._metrics = metrics_collector
+        self._parallel = parallel
         self._compiled_rules = []  # type: list
         self._accelerator = AhoCorasickAccelerator()
         # In-memory hit count accumulation: {rule_name: count}
@@ -219,6 +225,14 @@ class RulesDetector(BaseDetector):
         if time.monotonic() - self._last_flush >= _HIT_COUNT_FLUSH_INTERVAL:
             self._flush_hit_counts()
 
+    def set_parallel(self, enabled: bool) -> None:
+        """Enable or disable parallel rule evaluation at runtime.
+
+        Pro toggles this via the Pipeline dashboard page.
+        """
+        self._parallel = enabled
+        log.info("parallel rule evaluation: %s", "enabled" if enabled else "disabled")
+
     def on_rules_changed(self, change_type, rule_name=None):
         """Handle rule changes from store callback.
 
@@ -295,6 +309,56 @@ class RulesDetector(BaseDetector):
         self._accelerator = new_acc
         self._compiled_rules = new_list
 
+    def _eval_rule(self, rule, field, allowlist, metrics):
+        """Evaluate a single rule against a field. Returns list of findings.
+
+        Extracted for reuse by both sequential and parallel scan paths.
+        """
+        findings = []
+        t0 = time.monotonic() if metrics else 0
+
+        for match in rule["compiled"].finditer(field.text):
+            matched = (match.group(1) if match.lastindex else None) or match.group(0)
+            if not matched:
+                continue
+            if rule["validator"] and not rule["validator"](matched):
+                continue
+            if rule["detector"] == "secrets" and allowlist.is_allowed_secret(matched):
+                continue
+            if rule["detector"] == "pii" and allowlist.is_allowed_pii(matched):
+                continue
+            preview = matched[:4] + "****" if len(matched) > 4 else "****"
+            findings.append(
+                Finding(
+                    detector=rule["detector"],
+                    type=rule["name"],
+                    severity=rule["severity"],
+                    location=field.path,
+                    value_preview=preview,
+                    matched_value=matched,
+                    action=rule["action"],
+                )
+            )
+            self._record_hit(rule["name"])
+
+            if metrics:
+                elapsed_ms = (time.monotonic() - t0) * 1000
+                try:
+                    metrics.record(rule["name"], elapsed_ms)
+                except Exception:
+                    pass
+
+        return findings
+
+    def _eval_group(self, indices, compiled_rules, field, allowlist, metrics):
+        """Evaluate a group of rule indices against a field. Used by parallel path."""
+        group_findings = []
+        for idx in indices:
+            if idx >= len(compiled_rules):
+                continue
+            group_findings.extend(self._eval_rule(compiled_rules[idx], field, allowlist, metrics))
+        return group_findings
+
     def scan(self, fields: List[ScanField], allowlist: AllowlistMatcher) -> List[Finding]:
         """Scan fields against compiled rules with Aho-Corasick pre-filtering.
 
@@ -302,14 +366,16 @@ class RulesDetector(BaseDetector):
         1. Pre-filter: Aho-Corasick narrows candidates per field
         2. Hot-first: rules sorted by hit_count DESC (set at reload)
         3. Early termination: stop on first match for block action
+        4. Parallel batching: when enabled and candidates > threshold,
+           group by detector category and evaluate concurrently
         """
         findings = []
         compiled_rules = self._compiled_rules  # snapshot for thread safety
         accelerator = self._accelerator
         metrics = self._metrics
+        use_parallel = self._parallel
 
         for field in fields:
-            # Pre-filter: get candidate rule indices for this field's text
             candidates = accelerator.filter(field.text)
 
             if log.isEnabledFor(logging.DEBUG):
@@ -322,63 +388,74 @@ class RulesDetector(BaseDetector):
                     field.path,
                 )
 
-            for idx in candidates:
-                if idx >= len(compiled_rules):
+            # Parallel path: group candidates by detector, evaluate concurrently
+            if use_parallel and len(candidates) > self._PARALLEL_THRESHOLD:
+                field_findings = self._scan_field_parallel(candidates, compiled_rules, field, allowlist, metrics)
+                findings.extend(field_findings)
+                # Check for early termination on block
+                if any(f.action == "block" for f in field_findings):
+                    log.debug("early termination: block found in parallel scan for %s", field.path)
                     continue
-                rule = compiled_rules[idx]
-
-                t0 = time.monotonic() if metrics else 0
-
-                for match in rule["compiled"].finditer(field.text):
-                    # Prefer first capture group (the secret value) over
-                    # full match (which may include keyword prefix like "password=")
-                    matched = (match.group(1) if match.lastindex else None) or match.group(0)
-                    if not matched:
+            else:
+                # Sequential path (default)
+                field_blocked = False
+                for idx in candidates:
+                    if idx >= len(compiled_rules):
                         continue
-                    # Run validator if present
-                    if rule["validator"] and not rule["validator"](matched):
-                        continue
-                    # Check allowlist
-                    if rule["detector"] == "secrets" and allowlist.is_allowed_secret(matched):
-                        continue
-                    if rule["detector"] == "pii" and allowlist.is_allowed_pii(matched):
-                        continue
-                    preview = matched[:4] + "****" if len(matched) > 4 else "****"
-                    findings.append(
-                        Finding(
-                            detector=rule["detector"],
-                            type=rule["name"],
-                            severity=rule["severity"],
-                            location=field.path,
-                            value_preview=preview,
-                            matched_value=matched,
-                            action=rule["action"],
-                        )
-                    )
-                    # Record hit for hot-first ordering
-                    self._record_hit(rule["name"])
+                    rule = compiled_rules[idx]
+                    rule_findings = self._eval_rule(rule, field, allowlist, metrics)
 
-                    # Record metrics for Pro performance dashboard
-                    if metrics:
-                        elapsed_ms = (time.monotonic() - t0) * 1000
-                        try:
-                            metrics.record(rule["name"], elapsed_ms)
-                        except Exception:
-                            pass
-
-                    # Early termination: if this rule's action is block,
-                    # no need to check remaining rules for this field
-                    if rule["action"] == "block":
-                        log.debug(
-                            "early termination: block after match on '%s'",
-                            rule["name"],
-                        )
-                        break  # break inner finditer loop
-
-                else:
-                    # finditer loop completed without break — continue to next rule
+                    if rule_findings:
+                        findings.extend(rule_findings)
+                        if rule["action"] == "block":
+                            log.debug(
+                                "early termination: block after match on '%s'",
+                                rule["name"],
+                            )
+                            field_blocked = True
+                            break
+                if field_blocked:
                     continue
-                # finditer broke (block match) — break out of candidates loop too
-                break
 
         return findings
+
+    def _scan_field_parallel(self, candidates, compiled_rules, field, allowlist, metrics):
+        """Evaluate candidate rules in parallel, grouped by detector category.
+
+        Python's re module releases the GIL during C-level regex matching,
+        so threading provides real speedup for regex evaluation.
+        Free-threaded Python 3.13+ gives full parallelism.
+        """
+        groups = {}  # type: dict
+        for idx in candidates:
+            if idx >= len(compiled_rules):
+                continue
+            det = compiled_rules[idx].get("detector", "other")
+            if det not in groups:
+                groups[det] = []
+            groups[det].append(idx)
+
+        all_findings = []
+        with ThreadPoolExecutor(max_workers=min(len(groups), 4)) as pool:
+            futures = []
+            for group_indices in groups.values():
+                if group_indices:
+                    futures.append(
+                        pool.submit(self._eval_group, group_indices, compiled_rules, field, allowlist, metrics)
+                    )
+            for f in futures:
+                try:
+                    all_findings.extend(f.result())
+                except Exception as e:
+                    log.warning("parallel rule evaluation failed: %s", e)
+
+        if log.isEnabledFor(logging.DEBUG) and all_findings:
+            log.debug(
+                "parallel scan: %d findings from %d candidates (%d groups) for %s",
+                len(all_findings),
+                len(candidates),
+                len(groups),
+                field.path,
+            )
+
+        return all_findings

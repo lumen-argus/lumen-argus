@@ -608,5 +608,99 @@ class TestRulesChangeCallback(unittest.TestCase):
         self.assertNotIn("r1", names)
 
 
+class TestParallelBatching(unittest.TestCase):
+    """Tests for parallel rule evaluation."""
+
+    def setUp(self):
+        self._tmpdir = tempfile.mkdtemp()
+        self.store = AnalyticsStore(db_path=self._tmpdir + "/test.db")
+        # Create enough rules to exceed the parallel threshold
+        rules = []
+        for i in range(60):
+            rules.append(
+                {
+                    "name": "secret_%d" % i,
+                    "pattern": "SECRET_%d_[A-Z]{10}" % i,
+                    "detector": "secrets",
+                    "severity": "high",
+                }
+            )
+        for i in range(10):
+            rules.append(
+                {
+                    "name": "pii_%d" % i,
+                    "pattern": "PII_%d_[0-9]{8}" % i,
+                    "detector": "pii",
+                    "severity": "warning",
+                }
+            )
+        self.store.import_rules(rules, tier="community")
+
+    def tearDown(self):
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def test_parallel_produces_same_results_as_sequential(self):
+        """Parallel and sequential paths must produce identical findings."""
+        det_seq = RulesDetector(store=self.store, parallel=False)
+        det_par = RulesDetector(store=self.store, parallel=True)
+
+        text = "Found SECRET_5_ABCDEFGHIJ and PII_3_12345678 here"
+        fields = [ScanField(path="test", text=text)]
+        allowlist = AllowlistMatcher()
+
+        findings_seq = det_seq.scan(fields, allowlist)
+        findings_par = det_par.scan(fields, allowlist)
+
+        # Same findings (order may differ in parallel)
+        seq_types = sorted(f.type for f in findings_seq)
+        par_types = sorted(f.type for f in findings_par)
+        self.assertEqual(seq_types, par_types)
+        self.assertTrue(len(findings_seq) > 0)
+
+    def test_parallel_toggle_at_runtime(self):
+        """set_parallel() enables parallel mode at runtime."""
+        det = RulesDetector(store=self.store, parallel=False)
+        self.assertFalse(det._parallel)
+        det.set_parallel(True)
+        self.assertTrue(det._parallel)
+        det.set_parallel(False)
+        self.assertFalse(det._parallel)
+
+    def test_parallel_below_threshold_uses_sequential(self):
+        """When candidates < threshold, sequential path is used even with parallel=True."""
+        det = RulesDetector(store=self.store, parallel=True)
+        # Small text that matches very few rules — candidates will be below threshold
+        text = "nothing secret here"
+        fields = [ScanField(path="test", text=text)]
+        allowlist = AllowlistMatcher()
+        # Should not raise — just runs sequential
+        findings = det.scan(fields, allowlist)
+        self.assertEqual(len(findings), 0)
+
+    def test_parallel_early_termination_on_block(self):
+        """Block finding in parallel scan triggers early termination for the field."""
+        # Add a block rule
+        self.store.import_rules(
+            [
+                {
+                    "name": "block_rule",
+                    "pattern": "BLOCK_THIS_NOW",
+                    "detector": "secrets",
+                    "severity": "critical",
+                    "action": "block",
+                }
+            ],
+            tier="community",
+        )
+        det = RulesDetector(store=self.store, parallel=True)
+        text = "BLOCK_THIS_NOW and SECRET_5_ABCDEFGHIJ"
+        fields = [ScanField(path="test", text=text)]
+        allowlist = AllowlistMatcher()
+        findings = det.scan(fields, allowlist)
+        # Should have findings — block rule detected
+        block_findings = [f for f in findings if f.action == "block"]
+        self.assertTrue(len(block_findings) > 0)
+
+
 if __name__ == "__main__":
     unittest.main()
