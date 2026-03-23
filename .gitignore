@@ -15,3 +15,5 @@ venv/
 site/
 CLAUDE.md
 lumen-argus-spec.md
+docker-compose.override.yml
+config.yaml
