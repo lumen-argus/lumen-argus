@@ -275,6 +275,7 @@ class ScannerPipeline:
         custom_rules: list = None,
         dedup_config: dict = None,
         pipeline_config: dict = None,
+        rebuild_delay: float = 2.0,
     ):
         self._extractor = RequestExtractor()
         self._reload_lock = threading.Lock()  # Protects reference swaps for free-threaded Python
@@ -319,6 +320,7 @@ class ScannerPipeline:
                 license_checker=extensions.get_license_checker() if extensions else None,
                 metrics_collector=extensions.get_rule_metrics_collector() if extensions else None,
                 accelerator_factory=extensions.get_accelerator_factory() if extensions else None,
+                rebuild_delay=rebuild_delay,
             )
             self._detectors.append(self._rules_detector)
             store.set_rules_change_callback(self._rules_detector.on_rules_changed)

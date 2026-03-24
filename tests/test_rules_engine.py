@@ -4,6 +4,7 @@ import json
 import os
 import shutil
 import tempfile
+import time
 import unittest
 
 from lumen_argus.analytics.store import AnalyticsStore
@@ -540,7 +541,13 @@ class TestPipelineRulesIntegration(unittest.TestCase):
 
 
 class TestRulesChangeCallback(unittest.TestCase):
-    """Test live rule updates via store callback."""
+    """Test live rule updates via store callback.
+
+    Uses a short rebuild_delay (0.05s) so tests complete quickly.
+    The _wait_rebuild() helper waits for the debounced async rebuild.
+    """
+
+    _REBUILD_DELAY = 0.05
 
     def setUp(self):
         self._tmpdir = tempfile.mkdtemp()
@@ -551,19 +558,24 @@ class TestRulesChangeCallback(unittest.TestCase):
             ],
             tier="community",
         )
-        self.detector = RulesDetector(store=self.store)
+        self.detector = RulesDetector(store=self.store, rebuild_delay=self._REBUILD_DELAY)
         self.store.set_rules_change_callback(self.detector.on_rules_changed)
 
     def tearDown(self):
         shutil.rmtree(self._tmpdir, ignore_errors=True)
 
-    def test_update_rule_action_takes_effect_immediately(self):
-        """Changing a rule's action via API is reflected in next scan."""
+    def _wait_rebuild(self):
+        """Wait for debounced rebuild to complete."""
+        time.sleep(self._REBUILD_DELAY * 8)
+
+    def test_update_rule_action_takes_effect_after_rebuild(self):
+        """Changing a rule's action via API is reflected after async rebuild."""
         self.assertEqual(self.detector._compiled_rules[0]["action"], "")
         self.store.update_rule("r1", {"action": "block"})
+        self._wait_rebuild()
         self.assertEqual(self.detector._compiled_rules[0]["action"], "block")
 
-    def test_create_rule_available_immediately(self):
+    def test_create_rule_available_after_rebuild(self):
         self.store.create_rule(
             {
                 "name": "r2",
@@ -573,10 +585,11 @@ class TestRulesChangeCallback(unittest.TestCase):
                 "created_by": "test",
             }
         )
+        self._wait_rebuild()
         names = [r["name"] for r in self.detector._compiled_rules]
         self.assertIn("r2", names)
 
-    def test_delete_rule_removed_immediately(self):
+    def test_delete_rule_removed_after_rebuild(self):
         self.store.create_rule(
             {
                 "name": "del_me",
@@ -586,11 +599,13 @@ class TestRulesChangeCallback(unittest.TestCase):
                 "created_by": "test",
             }
         )
+        self._wait_rebuild()
         self.assertIn("del_me", [r["name"] for r in self.detector._compiled_rules])
         self.store.delete_rule("del_me")
+        self._wait_rebuild()
         self.assertNotIn("del_me", [r["name"] for r in self.detector._compiled_rules])
 
-    def test_bulk_import_triggers_full_reload(self):
+    def test_bulk_import_triggers_rebuild(self):
         self.store.import_rules(
             [
                 {"name": "bulk1", "pattern": "X+", "detector": "secrets", "severity": "high"},
@@ -598,12 +613,14 @@ class TestRulesChangeCallback(unittest.TestCase):
             ],
             tier="community",
         )
+        self._wait_rebuild()
         names = [r["name"] for r in self.detector._compiled_rules]
         self.assertIn("bulk1", names)
         self.assertIn("bulk2", names)
 
     def test_disable_rule_removes_from_compiled(self):
         self.store.update_rule("r1", {"enabled": False})
+        self._wait_rebuild()
         names = [r["name"] for r in self.detector._compiled_rules]
         self.assertNotIn("r1", names)
 
@@ -700,6 +717,174 @@ class TestParallelBatching(unittest.TestCase):
         # Should have findings — block rule detected
         block_findings = [f for f in findings if f.action == "block"]
         self.assertTrue(len(block_findings) > 0)
+
+
+class TestDebouncedRebuild(unittest.TestCase):
+    """Tests for debounced async accelerator rebuild."""
+
+    def setUp(self):
+        self._tmpdir = tempfile.mkdtemp()
+        self.store = AnalyticsStore(db_path=self._tmpdir + "/test.db")
+        self.store.import_rules(
+            [
+                {"name": "r1", "pattern": "AAA+", "detector": "secrets", "severity": "high"},
+            ],
+            tier="community",
+        )
+
+    def tearDown(self):
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def test_startup_reload_is_synchronous(self):
+        """reload() at __init__ is synchronous — rules available immediately."""
+        det = RulesDetector(store=self.store, rebuild_delay=1.0)
+        self.assertEqual(len(det._compiled_rules), 1)
+        self.assertEqual(det._compiled_rules[0]["name"], "r1")
+
+    def test_on_rules_changed_schedules_async_rebuild(self):
+        """on_rules_changed() returns immediately, rebuild happens after delay."""
+        det = RulesDetector(store=self.store, rebuild_delay=0.1)
+        initial_rules = det._compiled_rules
+
+        # Add a new rule to the DB
+        self.store.create_rule(
+            {
+                "name": "r2",
+                "pattern": "BBB+",
+                "source": "dashboard",
+                "tier": "custom",
+                "created_by": "test",
+            }
+        )
+
+        # Trigger change — should NOT rebuild synchronously
+        det.on_rules_changed("create", "r2")
+
+        # Rules should still be the old set immediately after
+        # (rebuild is scheduled, not executed yet)
+        self.assertEqual(len(det._compiled_rules), len(initial_rules))
+
+        # Wait for debounce + rebuild to complete
+        time.sleep(0.5)
+        names = [r["name"] for r in det._compiled_rules]
+        self.assertIn("r2", names)
+
+    def test_debounce_coalesces_rapid_changes(self):
+        """Multiple rapid on_rules_changed() calls result in a single rebuild."""
+        det = RulesDetector(store=self.store, rebuild_delay=0.2)
+
+        # Add several rules to DB
+        for i in range(5):
+            self.store.create_rule(
+                {
+                    "name": "rapid_%d" % i,
+                    "pattern": "RAPID_%d_[A-Z]+" % i,
+                    "source": "dashboard",
+                    "tier": "custom",
+                    "created_by": "test",
+                }
+            )
+
+        # Fire 5 changes in rapid succession
+        for i in range(5):
+            det.on_rules_changed("create", "rapid_%d" % i)
+
+        # Wait for single coalesced rebuild
+        time.sleep(0.8)
+        names = [r["name"] for r in det._compiled_rules]
+        for i in range(5):
+            self.assertIn("rapid_%d" % i, names)
+
+    def test_dirty_during_rebuild_triggers_second_rebuild(self):
+        """If _dirty is set during rebuild, another rebuild is scheduled."""
+        det = RulesDetector(store=self.store, rebuild_delay=0.05)
+
+        # Patch reload to be slow so we can set _dirty during it
+        original_reload = det.reload
+        reload_count = {"n": 0}
+
+        def slow_reload():
+            reload_count["n"] += 1
+            original_reload()
+            if reload_count["n"] == 1:
+                # Simulate a change arriving during the first rebuild
+                time.sleep(0.05)
+
+        det.reload = slow_reload
+
+        # Add rule to DB
+        self.store.create_rule(
+            {
+                "name": "dirty_test",
+                "pattern": "DIRTY+",
+                "source": "dashboard",
+                "tier": "custom",
+                "created_by": "test",
+            }
+        )
+
+        # Trigger first rebuild
+        det.on_rules_changed("create", "dirty_test")
+        time.sleep(0.1)
+
+        # Set dirty while first rebuild is (probably) running
+        det._dirty = True
+        det._schedule_rebuild()
+
+        # Wait for both rebuilds to complete
+        time.sleep(0.8)
+        self.assertGreaterEqual(reload_count["n"], 2)
+
+    def test_configurable_delay(self):
+        """rebuild_delay parameter is respected."""
+        det = RulesDetector(store=self.store, rebuild_delay=5.0)
+        self.assertEqual(det._rebuild_delay, 5.0)
+
+        det2 = RulesDetector(store=self.store, rebuild_delay=0.5)
+        self.assertEqual(det2._rebuild_delay, 0.5)
+
+    def test_old_accelerator_serves_during_rebuild(self):
+        """Scans use the old accelerator while rebuild is in progress."""
+        det = RulesDetector(store=self.store, rebuild_delay=0.2)
+        allowlist = AllowlistMatcher()
+
+        # Scan works with current rules
+        fields = [ScanField(path="test", text="AAAA")]
+        findings = det.scan(fields, allowlist)
+        self.assertTrue(len(findings) > 0)
+
+        # Trigger async rebuild
+        det.on_rules_changed("bulk")
+
+        # Scan should still work immediately (old accelerator active)
+        findings = det.scan(fields, allowlist)
+        self.assertTrue(len(findings) > 0)
+
+    def test_concurrent_rebuild_prevented(self):
+        """Only one rebuild thread runs at a time — second trigger is a no-op."""
+        det = RulesDetector(store=self.store, rebuild_delay=0.05)
+        initial_rules = list(det._compiled_rules)
+
+        # Add a rule so reload() would change _compiled_rules
+        self.store.create_rule(
+            {
+                "name": "concurrent_test",
+                "pattern": "CONCURRENT+",
+                "source": "dashboard",
+                "tier": "custom",
+                "created_by": "test",
+            }
+        )
+
+        # Acquire rebuild lock to simulate a running rebuild
+        det._rebuild_lock.acquire()
+        try:
+            # _trigger_rebuild should fail to acquire and return immediately
+            det._trigger_rebuild()
+            # Rules should NOT have changed (rebuild didn't run)
+            self.assertEqual(len(det._compiled_rules), len(initial_rules))
+        finally:
+            det._rebuild_lock.release()
 
 
 if __name__ == "__main__":

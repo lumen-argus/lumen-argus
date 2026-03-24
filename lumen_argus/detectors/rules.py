@@ -12,6 +12,7 @@ License-aware: rules with tier='pro' are skipped when the license
 checker reports invalid/expired.
 """
 
+import asyncio
 import logging
 import re
 import threading
@@ -128,7 +129,13 @@ class RulesDetector(BaseDetector):
     _PARALLEL_THRESHOLD = 50
 
     def __init__(
-        self, store=None, license_checker=None, metrics_collector=None, parallel=False, accelerator_factory=None
+        self,
+        store=None,
+        license_checker=None,
+        metrics_collector=None,
+        parallel=False,
+        accelerator_factory=None,
+        rebuild_delay=2.0,
     ):
         self._store = store
         self._license = license_checker
@@ -144,6 +151,15 @@ class RulesDetector(BaseDetector):
         self._hit_counts = {}  # type: dict
         self._hit_counts_lock = threading.Lock()
         self._last_flush = time.monotonic()
+        # Debounced async rebuild state
+        self._rebuild_delay = float(rebuild_delay)
+        self._dirty = False
+        self._rebuild_lock = threading.Lock()  # prevents concurrent rebuild threads
+        self._debounce_lock = threading.Lock()  # protects _debounce_handle and _dirty
+        self._debounce_handle = None  # asyncio TimerHandle or threading.Timer
+        # Protects _accelerator/_compiled_rules swap for no-GIL Python 3.13+.
+        # scan() snapshots both under this lock; reload() writes both under it.
+        self._swap_lock = threading.Lock()
         if store:
             self.reload()
 
@@ -203,12 +219,14 @@ class RulesDetector(BaseDetector):
         # Hot-first ordering: rules with more hits are evaluated first
         compiled.sort(key=lambda r: r["hit_count"], reverse=True)
 
-        # Build new accelerator, then swap both atomically.
-        # scan() snapshots both — they must be consistent.
+        # Build new accelerator, then swap both under lock.
+        # scan() snapshots both under the same lock — they must be consistent.
+        # Lock required for free-threaded Python 3.13+ (no-GIL).
         new_acc = self._new_accelerator()
         new_acc.build(compiled)
-        self._accelerator = new_acc
-        self._compiled_rules = compiled
+        with self._swap_lock:
+            self._accelerator = new_acc
+            self._compiled_rules = compiled
         log.info(
             "rules detector: loaded %d rules (accelerator: %s)",
             len(compiled),
@@ -266,78 +284,82 @@ class RulesDetector(BaseDetector):
     def on_rules_changed(self, change_type, rule_name=None):
         """Handle rule changes from store callback.
 
-        "bulk": full reload (import). "delete"/"create"/"update": incremental.
-        Incremental avoids recompiling all rules for a single-rule change.
+        Schedules a debounced async rebuild instead of rebuilding synchronously.
+        The old accelerator and compiled rules stay active during the rebuild —
+        scans never block. Multiple rapid changes (e.g., bulk import firing
+        per-rule callbacks) are coalesced into a single rebuild.
 
-        Thread safety: all mutations create a new list and assign atomically
-        (single reference swap under CPython GIL). Never mutate in-place —
-        a scan thread may be iterating the old list concurrently.
+        Uses asyncio.call_later() when an event loop is running (normal proxy
+        operation), falls back to threading.Timer otherwise (tests, CLI).
         """
-        if change_type == "bulk":
-            self.reload()
+        with self._debounce_lock:
+            self._dirty = True
+        self._schedule_rebuild()
+
+    def _schedule_rebuild(self):
+        """Start or reset the debounce timer for async rebuild.
+
+        Thread-safe: protects _debounce_handle under _debounce_lock.
+        Uses asyncio.call_later when an event loop is running (proxy runtime),
+        falls back to threading.Timer otherwise (tests, CLI).
+        """
+        with self._debounce_lock:
+            # Cancel any pending timer
+            if self._debounce_handle is not None:
+                try:
+                    self._debounce_handle.cancel()
+                except Exception:
+                    pass
+                self._debounce_handle = None
+
+            delay = self._rebuild_delay
+            log.debug("rules detector: scheduling rebuild in %.1fs", delay)
+
+            # Try asyncio event loop first (proxy runtime), fall back to threading.Timer
+            try:
+                loop = asyncio.get_running_loop()
+                self._debounce_handle = loop.call_later(delay, self._trigger_rebuild)
+            except RuntimeError:
+                # No running event loop — use threading.Timer (tests, CLI, background threads)
+                timer = threading.Timer(delay, self._trigger_rebuild)
+                timer.daemon = True
+                timer.start()
+                self._debounce_handle = timer
+
+    def _trigger_rebuild(self):
+        """Called when debounce timer fires. Spawns background thread for rebuild."""
+        if not self._rebuild_lock.acquire(blocking=False):
+            # Another rebuild is running — it will check _dirty after swap
             return
-        if rule_name is None:
-            log.warning("on_rules_changed: rule_name required for %s, falling back to reload", change_type)
-            self.reload()
-            return
-        if change_type == "delete":
-            new_rules = [r for r in self._compiled_rules if r["name"] != rule_name]
-            new_acc = self._new_accelerator()
-            new_acc.build(new_rules)
-            self._accelerator = new_acc
-            self._compiled_rules = new_rules
-            return
-        # "create" or "update" — fetch and compile just this one rule
-        if not self._store:
-            return
-        rule = self._store.get_rule_by_name(rule_name)
-        if rule is None or not rule.get("enabled"):
-            new_rules = [r for r in self._compiled_rules if r["name"] != rule_name]
-            new_acc = self._new_accelerator()
-            new_acc.build(new_rules)
-            self._accelerator = new_acc
-            self._compiled_rules = new_rules
-            return
-        if rule.get("tier") == "pro":
-            if self._license is None or not self._license.is_valid():
-                new_rules = [r for r in self._compiled_rules if r["name"] != rule_name]
-                new_acc = self._new_accelerator()
-                new_acc.build(new_rules)
-                self._accelerator = new_acc
-                self._compiled_rules = new_rules
-                return
         try:
-            compiled = re.compile(rule["pattern"])
-        except re.error:
-            return
-        validator = None
-        if rule.get("validator"):
-            validator = _VALIDATORS.get(rule["validator"])
-        new_entry = {
-            "name": rule["name"],
-            "compiled": compiled,
-            "detector": rule["detector"],
-            "severity": rule["severity"],
-            "action": rule.get("action", ""),
-            "validator": validator,
-            "hit_count": rule.get("hit_count", 0),
-        }
-        # Build new list: replace existing or append. Creates a new list
-        # object for atomic swap — never mutate in-place during concurrent iteration.
-        replaced = False
-        new_list = []
-        for r in self._compiled_rules:
-            if r["name"] == rule_name:
-                new_list.append(new_entry)
-                replaced = True
-            else:
-                new_list.append(r)
-        if not replaced:
-            new_list.append(new_entry)
-        new_acc = self._new_accelerator()
-        new_acc.build(new_list)
-        self._accelerator = new_acc
-        self._compiled_rules = new_list
+            thread = threading.Thread(target=self._background_rebuild, daemon=True)
+            thread.start()
+        except Exception:
+            self._rebuild_lock.release()
+            log.warning("rules detector: failed to start rebuild thread")
+
+    def _background_rebuild(self):
+        """Run full reload() in background thread. Check _dirty after swap.
+
+        Uses _debounce_lock to atomically clear _dirty before reload and
+        check it after — avoids TOCTOU race where changes arriving between
+        the dirty-check and lock-release would be silently dropped.
+        """
+        try:
+            with self._debounce_lock:
+                self._dirty = False
+            self.reload()
+        finally:
+            self._rebuild_lock.release()
+        # Check _dirty AFTER releasing _rebuild_lock — any concurrent
+        # _trigger_rebuild that failed to acquire the lock has now returned,
+        # and if it set _dirty, we pick it up here.
+        needs_reschedule = False
+        with self._debounce_lock:
+            if self._dirty:
+                needs_reschedule = True
+        if needs_reschedule:
+            self._schedule_rebuild()
 
     def _eval_rule(self, rule, field, allowlist, metrics):
         """Evaluate a single rule against a field. Returns list of findings.
@@ -403,8 +425,9 @@ class RulesDetector(BaseDetector):
            current field run to completion before block is detected.
         """
         findings = []
-        compiled_rules = self._compiled_rules  # snapshot for thread safety
-        accelerator = self._accelerator
+        with self._swap_lock:
+            compiled_rules = self._compiled_rules  # snapshot for thread safety
+            accelerator = self._accelerator
         metrics = self._metrics
         use_parallel = self._parallel
 

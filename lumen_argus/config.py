@@ -88,6 +88,7 @@ class AnalyticsConfig:
 @dataclass
 class RulesConfig:
     auto_import: bool = True  # auto-import community rules on first serve
+    rebuild_delay_seconds: float = 2.0  # debounce delay for async accelerator rebuild
 
 
 @dataclass
@@ -865,6 +866,8 @@ def _apply_config(config: Config, data: dict) -> None:
     if isinstance(rules_sec, dict):
         if "auto_import" in rules_sec:
             config.rules.auto_import = bool(rules_sec["auto_import"])
+        if "rebuild_delay_seconds" in rules_sec:
+            config.rules.rebuild_delay_seconds = float(rules_sec["rebuild_delay_seconds"])
 
     # Dedup
     dedup = data.get("dedup", {})

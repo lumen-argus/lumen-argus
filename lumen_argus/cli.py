@@ -396,6 +396,7 @@ def main(argv=None):
         custom_rules=config.custom_rules,
         dedup_config=asdict(config.dedup),
         pipeline_config=_build_pipeline_config(config),
+        rebuild_delay=config.rules.rebuild_delay_seconds,
     )
 
     # Apply parallel batching toggle to RulesDetector
