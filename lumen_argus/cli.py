@@ -1173,6 +1173,12 @@ def _run_mcp(args):
     allowed_tools = allowed_tools or None
     blocked_tools = blocked_tools or None
 
+    # Load extensions (Pro hooks for policy engine + adaptive enforcement)
+    extensions = ExtensionRegistry()
+    extensions.load_plugins()
+    policy_engine = extensions.get_mcp_policy_engine()
+    escalation_fn = extensions.get_mcp_session_escalation()
+
     # Determine action (CLI flag > config)
     action_override = getattr(args, "action", None)
     action = action_override or config.pipeline.mcp_arguments.action or config.default_action
@@ -1235,7 +1241,9 @@ def _run_mcp(args):
             env_allowlist = getattr(mcp_cfg, "env_allowlist", []) if mcp_cfg else []
             env = filter_env(extra_vars=extra_vars, config_allowlist=env_allowlist)
 
-        exit_code = asyncio.run(run_stdio_proxy(cmd, scanner, env=env))
+        exit_code = asyncio.run(
+            run_stdio_proxy(cmd, scanner, env=env, policy_engine=policy_engine, escalation_fn=escalation_fn)
+        )
         sys.exit(exit_code)
 
     elif listen:
@@ -1251,20 +1259,26 @@ def _run_mcp(args):
             host = "127.0.0.1"
             port = int(listen)
 
-        asyncio.run(run_http_listener(host, port, upstream, scanner))
+        asyncio.run(
+            run_http_listener(host, port, upstream, scanner, policy_engine=policy_engine, escalation_fn=escalation_fn)
+        )
 
     elif upstream.startswith("ws://") or upstream.startswith("wss://"):
         # WebSocket bridge mode
         from lumen_argus.mcp.proxy import run_ws_bridge
 
-        exit_code = asyncio.run(run_ws_bridge(upstream, scanner))
+        exit_code = asyncio.run(
+            run_ws_bridge(upstream, scanner, policy_engine=policy_engine, escalation_fn=escalation_fn)
+        )
         sys.exit(exit_code)
 
     else:
         # HTTP bridge mode (stdio client -> HTTP upstream)
         from lumen_argus.mcp.proxy import run_http_bridge
 
-        exit_code = asyncio.run(run_http_bridge(upstream, scanner))
+        exit_code = asyncio.run(
+            run_http_bridge(upstream, scanner, policy_engine=policy_engine, escalation_fn=escalation_fn)
+        )
         sys.exit(exit_code)
 
 

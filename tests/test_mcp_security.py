@@ -266,5 +266,121 @@ class TestMCPScannerProcessToolsList(unittest.TestCase):
             shutil.rmtree(tmpdir)
 
 
+class TestProExtensionHooks(unittest.TestCase):
+    """Test MCP Pro extension hooks in extensions.py."""
+
+    def test_policy_engine_hook_default_none(self):
+        from lumen_argus.extensions import ExtensionRegistry
+
+        reg = ExtensionRegistry()
+        self.assertIsNone(reg.get_mcp_policy_engine())
+
+    def test_policy_engine_hook_set_get(self):
+        from lumen_argus.extensions import ExtensionRegistry
+
+        reg = ExtensionRegistry()
+
+        class FakeEngine:
+            def evaluate(self, tool_name, arguments):
+                return []
+
+        engine = FakeEngine()
+        reg.set_mcp_policy_engine(engine)
+        self.assertIs(reg.get_mcp_policy_engine(), engine)
+
+    def test_escalation_hook_default_none(self):
+        from lumen_argus.extensions import ExtensionRegistry
+
+        reg = ExtensionRegistry()
+        self.assertIsNone(reg.get_mcp_session_escalation())
+
+    def test_escalation_hook_set_get(self):
+        from lumen_argus.extensions import ExtensionRegistry
+
+        reg = ExtensionRegistry()
+
+        def escalation_fn(signal_type, session_id, details):
+            return "normal"
+
+        reg.set_mcp_session_escalation(escalation_fn)
+        self.assertIs(reg.get_mcp_session_escalation(), escalation_fn)
+
+
+class TestProxyHelpers(unittest.TestCase):
+    """Test _run_policy_engine and _signal_escalation helper functions."""
+
+    def test_run_policy_engine_none(self):
+        from lumen_argus.mcp.proxy import _run_policy_engine
+
+        self.assertEqual(_run_policy_engine(None, "bash", {}), [])
+
+    def test_run_policy_engine_returns_findings(self):
+        from lumen_argus.models import Finding
+        from lumen_argus.mcp.proxy import _run_policy_engine
+
+        finding = Finding(
+            detector="mcp_policy",
+            type="destructive_command",
+            severity="critical",
+            location="tools/call.bash",
+            value_preview="rm -rf",
+            matched_value="rm -rf /",
+            action="block",
+        )
+
+        class MockEngine:
+            def evaluate(self, tool_name, arguments):
+                return [finding]
+
+        result = _run_policy_engine(MockEngine(), "bash", {"command": "rm -rf /"})
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0].action, "block")
+
+    def test_run_policy_engine_catches_exception(self):
+        from lumen_argus.mcp.proxy import _run_policy_engine
+
+        class BrokenEngine:
+            def evaluate(self, tool_name, arguments):
+                raise RuntimeError("engine crash")
+
+        result = _run_policy_engine(BrokenEngine(), "bash", {})
+        self.assertEqual(result, [])
+
+    def test_signal_escalation_none(self):
+        from lumen_argus.mcp.proxy import _signal_escalation
+
+        self.assertIsNone(_signal_escalation(None, "block", "", {}))
+
+    def test_signal_escalation_returns_level(self):
+        from lumen_argus.mcp.proxy import _signal_escalation
+
+        def escalation_fn(signal_type, session_id, details):
+            return "elevated"
+
+        result = _signal_escalation(escalation_fn, "block", "session-123", {"tool": "bash"})
+        self.assertEqual(result, "elevated")
+
+    def test_signal_escalation_catches_exception(self):
+        from lumen_argus.mcp.proxy import _signal_escalation
+
+        def broken_fn(signal_type, session_id, details):
+            raise RuntimeError("escalation crash")
+
+        result = _signal_escalation(broken_fn, "block", "", {})
+        self.assertIsNone(result)
+
+    def test_signal_escalation_passes_session_id(self):
+        from lumen_argus.mcp.proxy import _signal_escalation
+
+        captured = {}
+
+        def capture_fn(signal_type, session_id, details):
+            captured["session_id"] = session_id
+            return "normal"
+
+        _signal_escalation(capture_fn, "clean", "mcp-sess-42", {"tool": "read"})
+        self.assertEqual(captured["session_id"], "mcp-sess-42")
+
+
 if __name__ == "__main__":
     unittest.main()

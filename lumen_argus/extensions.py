@@ -62,6 +62,9 @@ class ExtensionRegistry:
         self._ws_connection_hook = None  # type: Optional[Callable]
         self._rule_metrics_collector = None  # type: Optional[object]
         self._accelerator_factory = None  # type: Optional[Callable]
+        # MCP Pro hooks
+        self._mcp_policy_engine = None  # type: Optional[object]
+        self._mcp_session_escalation = None  # type: Optional[Callable]
 
     def add_detector(self, detector: BaseDetector, priority: bool = False) -> None:
         """Register an additional detector.
@@ -334,6 +337,32 @@ class ExtensionRegistry:
 
     def get_accelerator_factory(self):
         return self._accelerator_factory
+
+    def set_mcp_policy_engine(self, engine) -> None:
+        """Register Pro's MCP policy engine for tool call validation.
+
+        Engine interface:
+          engine.evaluate(tool_name: str, arguments: dict) -> List[Finding]
+            Validates tool call arguments against policy rules with shell
+            evasion normalization. Returns findings for blocked/warned calls.
+        """
+        self._mcp_policy_engine = engine
+
+    def get_mcp_policy_engine(self):
+        return self._mcp_policy_engine
+
+    def set_mcp_session_escalation(self, fn) -> None:
+        """Register Pro's adaptive enforcement callback.
+
+        Callback signature:
+          fn(signal_type: str, session_id: str, details: dict) -> str
+            signal_type: "block", "near_miss", "drift", "unknown_tool", "clean"
+            Returns the current enforcement level: "normal", "elevated", "high", "critical"
+        """
+        self._mcp_session_escalation = fn
+
+    def get_mcp_session_escalation(self):
+        return self._mcp_session_escalation
 
     def set_rule_metrics_collector(self, collector) -> None:
         """Register a rule metrics collector for Pro performance dashboard.

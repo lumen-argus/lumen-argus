@@ -27,6 +27,41 @@ from lumen_argus.mcp.transport import (
 
 log = logging.getLogger("argus.mcp")
 
+
+def _run_policy_engine(policy_engine, tool_name: str, arguments: dict) -> list:
+    """Run Pro policy engine on a tools/call request. Returns findings list.
+
+    Returns empty list if no engine registered or engine raises.
+    """
+    if policy_engine is None:
+        return []
+    try:
+        return policy_engine.evaluate(tool_name, arguments)
+    except Exception as exc:
+        log.warning("mcp: policy engine raised %s", exc)
+        return []
+
+
+def _signal_escalation(escalation_fn, signal_type: str, session_id: str, details: dict = None) -> Optional[str]:
+    """Feed a threat signal to Pro's adaptive enforcement. Returns enforcement level.
+
+    Returns None if no escalation function registered or it raises.
+    The session_id may be empty for stdio-based modes that have no session
+    concept — Pro's escalation engine should treat empty session_id as a
+    single implicit session.
+    """
+    if escalation_fn is None:
+        return None
+    try:
+        level = escalation_fn(signal_type, session_id, details or {})
+        if level and level != "normal":
+            log.info("mcp: session escalation level: %s (signal=%s)", level, signal_type)
+        return level
+    except Exception as exc:
+        log.warning("mcp: session escalation raised %s", exc)
+        return None
+
+
 # Maximum request body size for HTTP listener mode (10 MB).
 _MAX_BODY_SIZE = 10 * 1024 * 1024
 
@@ -35,6 +70,8 @@ async def run_stdio_proxy(
     command: List[str],
     scanner: MCPScanner,
     env: Optional[dict] = None,
+    policy_engine=None,
+    escalation_fn=None,
 ) -> int:
     """Run MCP proxy in stdio subprocess mode.
 
@@ -104,7 +141,9 @@ async def run_stdio_proxy(
                 if method == "tools/call":
                     # Session binding check
                     tool_name = m.get("params", {}).get("name", "")
+                    arguments = m.get("params", {}).get("arguments", {})
                     if scanner.session_binding and not scanner.session_binding.validate_tool(tool_name):
+                        _signal_escalation(escalation_fn, "unknown_tool", "", {"tool": tool_name})
                         if scanner.session_binding.should_block:
                             error_resp = {
                                 "jsonrpc": "2.0",
@@ -117,8 +156,24 @@ async def run_stdio_proxy(
                             await _write_stdout(json.dumps(error_resp).encode() + b"\n")
                             continue
 
+                    # Pro policy engine check
+                    policy_findings = _run_policy_engine(policy_engine, tool_name, arguments)
+                    if policy_findings and any(f.action == "block" for f in policy_findings):
+                        _signal_escalation(escalation_fn, "block", "", {"tool": tool_name})
+                        error_resp = {
+                            "jsonrpc": "2.0",
+                            "id": msg_id,
+                            "error": {
+                                "code": -32600,
+                                "message": "Request blocked by policy: %s" % policy_findings[0].type,
+                            },
+                        }
+                        await _write_stdout(json.dumps(error_resp).encode() + b"\n")
+                        continue
+
                     findings = scanner.scan_request(m)
                     if findings and action == "block":
+                        _signal_escalation(escalation_fn, "block", "", {"tool": tool_name})
                         error_resp = {
                             "jsonrpc": "2.0",
                             "id": msg_id,
@@ -129,6 +184,10 @@ async def run_stdio_proxy(
                         }
                         await _write_stdout(json.dumps(error_resp).encode() + b"\n")
                     else:
+                        if findings:
+                            _signal_escalation(escalation_fn, "near_miss", "", {"tool": tool_name})
+                        else:
+                            _signal_escalation(escalation_fn, "clean", "", {"tool": tool_name})
                         if msg_id is not None:
                             pending_requests[msg_id] = "tools/call"
                         if scanner.request_tracker:
@@ -190,7 +249,10 @@ async def run_stdio_proxy(
                     tools = msg.get("result", {}).get("tools", [])
                     if isinstance(tools, list):
                         log.debug("mcp: tools/list response: %d tools", len(tools))
-                        scanner.process_tools_list(tools)
+                        tl_findings = scanner.process_tools_list(tools)
+                        for f in tl_findings:
+                            if f.type == "tool_drift":
+                                _signal_escalation(escalation_fn, "drift", "", {"tool": f.location.rsplit(".", 1)[-1]})
 
             await _write_stdout(line)
 
@@ -220,6 +282,8 @@ async def run_stdio_proxy(
 async def run_http_bridge(
     upstream_url: str,
     scanner: MCPScanner,
+    policy_engine=None,
+    escalation_fn=None,
 ) -> int:
     """Run MCP proxy in HTTP bridge mode (stdio client -> HTTP upstream).
 
@@ -258,7 +322,9 @@ async def run_http_bridge(
 
                     if method == "tools/call":
                         tool_name = msg.get("params", {}).get("name", "")
+                        arguments = msg.get("params", {}).get("arguments", {})
                         if scanner.session_binding and not scanner.session_binding.validate_tool(tool_name):
+                            _signal_escalation(escalation_fn, "unknown_tool", "", {"tool": tool_name})
                             if scanner.session_binding.should_block:
                                 error_resp = {
                                     "jsonrpc": "2.0",
@@ -272,8 +338,25 @@ async def run_http_bridge(
                                 sys.stdout.buffer.flush()
                                 continue
 
+                        # Pro policy engine check
+                        policy_findings = _run_policy_engine(policy_engine, tool_name, arguments)
+                        if policy_findings and any(f.action == "block" for f in policy_findings):
+                            _signal_escalation(escalation_fn, "block", "", {"tool": tool_name})
+                            error_resp = {
+                                "jsonrpc": "2.0",
+                                "id": msg_id,
+                                "error": {
+                                    "code": -32600,
+                                    "message": "Request blocked by policy: %s" % policy_findings[0].type,
+                                },
+                            }
+                            sys.stdout.buffer.write(json.dumps(error_resp).encode() + b"\n")
+                            sys.stdout.buffer.flush()
+                            continue
+
                         findings = scanner.scan_request(msg)
                         if findings and action == "block":
+                            _signal_escalation(escalation_fn, "block", "", {"tool": tool_name})
                             error_resp = {
                                 "jsonrpc": "2.0",
                                 "id": msg_id,
@@ -285,6 +368,10 @@ async def run_http_bridge(
                             sys.stdout.buffer.write(json.dumps(error_resp).encode() + b"\n")
                             sys.stdout.buffer.flush()
                             continue
+                        if findings:
+                            _signal_escalation(escalation_fn, "near_miss", "", {"tool": tool_name})
+                        else:
+                            _signal_escalation(escalation_fn, "clean", "", {"tool": tool_name})
 
                     if msg_id is not None and method:
                         pending_requests[msg_id] = method
@@ -317,7 +404,12 @@ async def run_http_bridge(
                                 tools = resp_msg.get("result", {}).get("tools", [])
                                 if isinstance(tools, list):
                                     log.debug("mcp: tools/list response: %d tools", len(tools))
-                                    scanner.process_tools_list(tools)
+                                    tl_findings = scanner.process_tools_list(tools)
+                                    for f in tl_findings:
+                                        if f.type == "tool_drift":
+                                            _signal_escalation(
+                                                escalation_fn, "drift", "", {"tool": f.location.rsplit(".", 1)[-1]}
+                                            )
                 except (json.JSONDecodeError, ValueError):
                     pass
 
@@ -339,6 +431,8 @@ async def run_http_listener(
     listen_port: int,
     upstream_url: str,
     scanner: MCPScanner,
+    policy_engine=None,
+    escalation_fn=None,
 ) -> int:
     """Run MCP proxy in HTTP reverse proxy mode (HTTP listener -> HTTP upstream).
 
@@ -367,6 +461,9 @@ async def run_http_listener(
         )
 
     async def handle_post(request):
+        # Extract session ID from MCP header for escalation tracking
+        session_id = request.headers.get("Mcp-Session-Id", "")
+
         # Size limit — check header first, then actual body
         if request.content_length and request.content_length > _MAX_BODY_SIZE:
             return web.json_response(
@@ -401,7 +498,9 @@ async def run_http_listener(
 
         if isinstance(msg, dict) and method == "tools/call":
             tool_name = msg.get("params", {}).get("name", "")
+            arguments = msg.get("params", {}).get("arguments", {})
             if scanner.session_binding and not scanner.session_binding.validate_tool(tool_name):
+                _signal_escalation(escalation_fn, "unknown_tool", session_id, {"tool": tool_name})
                 if scanner.session_binding.should_block:
                     return web.json_response(
                         {
@@ -412,8 +511,22 @@ async def run_http_listener(
                         status=400,
                     )
 
+            # Pro policy engine check
+            policy_findings = _run_policy_engine(policy_engine, tool_name, arguments)
+            if policy_findings and any(f.action == "block" for f in policy_findings):
+                _signal_escalation(escalation_fn, "block", session_id, {"tool": tool_name})
+                return web.json_response(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": msg_id,
+                        "error": {"code": -32600, "message": "Request blocked by policy: %s" % policy_findings[0].type},
+                    },
+                    status=400,
+                )
+
             findings = scanner.scan_request(msg)
             if findings and action == "block":
+                _signal_escalation(escalation_fn, "block", session_id, {"tool": tool_name})
                 return web.json_response(
                     {
                         "jsonrpc": "2.0",
@@ -425,6 +538,10 @@ async def run_http_listener(
                     },
                     status=400,
                 )
+            if findings:
+                _signal_escalation(escalation_fn, "near_miss", session_id, {"tool": tool_name})
+            else:
+                _signal_escalation(escalation_fn, "clean", session_id, {"tool": tool_name})
 
         if scanner.request_tracker:
             scanner.request_tracker.track(msg_id)
@@ -456,7 +573,12 @@ async def run_http_listener(
                     elif method == "tools/list":
                         tools = resp_msg.get("result", {}).get("tools", [])
                         if isinstance(tools, list):
-                            scanner.process_tools_list(tools)
+                            tl_findings = scanner.process_tools_list(tools)
+                            for f in tl_findings:
+                                if f.type == "tool_drift":
+                                    _signal_escalation(
+                                        escalation_fn, "drift", session_id, {"tool": f.location.rsplit(".", 1)[-1]}
+                                    )
         except (json.JSONDecodeError, ValueError):
             pass
 
@@ -494,6 +616,8 @@ async def run_http_listener(
 async def run_ws_bridge(
     upstream_url: str,
     scanner: MCPScanner,
+    policy_engine=None,
+    escalation_fn=None,
 ) -> int:
     """Run MCP proxy in WebSocket bridge mode (stdio client -> WS upstream).
 
@@ -539,7 +663,9 @@ async def run_ws_bridge(
 
                         if method == "tools/call":
                             tool_name = msg.get("params", {}).get("name", "")
+                            arguments = msg.get("params", {}).get("arguments", {})
                             if scanner.session_binding and not scanner.session_binding.validate_tool(tool_name):
+                                _signal_escalation(escalation_fn, "unknown_tool", "", {"tool": tool_name})
                                 if scanner.session_binding.should_block:
                                     error_resp = {
                                         "jsonrpc": "2.0",
@@ -553,8 +679,25 @@ async def run_ws_bridge(
                                     sys.stdout.buffer.flush()
                                     continue
 
+                            # Pro policy engine check
+                            policy_findings = _run_policy_engine(policy_engine, tool_name, arguments)
+                            if policy_findings and any(f.action == "block" for f in policy_findings):
+                                _signal_escalation(escalation_fn, "block", "", {"tool": tool_name})
+                                error_resp = {
+                                    "jsonrpc": "2.0",
+                                    "id": msg_id,
+                                    "error": {
+                                        "code": -32600,
+                                        "message": "Request blocked by policy: %s" % policy_findings[0].type,
+                                    },
+                                }
+                                sys.stdout.buffer.write(json.dumps(error_resp).encode() + b"\n")
+                                sys.stdout.buffer.flush()
+                                continue
+
                             findings = scanner.scan_request(msg)
                             if findings and action == "block":
+                                _signal_escalation(escalation_fn, "block", "", {"tool": tool_name})
                                 error_resp = {
                                     "jsonrpc": "2.0",
                                     "id": msg_id,
@@ -566,6 +709,10 @@ async def run_ws_bridge(
                                 sys.stdout.buffer.write(json.dumps(error_resp).encode() + b"\n")
                                 sys.stdout.buffer.flush()
                                 continue
+                            if findings:
+                                _signal_escalation(escalation_fn, "near_miss", "", {"tool": tool_name})
+                            else:
+                                _signal_escalation(escalation_fn, "clean", "", {"tool": tool_name})
 
                         if msg_id is not None and method:
                             pending_requests[msg_id] = method
@@ -603,7 +750,12 @@ async def run_ws_bridge(
                                     tools = msg.get("result", {}).get("tools", [])
                                     if isinstance(tools, list):
                                         log.debug("mcp: tools/list response: %d tools", len(tools))
-                                        scanner.process_tools_list(tools)
+                                        tl_findings = scanner.process_tools_list(tools)
+                                        for f in tl_findings:
+                                            if f.type == "tool_drift":
+                                                _signal_escalation(
+                                                    escalation_fn, "drift", "", {"tool": f.location.rsplit(".", 1)[-1]}
+                                                )
                     except (json.JSONDecodeError, ValueError):
                         pass
 
