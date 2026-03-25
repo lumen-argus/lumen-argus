@@ -56,20 +56,24 @@ function _updateLimitDisplay(){
 }
 var _upgradeTimer=null;
 function _showUpgradePrompt(){
-  var el=document.getElementById('notif-upgrade');el.style.display='block';el.replaceChildren();
-  var wrap=document.createElement('div');
-  wrap.style.cssText='display:flex;justify-content:center;padding:16px 0';
-  var card=document.createElement('div');
-  card.style.cssText='background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px 28px;max-width:420px;width:100%;text-align:center';
+  var el=document.getElementById('notif-upgrade');
+  if(el.style.display==='block'){return;}
+  el.style.display='block';el.replaceChildren();
+  var banner=document.createElement('div');banner.className='panel';
+  banner.style.cssText='padding:14px 18px;margin-top:12px;border-left:3px solid var(--accent);opacity:0;transition:opacity .3s ease';
   var title=document.createElement('div');
-  title.style.cssText='font-size:.78rem;font-weight:600;color:var(--text-primary);margin-bottom:6px';
-  title.textContent='Need more channels?';
+  title.style.cssText='font-weight:600;font-size:.82rem;margin-bottom:4px;color:var(--accent)';
+  title.textContent='Channel limit reached';
   var desc=document.createElement('div');
-  desc.style.cssText='font-size:.75rem;color:var(--text-secondary);line-height:1.5';
-  desc.textContent='Pro adds Slack, Teams, PagerDuty, Email, OpsGenie, Jira \u2014 unlimited channels with reliable delivery.';
-  card.appendChild(title);card.appendChild(desc);wrap.appendChild(card);el.appendChild(wrap);
+  desc.style.cssText='font-size:.78rem;color:var(--text-secondary);line-height:1.5';
+  desc.textContent='Upgrade to Pro for Slack, Teams, PagerDuty, Email, OpsGenie, Jira \u2014 unlimited channels with reliable delivery.';
+  banner.appendChild(title);banner.appendChild(desc);el.appendChild(banner);
+  requestAnimationFrame(function(){banner.style.opacity='1';});
   if(_upgradeTimer)clearTimeout(_upgradeTimer);
-  _upgradeTimer=setTimeout(function(){el.style.display='none';_upgradeTimer=null;},12000);
+  _upgradeTimer=setTimeout(function(){
+    banner.style.opacity='0';
+    setTimeout(function(){el.style.display='none';_upgradeTimer=null;},300);
+  },12000);
 }
 function _populateTypeSelect(){
   var sel=document.getElementById('notif-type');sel.replaceChildren();
