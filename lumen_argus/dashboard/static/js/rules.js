@@ -173,17 +173,20 @@ function _ruleCard(r){
   });
   actSel.addEventListener('change',function(){_updateRule(r.name,{action:actSel.value})});
   acts.appendChild(actSel);
-  /* Clone button */
+  /* Clone button — "Customize" for yaml rules (fork-to-own workflow) */
   var cloneBtn=document.createElement('div');cloneBtn.className='btn btn-sm btn-cancel';
-  cloneBtn.textContent='Clone';
+  cloneBtn.textContent=r.source==='yaml'?'Customize':'Clone';
   cloneBtn.addEventListener('click',function(){_cloneRule(r.name)});
   acts.appendChild(cloneBtn);
-  /* Edit/Delete for dashboard rules */
-  if(r.source==='dashboard'){
+  /* Edit for dashboard + import rules (not yaml — config-managed) */
+  if(r.source!=='yaml'){
     var editBtn=document.createElement('div');editBtn.className='btn btn-sm btn-cancel';
     editBtn.textContent='Edit';
     editBtn.addEventListener('click',function(){_openEditForm(r)});
     acts.appendChild(editBtn);
+  }
+  /* Delete only for dashboard-created rules */
+  if(r.source==='dashboard'){
     var delBtn=document.createElement('div');delBtn.className='btn btn-sm btn-danger';
     delBtn.textContent='Delete';
     delBtn.addEventListener('click',function(){_deleteRule(r.name)});
