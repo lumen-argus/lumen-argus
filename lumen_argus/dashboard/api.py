@@ -1043,11 +1043,11 @@ def _handle_notification_test(channel_id, store, extensions):
     test_finding = Finding(
         detector="test",
         type="test_notification",
-        severity="info",
+        severity="critical",
         location="test",
         value_preview="****",
         matched_value="",
-        action="alert",
+        action="block",
     )
     try:
         notifier.notify([test_finding], provider="lumen-argus", model="test")

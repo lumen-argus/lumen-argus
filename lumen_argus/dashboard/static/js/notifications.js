@@ -51,15 +51,25 @@ function _updateLimitDisplay(){
   if(channelLimit===null||channelLimit===undefined){el.textContent='';btn.classList.remove('disabled');btn.title='';
     document.getElementById('notif-upgrade').style.display='none';return;}
   el.textContent=channelCount+'/'+channelLimit;
-  if(channelCount>=channelLimit){btn.classList.add('disabled');btn.title='Channel limit reached';_showUpgradePrompt();}
+  if(channelCount>=channelLimit){btn.classList.add('disabled');btn.title='Channel limit reached';}
   else{btn.classList.remove('disabled');btn.title='';document.getElementById('notif-upgrade').style.display='none';}
 }
+var _upgradeTimer=null;
 function _showUpgradePrompt(){
   var el=document.getElementById('notif-upgrade');el.style.display='block';el.replaceChildren();
-  var card=document.createElement('div');card.className='upgrade-card';
-  var p=document.createElement('p');
-  p.textContent='Need more channels? Upgrade to Pro for unlimited notification channels.';
-  card.appendChild(p);el.appendChild(card);
+  var wrap=document.createElement('div');
+  wrap.style.cssText='display:flex;justify-content:center;padding:16px 0';
+  var card=document.createElement('div');
+  card.style.cssText='background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px 28px;max-width:420px;width:100%;text-align:center';
+  var title=document.createElement('div');
+  title.style.cssText='font-size:.78rem;font-weight:600;color:var(--text-primary);margin-bottom:6px';
+  title.textContent='Need more channels?';
+  var desc=document.createElement('div');
+  desc.style.cssText='font-size:.75rem;color:var(--text-secondary);line-height:1.5';
+  desc.textContent='Pro adds Slack, Teams, PagerDuty, Email, OpsGenie, Jira \u2014 unlimited channels with reliable delivery.';
+  card.appendChild(title);card.appendChild(desc);wrap.appendChild(card);el.appendChild(wrap);
+  if(_upgradeTimer)clearTimeout(_upgradeTimer);
+  _upgradeTimer=setTimeout(function(){el.style.display='none';_upgradeTimer=null;},12000);
 }
 function _populateTypeSelect(){
   var sel=document.getElementById('notif-type');sel.replaceChildren();
@@ -218,7 +228,7 @@ function _deleteChannel(id){
   fetch('/api/v1/notifications/channels/'+id,{method:'DELETE',headers:csrfHeaders()}).then(function(){loadNotifications();}).catch(function(){});
 }
 document.getElementById('notif-add-btn').addEventListener('click',function(){
-  if(this.classList.contains('disabled'))return;
+  if(this.classList.contains('disabled')){_showUpgradePrompt();return;}
   editingChannelId=null;
   var form=document.getElementById('notif-add-form');form.classList.toggle('visible');
   document.getElementById('notif-error').textContent='';document.getElementById('notif-error').style.display='none';

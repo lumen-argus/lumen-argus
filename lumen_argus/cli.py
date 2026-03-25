@@ -269,6 +269,13 @@ def main(argv=None):
         display = TerminalDisplay(no_color=args.no_color)
     audit = AuditLogger(log_dir=audit_log_dir, retention_days=config.audit.retention_days)
     extensions = ExtensionRegistry()
+
+    # Register community notification infrastructure (before plugins so Pro can override)
+    from lumen_argus.notifiers import WEBHOOK_CHANNEL_TYPE, build_notifier
+
+    extensions.register_channel_types(WEBHOOK_CHANNEL_TYPE)
+    extensions.set_notifier_builder(build_notifier)
+
     extensions.load_plugins()
     for pname, pver in extensions.loaded_plugins():
         log.info("plugin: %s v%s", pname, pver)
@@ -488,15 +495,18 @@ def main(argv=None):
             for action_name in ("created", "updated", "deleted"):
                 if result[action_name]:
                     log.info("notification channels %s from config: %s", action_name, ", ".join(result[action_name]))
-            # Warn if channels exist but no dispatcher (source install)
-            if not extensions.get_dispatcher():
-                count = analytics_store.count_notification_channels()
-                if count > 0:
-                    log.warning(
-                        "%d notification channel(s) configured but dispatch "
-                        "unavailable — install from PyPI: pip install lumen-argus",
-                        count,
-                    )
+
+        # Create basic dispatcher if Pro hasn't registered one
+        if analytics_store and not extensions.get_dispatcher():
+            from lumen_argus.notifiers.dispatcher import BasicDispatcher
+
+            basic_dispatcher = BasicDispatcher(
+                store=analytics_store,
+                builder=extensions.get_notifier_builder(),
+            )
+            basic_dispatcher.rebuild()
+            extensions.set_dispatcher(basic_dispatcher)
+            log.debug("community dispatcher registered")
 
     # --- MCP-aware scanning in HTTP proxy ---
     mcp_args_enabled = config.pipeline.mcp_arguments.enabled

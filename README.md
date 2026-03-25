@@ -282,7 +282,7 @@ Built-in web dashboard at `http://localhost:8081`:
 
 ## Notification Channels
 
-Configure alerting via YAML (IaC-managed) or the dashboard. 7 channel types available:
+Configure alerting via YAML (IaC-managed) or the dashboard. Community includes Webhook with fire-and-forget dispatch. Pro adds 6 more channel types:
 
 | Channel | Config |
 |---------|--------|
@@ -294,7 +294,7 @@ Configure alerting via YAML (IaC-managed) or the dashboard. 7 channel types avai
 | **OpsGenie** | Team routing (Pro) |
 | **Jira** | Auto-create tickets (Pro) |
 
-**Freemium:** 1 channel of any type for free, unlimited with Pro.
+**Community:** 1 webhook channel with basic dispatch. **Pro:** unlimited channels, 7 types, retry with circuit breaker, dispatch health monitoring.
 
 ```yaml
 notifications:
@@ -466,9 +466,8 @@ Upgrade to Pro for advanced features:
 - **Redaction** — replace secrets in request bodies instead of blocking
 - **1,800+ detection patterns** — AI-generated, curated, and validated
 - **NLP-based PII detection** — beyond regex
-- **Advanced notifications** — circuit breakers, retry, deduplication, dispatch history
-- **Unlimited channels** — free tier allows 1 channel of any type
-- **Dashboard CRUD** — Rules, Allowlists pages
+- **Advanced notifications** — Slack, Teams, PagerDuty, Email, OpsGenie, Jira; circuit breakers, retry, deduplication, dispatch history
+- **Unlimited channels** — community allows 1 webhook channel
 - **Compliance reporting** — audit exports, analytics
 - **OpenTelemetry tracing** — full request lifecycle spans with provider, findings, action attributes
 
