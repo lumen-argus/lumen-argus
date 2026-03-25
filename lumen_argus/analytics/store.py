@@ -22,6 +22,7 @@ from lumen_argus.analytics.channels import ChannelsRepository, _NOTIFICATION_SCH
 from lumen_argus.analytics.config_overrides import ConfigOverridesRepository, _CONFIG_OVERRIDES_SCHEMA
 from lumen_argus.analytics.mcp_tool_lists import MCPToolListsRepository, _MCP_TOOL_LISTS_SCHEMA
 from lumen_argus.analytics.ws_connections import WebSocketConnectionsRepository, _WS_CONNECTIONS_SCHEMA
+from lumen_argus.analytics.allowlists import AllowlistRepository, _ALLOWLIST_SCHEMA
 
 log = logging.getLogger("argus.analytics")
 
@@ -92,6 +93,7 @@ class AnalyticsStore:
         self.config_overrides = ConfigOverridesRepository(self)
         self.mcp_tool_lists = MCPToolListsRepository(self)
         self.ws_connections = WebSocketConnectionsRepository(self)
+        self.allowlists = AllowlistRepository(self)
 
     def _ensure_db(self) -> None:
         """Create the database and schema if they don't exist."""
@@ -108,6 +110,7 @@ class AnalyticsStore:
             conn.executescript(_MCP_TOOL_CALLS_SCHEMA)
             conn.executescript(_MCP_TOOL_BASELINES_SCHEMA)
             conn.executescript(_WS_CONNECTIONS_SCHEMA)
+            conn.executescript(_ALLOWLIST_SCHEMA)
         # Secure file permissions — same 0o600 as audit JSONL files
         try:
             os.chmod(self._db_path, 0o600)
@@ -347,6 +350,26 @@ class AnalyticsStore:
 
     def cleanup_ws_connections(self, retention_days=365):
         return self.ws_connections.cleanup(retention_days=retention_days)
+
+    # --- Allowlists facade ---
+
+    def add_allowlist_entry(self, list_type, pattern, description="", created_by=""):
+        return self.allowlists.add(list_type, pattern, description=description, created_by=created_by)
+
+    def update_allowlist_entry(self, entry_id, data):
+        return self.allowlists.update(entry_id, data)
+
+    def get_allowlist_entry(self, entry_id):
+        return self.allowlists.get(entry_id)
+
+    def delete_allowlist_entry(self, entry_id):
+        return self.allowlists.delete(entry_id)
+
+    def list_allowlist_entries(self, list_type=None):
+        return self.allowlists.list(list_type=list_type)
+
+    def list_enabled_allowlist_entries(self, list_type=None):
+        return self.allowlists.list_enabled(list_type=list_type)
 
     # --- Config overrides facade ---
 

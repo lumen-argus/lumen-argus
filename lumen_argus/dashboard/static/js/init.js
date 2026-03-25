@@ -9,8 +9,7 @@ registerPage('pipeline', 'Pipeline', {order: 65, loadFn: loadPipeline});
 registerPage('settings', 'Settings', {order: 90, loadFn: loadSettings});
 
 /* Rules page is registered in rules.js (community-owned) */
-registerPage('allowlists', 'Allowlists', {locked: true, order: 45,
-  proDescription: 'Manage allowlist entries for secrets, PII, and file paths. Test patterns against recent findings before adding.'});
+/* Allowlists page is registered in allowlists.js (community-owned) */
 registerPage('mcp', 'MCP', {locked: true, order: 50,
   proDescription: 'MCP security dashboard: tool allow/block lists, session escalation, tool call policy rules, chain detection, and drift monitoring.'});
 registerPage('notifications', 'Notifications', {order: 55, loadFn: loadNotifications});

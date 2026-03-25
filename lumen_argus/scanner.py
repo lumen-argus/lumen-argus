@@ -10,6 +10,7 @@ Exit codes:
 """
 
 import json
+import logging
 import re
 import subprocess
 import sys
@@ -23,6 +24,8 @@ from lumen_argus.detectors.pii import PIIDetector
 from lumen_argus.detectors.proprietary import ProprietaryDetector
 from lumen_argus.detectors.secrets import SecretsDetector
 from lumen_argus.models import Finding, ScanField
+
+log = logging.getLogger("argus.scanner")
 
 # Exit codes by action severity (highest wins).
 # "redact" maps to "alert" in Community Edition (PolicyEngine downgrades it).
@@ -82,13 +85,24 @@ def _resolve_exit_code(findings, config):
     return exit_code
 
 
-def _build_allowlist(config):
-    """Build allowlist from config."""
-    return AllowlistMatcher(
-        secrets=config.allowlist.secrets,
-        pii=config.allowlist.pii,
-        paths=config.allowlist.paths,
-    )
+def _build_allowlist(config, store=None):
+    """Build allowlist from YAML config + DB entries."""
+    secrets = list(config.allowlist.secrets)
+    pii = list(config.allowlist.pii)
+    paths = list(config.allowlist.paths)
+    if store:
+        try:
+            for entry in store.list_enabled_allowlist_entries():
+                lt = entry["list_type"]
+                if lt == "secrets":
+                    secrets.append(entry["pattern"])
+                elif lt == "pii":
+                    pii.append(entry["pattern"])
+                elif lt == "paths":
+                    paths.append(entry["pattern"])
+        except Exception as e:
+            log.warning("failed to load DB allowlist entries: %s", e)
+    return AllowlistMatcher(secrets=secrets, pii=pii, paths=paths)
 
 
 def scan_text(

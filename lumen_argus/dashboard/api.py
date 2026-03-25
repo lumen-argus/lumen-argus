@@ -5,6 +5,7 @@ POST /api/v1/license (activate). Known Pro endpoint paths return 402 instead
 of 404 when no Pro handler is registered, giving API consumers a clear upgrade signal.
 """
 
+import fnmatch
 import json
 import logging
 import os
@@ -19,7 +20,7 @@ from lumen_argus.log_utils import sanitize_user_input
 log = logging.getLogger("argus.dashboard.api")
 
 # Pro endpoint prefixes — return 402 when Pro is not installed
-_PRO_ENDPOINTS = ("/api/v1/allowlist",)
+_PRO_ENDPOINTS = ()
 
 _SENSITIVE_FIELDS = frozenset(
     {
@@ -126,6 +127,11 @@ def handle_community_api(
             rule_name = path[len("/api/v1/rules/") :]
             return _handle_rule_detail(rule_name, store)
 
+        # --- Allowlist GET endpoint ---
+
+        if path == "/api/v1/allowlists":
+            return _handle_allowlists(store, config)
+
     # --- POST endpoints ---
 
     if method == "POST":
@@ -146,6 +152,18 @@ def handle_community_api(
             return _handle_ws_connections(params, store)
         if path == "/api/v1/ws/stats":
             return _handle_ws_stats(params, store)
+
+    # --- Allowlist mutation endpoints ---
+
+    if path == "/api/v1/allowlists" and method == "POST":
+        return _handle_allowlist_add(body, store)
+
+    if path == "/api/v1/allowlists/test" and method == "POST":
+        return _handle_allowlist_test(body, store)
+
+    if path.startswith("/api/v1/allowlists/") and method == "DELETE":
+        entry_id = path[len("/api/v1/allowlists/") :]
+        return _handle_allowlist_delete(entry_id, store)
 
     # --- Rules mutation endpoints ---
 
@@ -471,6 +489,106 @@ def _handle_config(config, store=None) -> tuple:
         },
     }
     return _json_response(200, data)
+
+
+# --- Allowlist handlers ---
+
+
+def _handle_allowlists(store, config) -> tuple:
+    result = {"secrets": [], "pii": [], "paths": [], "api_entries": []}
+    if config:
+        try:
+            result["secrets"] = [{"pattern": p, "source": "config"} for p in config.allowlist.secrets]
+            result["pii"] = [{"pattern": p, "source": "config"} for p in config.allowlist.pii]
+            result["paths"] = [{"pattern": p, "source": "config"} for p in config.allowlist.paths]
+        except Exception as e:
+            log.warning("GET /api/v1/allowlists: config read failed: %s", e)
+    if store:
+        try:
+            api_entries = store.list_allowlist_entries()
+            result["api_entries"] = api_entries
+            for entry in api_entries:
+                lt = entry["list_type"]
+                if lt in result:
+                    result[lt].append({"pattern": entry["pattern"], "source": "api", "id": entry["id"]})
+        except Exception as e:
+            log.warning("GET /api/v1/allowlists: DB read failed: %s", e)
+    return _json_response(200, result)
+
+
+def _handle_allowlist_add(body: bytes, store) -> tuple:
+    if not store:
+        log.error("POST /api/v1/allowlist: analytics store not available")
+        return _json_response(500, {"error": "analytics store not available"})
+    try:
+        data = json.loads(body)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        log.debug("POST /api/v1/allowlist: invalid JSON body")
+        return _json_response(400, {"error": "invalid JSON"})
+    list_type = data.get("type", "")
+    pattern = data.get("pattern", "")
+    if list_type not in ("secrets", "pii", "paths"):
+        log.warning("POST /api/v1/allowlist: invalid type '%s'", list_type)
+        return _json_response(400, {"error": "type must be secrets, pii, or paths"})
+    if not pattern or not pattern.strip():
+        return _json_response(400, {"error": "pattern is required"})
+    description = data.get("description", "")
+    try:
+        entry = store.add_allowlist_entry(list_type, pattern, description=description, created_by="dashboard")
+        log.info("allowlist entry added: %s '%s' (id=%d)", list_type, pattern.strip(), entry["id"])
+        return _json_response(201, entry)
+    except ValueError as e:
+        return _json_response(400, {"error": str(e)})
+
+
+def _handle_allowlist_test(body: bytes, store) -> tuple:
+    try:
+        data = json.loads(body)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return _json_response(400, {"error": "invalid JSON"})
+    pattern = data.get("pattern", "")
+    test_value = data.get("value", "")
+    if not pattern:
+        return _json_response(400, {"error": "pattern is required"})
+    value_match = fnmatch.fnmatch(test_value, pattern) if test_value else False
+    matching = []
+    matching_count = 0
+    if store:
+        try:
+            findings, _ = store.get_findings_page(limit=200)
+            for f in findings:
+                preview = f.get("value_preview", "")
+                if preview and fnmatch.fnmatch(preview, pattern):
+                    matching_count += 1
+                    if len(matching) < 20:
+                        matching.append(
+                            {
+                                "id": f.get("id"),
+                                "finding_type": f.get("finding_type", ""),
+                                "value_preview": preview,
+                                "severity": f.get("severity", ""),
+                            }
+                        )
+        except Exception as e:
+            log.warning("POST /api/v1/allowlist/test: findings scan failed: %s", e)
+    log.debug("POST /api/v1/allowlist/test: pattern='%s' matched=%d findings", pattern, matching_count)
+    return _json_response(
+        200, {"value_match": value_match, "matching_findings_count": matching_count, "matching_findings": matching}
+    )
+
+
+def _handle_allowlist_delete(entry_id: str, store) -> tuple:
+    if not store:
+        log.error("DELETE /api/v1/allowlist: analytics store not available")
+        return _json_response(500, {"error": "analytics store not available"})
+    try:
+        entry_id_int = int(entry_id)
+    except (ValueError, TypeError):
+        return _json_response(400, {"error": "invalid id"})
+    if store.delete_allowlist_entry(entry_id_int):
+        log.info("allowlist entry deleted: id=%d", entry_id_int)
+        return _json_response(200, {"deleted": entry_id_int})
+    return _json_response(404, {"error": "entry not found"})
 
 
 # --- Rules handlers ---

@@ -629,11 +629,10 @@ class TestTierGating(unittest.TestCase):
         status, _, body = _put(self.port, "/api/v1/rules/nonexistent", body=b"{}")
         self.assertIn(status, (200, 404))
 
-    def test_post_allowlist_returns_402(self):
-        status, _, body = _post(self.port, "/api/v1/allowlist", body=b"{}")
-        self.assertEqual(status, 402)
-        data = json.loads(body)
-        self.assertEqual(data["error"], "pro_required")
+    def test_post_allowlist_is_community(self):
+        """Allowlists are community-owned — POST validates input, not 402."""
+        status, _, body = _post(self.port, "/api/v1/allowlists", body=b"{}")
+        self.assertIn(status, (400, 500))  # invalid type or no store
 
     def test_put_config_empty_returns_400(self):
         status, _, body = _put(self.port, "/api/v1/config", body=b"{}")
@@ -1070,12 +1069,10 @@ class TestCommunityAPIDirect(unittest.TestCase):
         self.assertEqual(status, 404)
         self.assertEqual(data["error"], "not_found")
 
-    def test_pro_endpoint_post_returns_402(self):
-        # Rules are now community-handled, only allowlist is Pro-gated
-        status, body = handle_community_api("/api/v1/allowlist", "POST", b"{}", None)
-        data = json.loads(body)
-        self.assertEqual(status, 402, "Expected 402 for POST /api/v1/allowlist")
-        self.assertEqual(data["error"], "pro_required")
+    def test_allowlist_post_validates_input(self):
+        # Allowlists are now community-handled — POST validates type
+        status, body = handle_community_api("/api/v1/allowlists", "POST", b"{}", None)
+        self.assertEqual(status, 500)  # no store available
 
     def test_put_config_empty_returns_400(self):
         status, body = handle_community_api("/api/v1/config", "PUT", b"{}", None)
@@ -1083,12 +1080,10 @@ class TestCommunityAPIDirect(unittest.TestCase):
         self.assertEqual(status, 400)
         self.assertIn("error", data)
 
-    def test_pro_endpoint_delete_returns_402(self):
-        # Rules are community-owned, test allowlist instead
-        status, body = handle_community_api("/api/v1/allowlist/1", "DELETE", b"", None)
-        data = json.loads(body)
-        self.assertEqual(status, 402)
-        self.assertEqual(data["error"], "pro_required")
+    def test_allowlist_delete_no_store(self):
+        # Allowlists are community-owned — DELETE without store returns 500
+        status, body = handle_community_api("/api/v1/allowlists/1", "DELETE", b"", None)
+        self.assertEqual(status, 500)
 
 
 class TestConfigOverrides(unittest.TestCase):

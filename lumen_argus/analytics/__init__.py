@@ -5,6 +5,7 @@ from lumen_argus.analytics.channels import ChannelsRepository
 from lumen_argus.analytics.config_overrides import ConfigOverridesRepository
 from lumen_argus.analytics.mcp_tool_lists import MCPToolListsRepository
 from lumen_argus.analytics.ws_connections import WebSocketConnectionsRepository
+from lumen_argus.analytics.allowlists import AllowlistRepository
 
 __all__ = [
     "AnalyticsStore",
@@ -14,4 +15,5 @@ __all__ = [
     "ConfigOverridesRepository",
     "MCPToolListsRepository",
     "WebSocketConnectionsRepository",
+    "AllowlistRepository",
 ]

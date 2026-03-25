@@ -266,6 +266,33 @@ The dashboard runs on a separate port (default `8081`) and provides a REST API f
 
 `POST /api/v1/rules` and `PUT /api/v1/rules/:name` validate the `action` field. Community allows: empty string (default), `log`, `alert`, `block`. Pro overrides to also allow `redact`.
 
+### Allowlist endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/v1/allowlists` | GET | Merged allowlist entries (YAML config + API-managed) |
+| `/api/v1/allowlists` | POST | Add allowlist entry |
+| `/api/v1/allowlists/test` | POST | Test pattern against value and recent findings |
+| `/api/v1/allowlists/:id` | DELETE | Delete API-managed entry (config entries are read-only) |
+
+`GET /api/v1/allowlists` returns entries grouped by type with source attribution:
+
+```json
+{
+  "secrets": [
+    {"pattern": "sk-ant-*", "source": "config"},
+    {"pattern": "AKIA_TEST_*", "source": "api", "id": 1}
+  ],
+  "pii": [{"pattern": "*@example.com", "source": "config"}],
+  "paths": [],
+  "api_entries": [{"id": 1, "list_type": "secrets", "pattern": "AKIA_TEST_*", "source": "api", "created_at": "..."}]
+}
+```
+
+`POST /api/v1/allowlists` requires `type` (secrets, pii, or paths) and `pattern`. Config-defined entries (from YAML) are read-only and cannot be deleted via the API.
+
+`POST /api/v1/allowlists/test` accepts `pattern` and optional `value`. Returns `value_match` (boolean) and up to 20 matching recent findings from the database.
+
 ### Other mutation endpoints
 
 | Endpoint | Method | Description |
@@ -279,7 +306,6 @@ These return `402 pro_required` when Pro is not active:
 | Endpoint | Description |
 |----------|-------------|
 | `/api/v1/stats/advanced` | Advanced analytics (action trend, activity matrix, top accounts, top projects, detection coverage) |
-| `/api/v1/allowlist/*` | Allowlist management |
 
 ### Authentication
 

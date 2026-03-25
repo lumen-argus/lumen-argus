@@ -10,7 +10,7 @@ import sys
 import time
 
 from lumen_argus import __version__
-from lumen_argus.allowlist import AllowlistMatcher
+
 from lumen_argus.audit import AuditLogger
 from lumen_argus.config import load_config
 from lumen_argus.display import JsonDisplay, TerminalDisplay
@@ -274,11 +274,6 @@ def main(argv=None):
         log.info("plugin: %s v%s", pname, pver)
     log.info("audit log: %s", os.path.expanduser(audit_log_dir))
     log.info("app log: %s (%s level)", log_file_path, config.logging_config.file_level)
-    allowlist = AllowlistMatcher(
-        secrets=config.allowlist.secrets,
-        pii=config.allowlist.pii,
-        paths=config.allowlist.paths,
-    )
     from dataclasses import asdict
 
     router = ProviderRouter(upstreams=config.upstreams or None)
@@ -385,6 +380,11 @@ def main(argv=None):
                 log.info("applied %d config override(s) from DB", len(db_overrides))
         except Exception:
             pass
+
+    # --- Allowlist (YAML config + DB entries) ---
+    from lumen_argus.scanner import _build_allowlist
+
+    allowlist = _build_allowlist(config, store=analytics_store)
 
     # --- Pipeline (created after store + rules so RulesDetector sees imported rules) ---
     pipeline = ScannerPipeline(
@@ -678,14 +678,12 @@ def _do_reload(server, config_path, file_handler, console_level, root_logger, ex
 
         new_config = load_config(config_path=config_path)
 
-        new_allowlist = AllowlistMatcher(
-            secrets=new_config.allowlist.secrets,
-            pii=new_config.allowlist.pii,
-            paths=new_config.allowlist.paths,
-        )
         # Reconcile YAML custom rules to DB BEFORE pipeline reload
         # so RulesDetector.reload() sees the updated rules
         analytics_store = extensions.get_analytics_store()
+        from lumen_argus.scanner import _build_allowlist
+
+        new_allowlist = _build_allowlist(new_config, store=analytics_store)
         if analytics_store and new_config.custom_rules:
             yaml_rules = [
                 {
@@ -1105,9 +1103,9 @@ def _run_mcp(args):
 
     log = logging.getLogger("argus.mcp")
 
-    from lumen_argus.allowlist import AllowlistMatcher
     from lumen_argus.config import load_config
     from lumen_argus.mcp.scanner import MCPScanner
+    from lumen_argus.scanner import _build_allowlist
 
     # Determine transport mode from flags
     upstream = getattr(args, "upstream", None)
@@ -1147,11 +1145,7 @@ def _run_mcp(args):
     if config.pii.enabled:
         detectors.append(PIIDetector())
 
-    allowlist = AllowlistMatcher(
-        secrets=config.allowlist.secrets,
-        pii=config.allowlist.pii,
-        paths=config.allowlist.paths,
-    )
+    allowlist = _build_allowlist(config)
 
     # Build response scanner for injection detection in tool responses
     response_scanner = None
