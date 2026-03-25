@@ -294,7 +294,7 @@ Configure alerting via YAML (IaC-managed) or the dashboard. Community includes W
 | **OpsGenie** | Team routing (Pro) |
 | **Jira** | Auto-create tickets (Pro) |
 
-**Community:** 1 webhook channel with basic dispatch. **Pro:** unlimited channels, 7 types, retry with circuit breaker, dispatch health monitoring.
+**Community:** 1 webhook channel with basic dispatch, configurable event triggers (block/alert/log). **Pro:** unlimited channels, 7 types, retry with circuit breaker, dispatch health monitoring.
 
 ```yaml
 notifications:

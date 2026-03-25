@@ -652,7 +652,7 @@ class ScannerPipeline:
                         session_id=session.session_id if session else "",
                     )
                 except Exception:
-                    log.warning("notification dispatch failed", exc_info=False)
+                    log.warning("notification dispatch failed", exc_info=True)
 
         # Fire post-scan hook for plugins (analytics, SSE, etc.)
         if self._extensions:

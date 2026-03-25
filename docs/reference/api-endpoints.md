@@ -231,8 +231,8 @@ The dashboard runs on a separate port (default `8081`) and provides a REST API f
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/api/v1/notifications/types` | GET | Available channel types + channel limit + count |
-| `/api/v1/notifications/channels` | GET | List all channels (config masked) |
-| `/api/v1/notifications/channels` | POST | Create channel (type validated, limit enforced) |
+| `/api/v1/notifications/channels` | GET | List all channels (config masked, enriched with dispatch status) |
+| `/api/v1/notifications/channels` | POST | Create channel (type validated, limit enforced, events array) |
 | `/api/v1/notifications/channels/:id` | GET | Full channel config (for edit form) |
 | `/api/v1/notifications/channels/:id` | PUT | Update channel (partial) |
 | `/api/v1/notifications/channels/:id` | DELETE | Delete channel |

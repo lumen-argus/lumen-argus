@@ -1,5 +1,26 @@
 /* notifications.js — notification channels page (freemium-aware, source-aware) */
 var notifTypes={};var editingChannelId=null;var channelLimit=1;var channelCount=0;
+var _eventOptions=[{value:'block',label:'Block'},{value:'alert',label:'Alert'},{value:'log',label:'Log'}];
+function _buildEventChips(container,selected){
+  container.replaceChildren();
+  var sel=selected||['block','alert'];
+  _eventOptions.forEach(function(opt){
+    var chip=document.createElement('div');
+    chip.className='col-btn'+(sel.indexOf(opt.value)!==-1?' on':'');
+    chip.setAttribute('data-event',opt.value);
+    chip.textContent=opt.label;
+    chip.addEventListener('click',function(){
+      this.classList.toggle('on');
+      var ne=document.getElementById('notif-error');ne.textContent='';ne.style.display='none';
+    });
+    container.appendChild(chip);
+  });
+}
+function _getSelectedEvents(){
+  var events=[];
+  document.querySelectorAll('#notif-events .col-btn.on').forEach(function(el){events.push(el.getAttribute('data-event'));});
+  return events;
+}
 function loadNotifications(){
   Promise.all([
     fetch('/api/v1/notifications/channels').then(function(r){return r.json()}),
@@ -211,6 +232,9 @@ function _editChannel(id){
       var cfg=ch.config||{};
       var minSev=cfg.min_severity||ch.min_severity||'warning';
       document.getElementById('notif-severity').value=minSev;
+      var evts=ch.events||['block','alert'];
+      if(typeof evts==='string'){try{evts=JSON.parse(evts);}catch(e){evts=['block','alert'];}}
+      _buildEventChips(document.getElementById('notif-events'),evts);
       var fields=document.querySelectorAll('#notif-type-fields [data-field]');
       for(var i=0;i<fields.length;i++){
         var key=fields[i].getAttribute('data-field');
@@ -240,6 +264,7 @@ document.getElementById('notif-add-btn').addEventListener('click',function(){
   document.getElementById('notif-type').value='';
   document.getElementById('notif-type-fields').replaceChildren();
   document.getElementById('notif-severity').value='warning';
+  _buildEventChips(document.getElementById('notif-events'));
   document.getElementById('notif-enabled').value='1';
   document.getElementById('notif-save').textContent='Save Channel';
 });
@@ -305,7 +330,9 @@ document.getElementById('notif-save').addEventListener('click',function(){
   if(config.to_addrs&&typeof config.to_addrs==='string'){
     config.to_addrs=config.to_addrs.split(',').map(function(a){return a.trim()}).filter(Boolean);}
   if(config.smtp_port)config.smtp_port=Number.parseInt(config.smtp_port)||587;
-  var payload={name:name,type:chType,config:config,min_severity:minSev,enabled:enabled};
+  var events=_getSelectedEvents();
+  if(!events.length){errEl.textContent='Select at least one trigger';errEl.style.display='block';return;}
+  var payload={name:name,type:chType,config:config,min_severity:minSev,enabled:enabled,events:events};
   var url='/api/v1/notifications/channels';var method='POST';
   if(editingChannelId){url+='/'+editingChannelId;method='PUT';}
   fetch(url,{method:method,headers:csrfHeaders({'Content-Type':'application/json'}),
