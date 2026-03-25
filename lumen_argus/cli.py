@@ -384,7 +384,7 @@ def main(argv=None):
     # --- Allowlist (YAML config + DB entries) ---
     from lumen_argus.scanner import _build_allowlist
 
-    allowlist = _build_allowlist(config, store=analytics_store)
+    allowlist = _build_allowlist(config, store=analytics_store, extensions=extensions)
 
     # --- Pipeline (created after store + rules so RulesDetector sees imported rules) ---
     pipeline = ScannerPipeline(
@@ -683,7 +683,7 @@ def _do_reload(server, config_path, file_handler, console_level, root_logger, ex
         analytics_store = extensions.get_analytics_store()
         from lumen_argus.scanner import _build_allowlist
 
-        new_allowlist = _build_allowlist(new_config, store=analytics_store)
+        new_allowlist = _build_allowlist(new_config, store=analytics_store, extensions=extensions)
         if analytics_store and new_config.custom_rules:
             yaml_rules = [
                 {

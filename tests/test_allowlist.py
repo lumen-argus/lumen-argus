@@ -34,6 +34,41 @@ class TestAllowlistMatcher(unittest.TestCase):
         self.assertFalse(al.is_allowed_pii("anything"))
         self.assertFalse(al.is_allowed_path("anything"))
 
+    def test_multiple_patterns(self):
+        al = AllowlistMatcher(secrets=["sk_test_*", "AKIA*", "ghp_example*"])
+        self.assertTrue(al.is_allowed_secret("sk_test_abc123"))
+        self.assertTrue(al.is_allowed_secret("AKIAIOSFODNN7EXAMPLE"))
+        self.assertTrue(al.is_allowed_secret("ghp_example_token"))
+        self.assertFalse(al.is_allowed_secret("real_secret"))
+
+    def test_special_regex_chars_escaped(self):
+        """fnmatch.translate properly escapes regex metacharacters."""
+        al = AllowlistMatcher(secrets=["sk.test+key"])
+        # Dots and plus are literal in fnmatch (not regex wildcards)
+        self.assertTrue(al.is_allowed_secret("sk.test+key"))
+        self.assertFalse(al.is_allowed_secret("skXtestXkey"))
+
+    def test_question_mark_glob(self):
+        al = AllowlistMatcher(secrets=["key_?_test"])
+        self.assertTrue(al.is_allowed_secret("key_A_test"))
+        self.assertFalse(al.is_allowed_secret("key_AB_test"))
+
+    def test_large_allowlist(self):
+        """100+ patterns compile and match correctly."""
+        patterns = ["pattern_%d_*" % i for i in range(150)]
+        al = AllowlistMatcher(secrets=patterns)
+        self.assertTrue(al.is_allowed_secret("pattern_0_value"))
+        self.assertTrue(al.is_allowed_secret("pattern_149_value"))
+        self.assertFalse(al.is_allowed_secret("pattern_150_value"))
+        self.assertFalse(al.is_allowed_secret("unrelated"))
+
+    def test_no_partial_match(self):
+        """Pattern must match the full value, not a substring."""
+        al = AllowlistMatcher(secrets=["abc"])
+        self.assertTrue(al.is_allowed_secret("abc"))
+        self.assertFalse(al.is_allowed_secret("abcdef"))
+        self.assertFalse(al.is_allowed_secret("xabc"))
+
 
 if __name__ == "__main__":
     unittest.main()

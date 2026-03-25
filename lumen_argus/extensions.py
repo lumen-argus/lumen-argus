@@ -62,6 +62,7 @@ class ExtensionRegistry:
         self._ws_connection_hook = None  # type: Optional[Callable]
         self._rule_metrics_collector = None  # type: Optional[object]
         self._accelerator_factory = None  # type: Optional[Callable]
+        self._allowlist_matcher_factory = None  # type: Optional[Callable]
         # MCP Pro hooks
         self._mcp_policy_engine = None  # type: Optional[object]
         self._mcp_session_escalation = None  # type: Optional[Callable]
@@ -348,6 +349,17 @@ class ExtensionRegistry:
 
     def get_accelerator_factory(self):
         return self._accelerator_factory
+
+    def set_allowlist_matcher_factory(self, factory) -> None:
+        """Register a factory for custom allowlist matching (Enterprise: Hyperscan).
+
+        Factory signature: factory(secrets=[], pii=[], paths=[]) -> matcher
+        Matcher must implement: is_allowed_secret(value), is_allowed_pii(value), is_allowed_path(path)
+        """
+        self._allowlist_matcher_factory = factory
+
+    def get_allowlist_matcher_factory(self):
+        return self._allowlist_matcher_factory
 
     def set_mcp_policy_engine(self, engine) -> None:
         """Register Pro's MCP policy engine for tool call validation.

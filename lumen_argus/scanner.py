@@ -85,7 +85,7 @@ def _resolve_exit_code(findings, config):
     return exit_code
 
 
-def _build_allowlist(config, store=None):
+def _build_allowlist(config, store=None, extensions=None):
     """Build allowlist from YAML config + DB entries."""
     secrets = list(config.allowlist.secrets)
     pii = list(config.allowlist.pii)
@@ -102,6 +102,14 @@ def _build_allowlist(config, store=None):
                     paths.append(entry["pattern"])
         except Exception as e:
             log.warning("failed to load DB allowlist entries: %s", e)
+    # Use custom factory if registered (Enterprise: Hyperscan)
+    if extensions:
+        factory = extensions.get_allowlist_matcher_factory()
+        if factory:
+            try:
+                return factory(secrets=secrets, pii=pii, paths=paths)
+            except Exception as e:
+                log.warning("allowlist matcher factory failed, using default: %s", e)
     return AllowlistMatcher(secrets=secrets, pii=pii, paths=paths)
 
 
