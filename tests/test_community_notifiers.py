@@ -132,44 +132,53 @@ class TestWebhookNotifier(unittest.TestCase):
         self.assertEqual(len(self.received), 1)
 
 
+class _MockStore:
+    """Mock store returning configurable channels."""
+
+    def __init__(self, channels=None):
+        self._channels = channels or [{"id": 1, "name": "wh", "type": "webhook", "enabled": True, "events": []}]
+
+    def list_notification_channels(self):
+        return self._channels
+
+
+class _RecordingNotifier:
+    """Notifier that records calls."""
+
+    def __init__(self, notified_list):
+        self._notified = notified_list
+
+    def notify(self, findings, provider="", model="", **kwargs):
+        self._notified.append({"findings": findings, "provider": provider})
+
+
+class _FailNotifier:
+    """Notifier that always raises."""
+
+    def __init__(self, error="connection refused"):
+        self._error = error
+
+    def notify(self, findings, **kwargs):
+        raise Exception(self._error)
+
+
 class TestBasicDispatcher(unittest.TestCase):
     """Test BasicDispatcher fire-and-forget behavior."""
 
     def test_dispatches_in_background(self):
         notified = []
-
-        class MockNotifier:
-            def notify(self, findings, provider="", model="", **kwargs):
-                notified.append({"findings": findings, "provider": provider})
-
-        class MockStore:
-            def list_notification_channels(self):
-                return [
-                    {"id": 1, "name": "test-wh", "type": "webhook", "enabled": True, "events": []},
-                ]
-
-        dispatcher = BasicDispatcher(store=MockStore(), builder=lambda ch: MockNotifier())
+        store = _MockStore([{"id": 1, "name": "test-wh", "type": "webhook", "enabled": True, "events": []}])
+        dispatcher = BasicDispatcher(store=store, builder=lambda ch: _RecordingNotifier(notified))
         dispatcher.rebuild()
-        findings = [_make_finding()]
-        dispatcher.dispatch(findings, provider="anthropic")
+        dispatcher.dispatch([_make_finding()], provider="anthropic")
         time.sleep(0.3)
         self.assertEqual(len(notified), 1)
         self.assertEqual(notified[0]["provider"], "anthropic")
 
     def test_filters_by_channel_events(self):
         notified = []
-
-        class MockNotifier:
-            def notify(self, findings, **kwargs):
-                notified.append(findings)
-
-        class MockStore:
-            def list_notification_channels(self):
-                return [
-                    {"id": 1, "name": "block-only", "type": "webhook", "enabled": True, "events": ["block"]},
-                ]
-
-        dispatcher = BasicDispatcher(store=MockStore(), builder=lambda ch: MockNotifier())
+        store = _MockStore([{"id": 1, "name": "block-only", "type": "webhook", "enabled": True, "events": ["block"]}])
+        dispatcher = BasicDispatcher(store=store, builder=lambda ch: _RecordingNotifier(notified))
         dispatcher.rebuild()
         dispatcher.dispatch([_make_finding(action="alert")], provider="test")
         time.sleep(0.2)
@@ -180,47 +189,26 @@ class TestBasicDispatcher(unittest.TestCase):
         self.assertEqual(len(notified), 1)
 
     def test_handles_notifier_exception_gracefully(self):
-        class FailNotifier:
-            def notify(self, findings, **kwargs):
-                raise Exception("connection refused")
-
-        class MockStore:
-            def list_notification_channels(self):
-                return [{"id": 1, "name": "fail", "type": "webhook", "enabled": True, "events": []}]
-
-        dispatcher = BasicDispatcher(store=MockStore(), builder=lambda ch: FailNotifier())
+        store = _MockStore([{"id": 1, "name": "fail", "type": "webhook", "enabled": True, "events": []}])
+        dispatcher = BasicDispatcher(store=store, builder=lambda ch: _FailNotifier())
         dispatcher.rebuild()
         dispatcher.dispatch([_make_finding()], provider="test")
         time.sleep(0.2)
 
     def test_rebuild_skips_disabled_channels(self):
-        class MockStore:
-            def list_notification_channels(self):
-                return [
-                    {"id": 1, "name": "active", "type": "webhook", "enabled": True, "events": []},
-                    {"id": 2, "name": "off", "type": "webhook", "enabled": False, "events": []},
-                ]
-
-        class N:
-            def notify(self, findings, **kw):
-                pass
-
-        dispatcher = BasicDispatcher(store=MockStore(), builder=lambda ch: N())
+        store = _MockStore(
+            [
+                {"id": 1, "name": "active", "type": "webhook", "enabled": True, "events": []},
+                {"id": 2, "name": "off", "type": "webhook", "enabled": False, "events": []},
+            ]
+        )
+        dispatcher = BasicDispatcher(store=store, builder=lambda ch: _RecordingNotifier([]))
         dispatcher.rebuild()
         self.assertEqual(len(dispatcher._notifiers), 1)
 
     def test_empty_findings_noop(self):
-        class MockStore:
-            def list_notification_channels(self):
-                return [{"id": 1, "name": "wh", "type": "webhook", "enabled": True, "events": []}]
-
         notified = []
-
-        class N:
-            def notify(self, findings, **kw):
-                notified.append(1)
-
-        dispatcher = BasicDispatcher(store=MockStore(), builder=lambda ch: N())
+        dispatcher = BasicDispatcher(store=_MockStore(), builder=lambda ch: _RecordingNotifier(notified))
         dispatcher.rebuild()
         dispatcher.dispatch([], provider="test")
         time.sleep(0.1)
@@ -233,18 +221,8 @@ class TestBasicDispatcher(unittest.TestCase):
     def test_events_json_string_parsed(self):
         """Events stored as JSON string should be parsed during rebuild."""
         notified = []
-
-        class MockNotifier:
-            def notify(self, findings, **kwargs):
-                notified.append(findings)
-
-        class MockStore:
-            def list_notification_channels(self):
-                return [
-                    {"id": 1, "name": "wh", "type": "webhook", "enabled": True, "events": '["block"]'},
-                ]
-
-        dispatcher = BasicDispatcher(store=MockStore(), builder=lambda ch: MockNotifier())
+        store = _MockStore([{"id": 1, "name": "wh", "type": "webhook", "enabled": True, "events": '["block"]'}])
+        dispatcher = BasicDispatcher(store=store, builder=lambda ch: _RecordingNotifier(notified))
         dispatcher.rebuild()
         dispatcher.dispatch([_make_finding(action="alert")], provider="test")
         time.sleep(0.2)
@@ -255,15 +233,7 @@ class TestBasicDispatcher(unittest.TestCase):
         self.assertEqual(len(notified), 1)
 
     def test_last_status_sent(self):
-        class MockNotifier:
-            def notify(self, findings, **kwargs):
-                pass
-
-        class MockStore:
-            def list_notification_channels(self):
-                return [{"id": 1, "name": "wh", "type": "webhook", "enabled": True, "events": []}]
-
-        dispatcher = BasicDispatcher(store=MockStore(), builder=lambda ch: MockNotifier())
+        dispatcher = BasicDispatcher(store=_MockStore(), builder=lambda ch: _RecordingNotifier([]))
         dispatcher.rebuild()
         self.assertEqual(dispatcher.get_last_status(), {})
         dispatcher.dispatch([_make_finding()], provider="test")
@@ -275,15 +245,8 @@ class TestBasicDispatcher(unittest.TestCase):
         self.assertIn("T", status[1]["timestamp"])
 
     def test_last_status_failed(self):
-        class FailNotifier:
-            def notify(self, findings, **kwargs):
-                raise Exception("timeout")
-
-        class MockStore:
-            def list_notification_channels(self):
-                return [{"id": 1, "name": "fail", "type": "webhook", "enabled": True, "events": []}]
-
-        dispatcher = BasicDispatcher(store=MockStore(), builder=lambda ch: FailNotifier())
+        store = _MockStore([{"id": 1, "name": "fail", "type": "webhook", "enabled": True, "events": []}])
+        dispatcher = BasicDispatcher(store=store, builder=lambda ch: _FailNotifier("timeout"))
         dispatcher.rebuild()
         dispatcher.dispatch([_make_finding()], provider="test")
         time.sleep(0.3)
@@ -293,15 +256,7 @@ class TestBasicDispatcher(unittest.TestCase):
         self.assertIn("timeout", status[1]["error"])
 
     def test_last_status_reset_on_rebuild(self):
-        class MockNotifier:
-            def notify(self, findings, **kwargs):
-                pass
-
-        class MockStore:
-            def list_notification_channels(self):
-                return [{"id": 1, "name": "wh", "type": "webhook", "enabled": True, "events": []}]
-
-        dispatcher = BasicDispatcher(store=MockStore(), builder=lambda ch: MockNotifier())
+        dispatcher = BasicDispatcher(store=_MockStore(), builder=lambda ch: _RecordingNotifier([]))
         dispatcher.rebuild()
         dispatcher.dispatch([_make_finding()], provider="test")
         time.sleep(0.3)

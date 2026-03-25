@@ -12,7 +12,7 @@ import os
 import sqlite3
 import threading
 import time
-from datetime import datetime, timezone
+from lumen_argus.time_utils import now_iso
 from pathlib import Path
 
 
@@ -144,7 +144,7 @@ class AnalyticsStore:
         return conn
 
     def _now(self) -> str:
-        return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        return now_iso()
 
     def set_rules_change_callback(self, callback) -> None:
         """Register callback for rule changes.

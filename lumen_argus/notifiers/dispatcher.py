@@ -4,7 +4,8 @@ import json
 import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+
+from lumen_argus.time_utils import now_iso
 
 log = logging.getLogger("argus.notifiers.dispatcher")
 
@@ -17,10 +18,6 @@ def _parse_events(events):
         except Exception:
             return []
     return events or []
-
-
-def _now_iso():
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 class BasicDispatcher:
@@ -91,7 +88,7 @@ class BasicDispatcher:
                 self._last_status[channel_id] = {
                     "status": "sent",
                     "error": "",
-                    "timestamp": _now_iso(),
+                    "timestamp": now_iso(),
                 }
             log.info(
                 "notification sent: %s (%s) — %d findings",
@@ -104,7 +101,7 @@ class BasicDispatcher:
                 self._last_status[channel_id] = {
                     "status": "failed",
                     "error": str(e),
-                    "timestamp": _now_iso(),
+                    "timestamp": now_iso(),
                 }
             log.warning(
                 "notification failed: %s (%s): %s",
