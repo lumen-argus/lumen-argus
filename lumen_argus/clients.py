@@ -184,6 +184,16 @@ CLIENT_REGISTRY: List[ClientDef] = [
         setup_cmd="OPENAI_BASE_URL=http://localhost:8080",
         website="https://aide.dev",
     ),
+    ClientDef(
+        id="opencode",
+        display_name="OpenCode",
+        category="cli",
+        provider="multi",
+        ua_prefixes=("opencode/",),
+        env_var="OPENAI_BASE_URL",
+        setup_cmd="OPENAI_BASE_URL=http://localhost:8080 opencode",
+        website="https://opencode.ai",
+    ),
 ]
 
 # Build prefix→client lookup for fast matching

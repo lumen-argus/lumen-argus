@@ -14,8 +14,8 @@ from lumen_argus.clients import (
 class TestRegistryIntegrity(unittest.TestCase):
     """Verify the built-in registry is well-formed."""
 
-    def test_has_15_clients(self):
-        self.assertEqual(len(CLIENT_REGISTRY), 15)
+    def test_has_16_clients(self):
+        self.assertEqual(len(CLIENT_REGISTRY), 16)
 
     def test_no_duplicate_ids(self):
         ids = [c.id for c in CLIENT_REGISTRY]
@@ -108,6 +108,12 @@ class TestIdentifyClient(unittest.TestCase):
         cid, _, _, _ = identify_client("aide/1.0.0")
         self.assertEqual(cid, "aide")
 
+    def test_opencode(self):
+        cid, name, ver, _ = identify_client("opencode/0.5.0")
+        self.assertEqual(cid, "opencode")
+        self.assertEqual(name, "OpenCode")
+        self.assertEqual(ver, "0.5.0")
+
     def test_case_insensitive(self):
         cid, _, _, _ = identify_client("CLAUDE-CODE/1.2.3")
         self.assertEqual(cid, "claude_code")
@@ -167,9 +173,9 @@ class TestGetClientById(unittest.TestCase):
 
 
 class TestGetAllClients(unittest.TestCase):
-    def test_returns_15_clients(self):
+    def test_returns_16_clients(self):
         clients = get_all_clients()
-        self.assertEqual(len(clients), 15)
+        self.assertEqual(len(clients), 16)
         self.assertIsInstance(clients[0], dict)
         self.assertIn("id", clients[0])
 
@@ -185,13 +191,13 @@ class TestGetAllClients(unittest.TestCase):
             website="https://example.com",
         )
         clients = get_all_clients(extra_clients=[extra])
-        self.assertEqual(len(clients), 16)
+        self.assertEqual(len(clients), 17)
         self.assertEqual(clients[-1]["id"], "enterprise_tool")
 
     def test_with_extra_dict(self):
         extra = {"id": "custom", "display_name": "Custom Tool"}
         clients = get_all_clients(extra_clients=[extra])
-        self.assertEqual(len(clients), 16)
+        self.assertEqual(len(clients), 17)
         self.assertEqual(clients[-1]["id"], "custom")
 
 
