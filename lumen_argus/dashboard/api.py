@@ -1586,7 +1586,7 @@ def _handle_rule_analysis_get(store):
     if err:
         return err
 
-    cached = store.rule_analysis.get_latest_analysis()
+    cached = store.rule_analysis.get_latest_analysis_filtered()
     if not cached:
         return _json_response(
             200,
@@ -1596,12 +1596,6 @@ def _handle_rule_analysis_get(store):
                 "message": "No analysis results yet. Click Analyze to detect rule overlaps.",
             },
         )
-
-    from lumen_argus.rule_analysis import filter_dismissed
-
-    dismissed = cached.pop("dismissed", [])
-    if dismissed:
-        cached = filter_dismissed(cached, dismissed)
 
     cached["available"] = True
     cached["has_results"] = True

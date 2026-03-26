@@ -78,6 +78,29 @@ class RuleAnalysisRepository:
             "dismissed": dismissed,
         }
 
+    def get_latest_analysis_filtered(self):
+        """Get the most recent analysis with dismissed findings removed.
+
+        Returns the result dict without the 'dismissed' key — ready for API response.
+        Returns None if no analysis exists.
+        """
+        raw = self.get_latest_analysis()
+        if not raw:
+            return None
+        dismissed = raw.pop("dismissed", [])
+        if dismissed:
+            dismissed_set = {(a, b) for a, b in dismissed}
+
+            def _keep(item):
+                pair = (item["rule_a"], item["rule_b"])
+                reverse = (item["rule_b"], item["rule_a"])
+                return pair not in dismissed_set and reverse not in dismissed_set
+
+            raw["duplicates"] = [d for d in raw["duplicates"] if _keep(d)]
+            raw["subsets"] = [s for s in raw["subsets"] if _keep(s)]
+            raw["overlaps"] = [o for o in raw["overlaps"] if _keep(o)]
+        return raw
+
     def dismiss_finding(self, rule_a, rule_b):
         """Add a pair to the dismissed list. Returns True if added, False if already dismissed."""
         with self._store._connect() as conn:
