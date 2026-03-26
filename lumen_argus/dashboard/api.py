@@ -35,6 +35,9 @@ _SENSITIVE_FIELDS = frozenset(
     }
 )
 
+# Allowed rule actions in community edition (Pro adds "redact" via extension)
+_COMMUNITY_ACTIONS = ("log", "alert", "block")
+
 # Start time for uptime calculation
 _start_time = time.monotonic()
 
@@ -256,6 +259,9 @@ def handle_community_api(
         return _handle_rule_analysis_dismiss(body, store)
 
     # --- Rules mutation endpoints ---
+
+    if path == "/api/v1/rules/bulk-update" and method == "POST":
+        return _handle_rules_bulk_update(body, store)
 
     if path == "/api/v1/rules" and method == "POST":
         return _handle_rule_create(body, store)
@@ -727,9 +733,11 @@ def _handle_rule_create(body: bytes, store) -> tuple:
         log.warning("POST /api/v1/rules: invalid regex for '%s': %s", data.get("name"), e)
         return _json_response(400, {"error": "invalid regex: %s" % e})
     action = data.get("action", "")
-    if action and action not in ("log", "alert", "block"):
+    if action and action not in _COMMUNITY_ACTIONS:
         log.warning("POST /api/v1/rules: invalid action '%s' for '%s'", action, data.get("name"))
-        return _json_response(400, {"error": "invalid action: %s (allowed: log, alert, block)" % action})
+        return _json_response(
+            400, {"error": "invalid action: %s (allowed: %s)" % (action, ", ".join(_COMMUNITY_ACTIONS))}
+        )
     data["source"] = "dashboard"
     data["tier"] = "custom"
     data["created_by"] = "dashboard"
@@ -756,9 +764,11 @@ def _handle_rule_update(rule_name: str, body: bytes, store) -> tuple:
     if isinstance(data, tuple):
         return data
     action = data.get("action")
-    if action is not None and action != "" and action not in ("log", "alert", "block"):
+    if action is not None and action != "" and action not in _COMMUNITY_ACTIONS:
         log.warning("PUT /api/v1/rules/%s: invalid action '%s'", rule_name, action)
-        return _json_response(400, {"error": "invalid action: %s (allowed: log, alert, block)" % action})
+        return _json_response(
+            400, {"error": "invalid action: %s (allowed: %s)" % (action, ", ".join(_COMMUNITY_ACTIONS))}
+        )
     data["updated_by"] = "dashboard"
     result = store.update_rule(rule_name, data)
     if result is None:
@@ -766,6 +776,49 @@ def _handle_rule_update(rule_name: str, body: bytes, store) -> tuple:
     changes = ", ".join("%s=%s" % (k, v) for k, v in data.items() if k != "updated_by")
     log.info("rule updated [dashboard]: %s (%s)", rule_name, changes)
     return _json_response(200, result)
+
+
+def _handle_rules_bulk_update(body: bytes, store) -> tuple:
+    log.debug("POST /api/v1/rules/bulk-update")
+    err = _require_store(store, "POST /api/v1/rules/bulk-update")
+    if err:
+        return err
+    data = _parse_json_body(body, "POST /api/v1/rules/bulk-update")
+    if isinstance(data, tuple):
+        return data
+    names = data.get("names")
+    if not isinstance(names, list):
+        log.warning("POST /api/v1/rules/bulk-update: names is not a list")
+        return _json_response(400, {"error": "names must be a list"})
+    if len(names) > 500:
+        log.warning("POST /api/v1/rules/bulk-update: %d names exceeds cap of 500", len(names))
+        return _json_response(400, {"error": "too many names (max 500)"})
+    update = data.get("update")
+    if not isinstance(update, dict) or not update:
+        log.warning("POST /api/v1/rules/bulk-update: update is missing or empty")
+        return _json_response(400, {"error": "update must be a non-empty object"})
+    action = update.get("action")
+    if action is not None and action != "" and action not in _COMMUNITY_ACTIONS:
+        log.warning("POST /api/v1/rules/bulk-update: invalid action '%s'", action)
+        return _json_response(
+            400, {"error": "invalid action: %s (allowed: %s)" % (action, ", ".join(_COMMUNITY_ACTIONS))}
+        )
+    update["updated_by"] = "dashboard"
+    result = store.rules.bulk_update(names, update)
+    log.info(
+        "bulk update [dashboard]: %d updated, %d failed, update=%s",
+        result["updated"],
+        len(result["failed"]),
+        update,
+    )
+    return _json_response(
+        200,
+        {
+            "updated": result["updated"],
+            "failed": result["failed"],
+            "message": "Updated %d rules" % result["updated"],
+        },
+    )
 
 
 def _handle_rule_delete(rule_name: str, store) -> tuple:

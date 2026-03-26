@@ -203,42 +203,86 @@ class RulesRepository:
         self._store._notify_rules_changed("create", rule_name=name)
         return self.get_by_name(name)
 
-    def update(self, name: str, data: dict) -> Optional[dict]:
-        """Update rule fields. Returns updated rule or None if not found."""
-        updates = []  # type: List[str]
-        params = []  # type: list
+    def _build_set_clause(self, data: dict) -> tuple:
+        """Build SET clause fragments and params from update data.
+
+        Returns (set_fragments, params) or ([], []) if no updatable fields.
+        """
+        fragments = []
+        params = []
         for key in ("pattern", "detector", "severity", "action", "description", "validator"):
             if key in data:
-                updates.append("%s = ?" % key)
+                fragments.append("%s = ?" % key)
                 params.append(data[key])
         if "enabled" in data:
-            updates.append("enabled = ?")
+            fragments.append("enabled = ?")
             params.append(1 if data["enabled"] else 0)
         if "tags" in data:
-            updates.append("tags = ?")
+            fragments.append("tags = ?")
             params.append(json.dumps(data["tags"]) if isinstance(data["tags"], list) else data["tags"])
         if "entropy_context" in data:
-            updates.append("entropy_context = ?")
+            fragments.append("entropy_context = ?")
             params.append(1 if data["entropy_context"] else 0)
-        if not updates:
+        if fragments:
+            fragments.append("updated_at = ?")
+            params.append(self._store._now())
+            if "updated_by" in data:
+                fragments.append("updated_by = ?")
+                params.append(data["updated_by"])
+        return fragments, params
+
+    def update(self, name: str, data: dict) -> Optional[dict]:
+        """Update rule fields. Returns updated rule or None if not found."""
+        fragments, params = self._build_set_clause(data)
+        if not fragments:
             return self.get_by_name(name)
-        updates.append("updated_at = ?")
-        params.append(self._store._now())
-        if "updated_by" in data:
-            updates.append("updated_by = ?")
-            params.append(data["updated_by"])
         params.append(name)
 
         with self._store._lock:
             with self._store._connect() as conn:
                 cursor = conn.execute(
-                    "UPDATE rules SET %s WHERE name = ?" % ", ".join(updates),
+                    "UPDATE rules SET %s WHERE name = ?" % ", ".join(fragments),
                     params,
                 )
                 if cursor.rowcount == 0:
                     return None
         self._store._notify_rules_changed("update", rule_name=name)
         return self.get_by_name(name)
+
+    def bulk_update(self, names: list, data: dict) -> dict:
+        """Update multiple rules in a single transaction.
+
+        Returns {"updated": N, "failed": [{"name": ..., "reason": ...}]}.
+        """
+        log.debug("bulk_update: %d names, fields=%s", len(names), list(data.keys()))
+        fragments, base_params = self._build_set_clause(data)
+        if not fragments:
+            log.debug("bulk_update: no updatable fields, skipping")
+            return {"updated": 0, "failed": []}
+
+        set_clause = ", ".join(fragments)
+        updated = 0
+        failed = []
+
+        with self._store._lock:
+            with self._store._connect() as conn:
+                for name in names:
+                    params = list(base_params) + [name]
+                    cursor = conn.execute(
+                        "UPDATE rules SET %s WHERE name = ?" % set_clause,
+                        params,
+                    )
+                    if cursor.rowcount == 0:
+                        failed.append({"name": name, "reason": "not found"})
+                    else:
+                        updated += 1
+
+        if failed:
+            log.warning("bulk_update: %d rules not found: %s", len(failed), [f["name"] for f in failed])
+        if updated:
+            self._store._notify_rules_changed("bulk")
+            log.info("bulk_update: %d rules updated", updated)
+        return {"updated": updated, "failed": failed}
 
     def delete(self, name: str) -> bool:
         """Delete a dashboard-created rule. Returns True if deleted."""

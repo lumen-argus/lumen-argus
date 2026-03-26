@@ -259,5 +259,77 @@ class TestRulesAPI(StoreTestCase):
         self.assertEqual(status, 409)
 
 
+class TestBulkUpdateAPI(StoreTestCase):
+    def setUp(self):
+        super().setUp()
+        self.store.import_rules(
+            [
+                {"name": "rule_a", "pattern": "aaa", "detector": "secrets", "severity": "high"},
+                {"name": "rule_b", "pattern": "bbb", "detector": "secrets", "severity": "high"},
+                {"name": "rule_c", "pattern": "ccc", "detector": "pii", "severity": "medium"},
+            ],
+            tier="community",
+        )
+
+    def _api(self, path, method="GET", body=b""):
+        return handle_community_api(path, method, body, self.store)
+
+    def _bulk(self, payload):
+        return self._api("/api/v1/rules/bulk-update", "POST", json.dumps(payload).encode())
+
+    def test_bulk_disable(self):
+        status, body = self._bulk({"names": ["rule_a", "rule_b"], "update": {"enabled": False}})
+        self.assertEqual(status, 200)
+        data = json.loads(body)
+        self.assertEqual(data["updated"], 2)
+        self.assertEqual(data["failed"], [])
+        self.assertFalse(self.store.rules.get_by_name("rule_a")["enabled"])
+        self.assertFalse(self.store.rules.get_by_name("rule_b")["enabled"])
+        self.assertTrue(self.store.rules.get_by_name("rule_c")["enabled"])
+
+    def test_bulk_enable(self):
+        self.store.rules.update("rule_a", {"enabled": False})
+        self.store.rules.update("rule_b", {"enabled": False})
+        status, body = self._bulk({"names": ["rule_a", "rule_b"], "update": {"enabled": True}})
+        self.assertEqual(status, 200)
+        data = json.loads(body)
+        self.assertEqual(data["updated"], 2)
+        self.assertTrue(self.store.rules.get_by_name("rule_a")["enabled"])
+
+    def test_partial_failure(self):
+        status, body = self._bulk({"names": ["rule_a", "nonexistent", "rule_c"], "update": {"enabled": False}})
+        self.assertEqual(status, 200)
+        data = json.loads(body)
+        self.assertEqual(data["updated"], 2)
+        self.assertEqual(len(data["failed"]), 1)
+        self.assertEqual(data["failed"][0]["name"], "nonexistent")
+
+    def test_empty_names(self):
+        status, body = self._bulk({"names": [], "update": {"enabled": False}})
+        self.assertEqual(status, 200)
+        data = json.loads(body)
+        self.assertEqual(data["updated"], 0)
+
+    def test_exceeds_cap(self):
+        status, body = self._bulk({"names": ["r"] * 501, "update": {"enabled": False}})
+        self.assertEqual(status, 400)
+        data = json.loads(body)
+        self.assertIn("max 500", data["error"])
+
+    def test_names_not_list(self):
+        status, body = self._bulk({"names": "rule_a", "update": {"enabled": False}})
+        self.assertEqual(status, 400)
+
+    def test_update_missing(self):
+        status, body = self._bulk({"names": ["rule_a"]})
+        self.assertEqual(status, 400)
+
+    def test_invalid_action(self):
+        status, body = self._bulk({"names": ["rule_a"], "update": {"action": "nuke"}})
+        self.assertEqual(status, 400)
+        data = json.loads(body)
+        self.assertIn("invalid action", data["error"])
+
+
 if __name__ == "__main__":
     unittest.main()
