@@ -14,7 +14,6 @@ import threading
 import time
 import unittest
 
-from lumen_argus.analytics.store import AnalyticsStore
 from lumen_argus.config import Config, LoggingConfig
 from lumen_argus.dashboard.api import handle_community_api
 from lumen_argus.dashboard.audit_reader import AuditReader
@@ -28,45 +27,12 @@ from lumen_argus.dashboard.server import (
 )
 from lumen_argus.dashboard.sse import SSEBroadcaster
 from lumen_argus.extensions import ExtensionRegistry
-from lumen_argus.models import Finding
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _free_port():
-    """Find a free TCP port."""
-    import socket
-
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
+from tests.helpers import free_port as _free_port, make_store, seed_findings as _seed_findings
 
 
 def _make_store(tmpdir):
-    """Create an AnalyticsStore in a temp directory."""
-    db_path = os.path.join(tmpdir, "analytics.db")
-    return AnalyticsStore(db_path=db_path)
-
-
-def _seed_findings(store, count=5):
-    """Insert sample findings into the store."""
-    findings = []
-    for i in range(count):
-        findings.append(
-            Finding(
-                detector="secrets",
-                type="aws_access_key_%d" % i,
-                severity="critical",
-                location="user_message[%d]" % i,
-                matched_value="AKIA" + "X" * 16,
-                value_preview="AKIA****%d" % i,
-                action="alert",
-            )
-        )
-    store.record_findings(findings, provider="anthropic", model="claude-3")
+    store, _ = make_store(tmpdir)
+    return store
 
 
 def _start_server(password="", store=None, extensions=None, audit_reader=None, config=None, sse_broadcaster=None):

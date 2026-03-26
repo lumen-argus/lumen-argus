@@ -13,8 +13,6 @@ from tests.helpers import StoreTestCase
 
 
 class TestAllowlistStore(StoreTestCase):
-    pass
-
     def test_add_and_list(self):
         entry = self.store.add_allowlist_entry("secrets", "sk-ant-*")
         self.assertEqual(entry["list_type"], "secrets")

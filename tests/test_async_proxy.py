@@ -13,6 +13,7 @@ from lumen_argus.audit import AuditLogger
 from lumen_argus.display import TerminalDisplay
 from lumen_argus.pipeline import ScannerPipeline
 from lumen_argus.provider import ProviderRouter
+from tests.helpers import free_port as _get_free_port
 
 
 class MockUpstreamHandler(http.server.BaseHTTPRequestHandler):
@@ -69,15 +70,6 @@ class MockUpstreamHandler(http.server.BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
-
-
-def _get_free_port():
-    """Get a free ephemeral port."""
-    import socket
-
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
 
 
 class TestAsyncProxy(unittest.TestCase):

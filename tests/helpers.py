@@ -21,15 +21,17 @@ def free_port() -> int:
         return s.getsockname()[1]
 
 
-def make_store(tmpdir: str = None, hmac_key: bytes = None) -> AnalyticsStore:
+def make_store(tmpdir: str = None, hmac_key: bytes = None):
     """Create an AnalyticsStore in a temp directory.
 
-    If tmpdir is None, creates a new temp directory (caller must clean up).
+    Returns (store, tmpdir). If tmpdir is None, creates a new one — caller
+    must clean it up (e.g. shutil.rmtree in tearDown). Prefer StoreTestCase
+    for automatic lifecycle management.
     """
     if tmpdir is None:
         tmpdir = tempfile.mkdtemp()
     db_path = os.path.join(tmpdir, "test.db")
-    return AnalyticsStore(db_path=db_path, hmac_key=hmac_key)
+    return AnalyticsStore(db_path=db_path, hmac_key=hmac_key), tmpdir
 
 
 def make_finding(
