@@ -10,6 +10,7 @@ from unittest.mock import patch
 from lumen_argus.clients import CLIENT_REGISTRY, ClientDef
 from lumen_argus.detect import (
     DetectedClient,
+    InstallMethod,
     DetectionReport,
     _extract_env_value,
     _scan_binary,
@@ -77,7 +78,7 @@ class TestScanBinary(unittest.TestCase):
         result = _scan_binary(client)
         self.assertIsNotNone(result)
         self.assertTrue(result.installed)
-        self.assertEqual(result.install_method, "binary")
+        self.assertEqual(result.install_method, InstallMethod.BINARY)
         self.assertTrue(result.install_path)
 
     def test_not_found(self):
@@ -139,7 +140,7 @@ class TestScanVSCodeExtension(unittest.TestCase):
             result = _scan_vscode_extension(client)
         self.assertIsNotNone(result)
         self.assertEqual(result.version, "1.200.0")
-        self.assertEqual(result.install_method, "vscode_ext")
+        self.assertEqual(result.install_method, InstallMethod.VSCODE_EXT)
 
     def test_extension_not_found(self):
         ext_dir = os.path.join(self.tmpdir, "extensions")

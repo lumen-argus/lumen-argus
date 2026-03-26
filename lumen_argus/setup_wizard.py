@@ -17,7 +17,7 @@ import shutil
 from dataclasses import asdict, dataclass
 from typing import List, Optional
 
-from lumen_argus.detect import _SHELL_PROFILES, detect_installed_clients, load_jsonc
+from lumen_argus.detect import InstallMethod, _SHELL_PROFILES, detect_installed_clients, load_jsonc
 from lumen_argus.time_utils import now_iso
 
 log = logging.getLogger("argus.setup")
@@ -378,10 +378,15 @@ def run_setup(
                 else:
                     print("  Skipped (already set or conflict)")
 
-        if target.install_method in ("binary", "pip", "npm", "app_bundle"):
+        if target.install_method in (
+            InstallMethod.BINARY,
+            InstallMethod.PIP,
+            InstallMethod.NPM,
+            InstallMethod.APP_BUNDLE,
+        ):
             _try_add_env_var()
 
-        elif target.install_method in ("vscode_ext", "jetbrains_plugin"):
+        elif target.install_method in (InstallMethod.VSCODE_EXT, InstallMethod.JETBRAINS_PLUGIN):
             # IDE extension — update settings if proxy_settings_key available
             if client_def and client_def.proxy_settings_key:
                 settings_file = _find_ide_settings(target.install_path)

@@ -7,6 +7,7 @@ shell profiles and IDE settings.
 All detection is read-only — never modifies files. Setup is in setup_wizard.py.
 """
 
+import enum
 import glob
 import json
 import logging
@@ -108,6 +109,17 @@ _ENV_VAR_PATTERNS = {
 # ---------------------------------------------------------------------------
 
 
+class InstallMethod(str, enum.Enum):
+    """How a client was detected on the system."""
+
+    BINARY = "binary"
+    PIP = "pip"
+    NPM = "npm"
+    VSCODE_EXT = "vscode_ext"
+    APP_BUNDLE = "app_bundle"
+    JETBRAINS_PLUGIN = "jetbrains_plugin"
+
+
 @dataclass
 class DetectedClient:
     """Result of detecting a single AI CLI agent."""
@@ -116,7 +128,7 @@ class DetectedClient:
     display_name: str = ""
     installed: bool = False
     version: str = ""
-    install_method: str = ""  # binary, pip, npm, vscode_ext, app_bundle, jetbrains_plugin
+    install_method: str = ""
     install_path: str = ""
     proxy_configured: bool = False
     proxy_url: str = ""
@@ -164,7 +176,7 @@ def _scan_binary(client: ClientDef) -> Optional[DetectedClient]:
                 client_id=client.id,
                 display_name=client.display_name,
                 installed=True,
-                install_method="binary",
+                install_method=InstallMethod.BINARY,
                 install_path=path,
                 env_var=client.env_var,
                 setup_cmd=client.setup_cmd,
@@ -187,7 +199,7 @@ def _scan_pip_package(client: ClientDef) -> Optional[DetectedClient]:
             display_name=client.display_name,
             installed=True,
             version=ver,
-            install_method="pip",
+            install_method=InstallMethod.PIP,
             install_path="pip:%s" % client.detect_pip,
             env_var=client.env_var,
             setup_cmd=client.setup_cmd,
@@ -235,7 +247,7 @@ def _scan_vscode_extension(client: ClientDef) -> Optional[DetectedClient]:
                     display_name=client.display_name,
                     installed=True,
                     version=version,
-                    install_method="vscode_ext",
+                    install_method=InstallMethod.VSCODE_EXT,
                     install_path=match_path,
                     env_var=client.env_var,
                     setup_cmd=client.setup_cmd,
@@ -269,7 +281,7 @@ def _scan_app_bundle(client: ClientDef) -> Optional[DetectedClient]:
             display_name=client.display_name,
             installed=True,
             version=version,
-            install_method="app_bundle",
+            install_method=InstallMethod.APP_BUNDLE,
             install_path=app_path,
             env_var=client.env_var,
             setup_cmd=client.setup_cmd,
@@ -306,7 +318,7 @@ def _scan_jetbrains_plugin(client: ClientDef) -> Optional[DetectedClient]:
                 client_id=client.id,
                 display_name=client.display_name,
                 installed=True,
-                install_method="jetbrains_plugin",
+                install_method=InstallMethod.JETBRAINS_PLUGIN,
                 install_path=plugin_dir,
                 env_var=client.env_var,
                 setup_cmd=client.setup_cmd,
