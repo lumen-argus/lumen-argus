@@ -61,7 +61,7 @@ pip install lumen-argus
 lumen-argus serve
 ```
 
-Then point your AI tool at the proxy. **15 agents supported** — run `lumen-argus clients` to see them all:
+Then point your AI tool at the proxy. **16 agents supported** — run `lumen-argus clients` to see them all:
 
 ```bash
 # Claude Code
@@ -220,9 +220,10 @@ Every proxied request is enriched with session context — no configuration need
 | `device_id` | Claude Code metadata | WHICH machine? |
 | `working_directory` | System prompt | WHICH project? |
 | `git_branch` | System prompt | WHICH branch? |
-| `client_name` | User-Agent header | WHICH tool? |
+| `client_name` | Client registry (User-Agent matching) | WHICH tool? (normalized ID, e.g., "cursor") |
+| `client_version` | User-Agent header | WHICH version? (e.g., "0.45.1") |
 
-Claude Code, Cursor, and OpenAI-compatible clients are auto-detected. Dashboard findings are filterable by session and account.
+16 AI CLI agents auto-detected via client registry (`lumen-argus clients` to list). Dashboard findings filterable by client, session, and account.
 
 ## Cross-Request Dedup
 

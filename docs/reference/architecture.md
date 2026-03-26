@@ -339,7 +339,8 @@ Session/conversation identity extracted from each request. Populated by the prox
 | `working_directory` | `str` | System prompt: `Primary working directory:` | Project path (WHAT PROJECT) |
 | `git_branch` | `str` | System prompt: `Current branch:` | Git branch |
 | `os_platform` | `str` | System prompt: `Platform:` | OS (darwin, linux, win32) |
-| `client_name` | `str` | `User-Agent` header first token | Client tool (HOW) |
+| `client_name` | `str` | Client registry (`identify_client()`) | Normalized client ID (e.g., "cursor", "aider") |
+| `client_version` | `str` | Parsed from `User-Agent` token | Client version (e.g., "0.45.1") |
 
 !!! note "Claude Code metadata parsing"
     Claude Code sends `metadata.user_id` as a JSON-encoded string: `'{"device_id":"...","account_uuid":"...","session_id":"..."}'`. The proxy detects strings starting with `{`, parses with `json.loads()`, and extracts individual fields.
