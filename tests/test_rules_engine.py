@@ -10,17 +10,11 @@ from lumen_argus.analytics.store import AnalyticsStore
 from lumen_argus.detectors.rules import RulesDetector
 from lumen_argus.models import ScanField
 from lumen_argus.allowlist import AllowlistMatcher
+from tests.helpers import StoreTestCase
 
 
-class TestRulesImportExport(unittest.TestCase):
+class TestRulesImportExport(StoreTestCase):
     """Test rules import/export round-trip."""
-
-    def setUp(self):
-        self._tmpdir = tempfile.mkdtemp()
-        self.store = AnalyticsStore(db_path=self._tmpdir + "/test.db")
-
-    def tearDown(self):
-        shutil.rmtree(self._tmpdir, ignore_errors=True)
 
     def test_import_creates_rules(self):
         rules = [
@@ -126,12 +120,11 @@ class TestRulesImportExport(unittest.TestCase):
             self.assertIn("detector", r)
 
 
-class TestRulesStoreQueries(unittest.TestCase):
+class TestRulesStoreQueries(StoreTestCase):
     """Test rules store query methods."""
 
     def setUp(self):
-        self._tmpdir = tempfile.mkdtemp()
-        self.store = AnalyticsStore(db_path=self._tmpdir + "/test.db")
+        super().setUp()
         self.store.import_rules(
             [
                 {"name": "r1", "pattern": "A+", "detector": "secrets", "severity": "critical"},
@@ -140,9 +133,6 @@ class TestRulesStoreQueries(unittest.TestCase):
             ],
             tier="community",
         )
-
-    def tearDown(self):
-        shutil.rmtree(self._tmpdir, ignore_errors=True)
 
     def test_get_active_rules(self):
         rules = self.store.get_active_rules()
@@ -196,15 +186,8 @@ class TestRulesStoreQueries(unittest.TestCase):
         self.assertFalse(self.store.delete_rule("r1"))
 
 
-class TestRulesDetector(unittest.TestCase):
+class TestRulesDetector(StoreTestCase):
     """Test the RulesDetector scanning."""
-
-    def setUp(self):
-        self._tmpdir = tempfile.mkdtemp()
-        self.store = AnalyticsStore(db_path=self._tmpdir + "/test.db")
-
-    def tearDown(self):
-        shutil.rmtree(self._tmpdir, ignore_errors=True)
 
     def test_basic_detection(self):
         self.store.import_rules(
@@ -382,15 +365,8 @@ class TestAutoImport(unittest.TestCase):
         shutil.rmtree(tmpdir, ignore_errors=True)
 
 
-class TestYAMLReconciliation(unittest.TestCase):
+class TestYAMLReconciliation(StoreTestCase):
     """Test YAML custom_rules reconciliation to DB."""
-
-    def setUp(self):
-        self._tmpdir = tempfile.mkdtemp()
-        self.store = AnalyticsStore(db_path=self._tmpdir + "/test.db")
-
-    def tearDown(self):
-        shutil.rmtree(self._tmpdir, ignore_errors=True)
 
     def test_create_yaml_rules(self):
         result = self.store.reconcile_yaml_rules(
@@ -480,15 +456,8 @@ class TestYAMLReconciliation(unittest.TestCase):
         self.assertIsNone(self.store.get_rule_by_name("bad"))
 
 
-class TestPipelineRulesIntegration(unittest.TestCase):
+class TestPipelineRulesIntegration(StoreTestCase):
     """Test pipeline uses RulesDetector when rules exist in DB."""
-
-    def setUp(self):
-        self._tmpdir = tempfile.mkdtemp()
-        self.store = AnalyticsStore(db_path=self._tmpdir + "/test.db")
-
-    def tearDown(self):
-        shutil.rmtree(self._tmpdir, ignore_errors=True)
 
     def test_pipeline_uses_rules_detector_when_rules_exist(self):
         from lumen_argus.extensions import ExtensionRegistry

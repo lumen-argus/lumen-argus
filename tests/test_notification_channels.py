@@ -2,24 +2,17 @@
 
 import os
 import sqlite3
-import tempfile
 import unittest
 
-from lumen_argus.analytics.store import AnalyticsStore
+from tests.helpers import StoreTestCase
 
 
-class TestNotificationChannelsCRUD(unittest.TestCase):
+class TestNotificationChannelsCRUD(StoreTestCase):
     """Test notification_channels table CRUD operations."""
 
     def setUp(self):
-        self.tmpdir = tempfile.mkdtemp()
+        super().setUp()
         self.db_path = os.path.join(self.tmpdir, "test.db")
-        self.store = AnalyticsStore(db_path=self.db_path)
-
-    def tearDown(self):
-        import shutil
-
-        shutil.rmtree(self.tmpdir, ignore_errors=True)
 
     def test_table_created(self):
         conn = sqlite3.connect(self.db_path)
@@ -236,17 +229,7 @@ class TestNotificationChannelsCRUD(unittest.TestCase):
         self.assertTrue(ch["enabled"])
 
 
-class TestBulkUpdateChannels(unittest.TestCase):
-    def setUp(self):
-        self.tmpdir = tempfile.mkdtemp()
-        self.db_path = os.path.join(self.tmpdir, "test.db")
-        self.store = AnalyticsStore(db_path=self.db_path)
-
-    def tearDown(self):
-        import shutil
-
-        shutil.rmtree(self.tmpdir, ignore_errors=True)
-
+class TestBulkUpdateChannels(StoreTestCase):
     def test_bulk_disable(self):
         a = self.store.create_notification_channel(
             {
@@ -311,17 +294,7 @@ class TestBulkUpdateChannels(unittest.TestCase):
         self.assertEqual(count, 0)
 
 
-class TestReconcileYamlChannels(unittest.TestCase):
-    def setUp(self):
-        self.tmpdir = tempfile.mkdtemp()
-        self.db_path = os.path.join(self.tmpdir, "test.db")
-        self.store = AnalyticsStore(db_path=self.db_path)
-
-    def tearDown(self):
-        import shutil
-
-        shutil.rmtree(self.tmpdir, ignore_errors=True)
-
+class TestReconcileYamlChannels(StoreTestCase):
     def test_create_from_yaml(self):
         result = self.store.reconcile_yaml_channels(
             [
@@ -667,18 +640,8 @@ class TestPipelineDispatch(unittest.TestCase):
         self.assertIsNotNone(result)
 
 
-class TestToAddrsReconciliation(unittest.TestCase):
+class TestToAddrsReconciliation(StoreTestCase):
     """Test that to_addrs string is split to list during YAML reconciliation."""
-
-    def setUp(self):
-        self.tmpdir = tempfile.mkdtemp()
-        self.db_path = os.path.join(self.tmpdir, "test.db")
-        self.store = AnalyticsStore(db_path=self.db_path)
-
-    def tearDown(self):
-        import shutil
-
-        shutil.rmtree(self.tmpdir, ignore_errors=True)
 
     def test_to_addrs_comma_string_split(self):
         self.store.reconcile_yaml_channels(

@@ -1,22 +1,18 @@
 """Tests for notification channel API endpoints."""
 
 import json
-import os
-import tempfile
 import unittest
 
-from lumen_argus.analytics.store import AnalyticsStore
 from lumen_argus.dashboard.api import handle_community_api
 from lumen_argus.extensions import ExtensionRegistry
+from tests.helpers import StoreTestCase
 
 
-class TestNotificationAPI(unittest.TestCase):
+class TestNotificationAPI(StoreTestCase):
     """Test community notification API endpoints."""
 
     def setUp(self):
-        self.tmpdir = tempfile.mkdtemp()
-        self.db_path = os.path.join(self.tmpdir, "test.db")
-        self.store = AnalyticsStore(db_path=self.db_path)
+        super().setUp()
         self.ext = ExtensionRegistry()
         # Register channel types (simulating Pro)
         self.ext.register_channel_types(
@@ -36,11 +32,6 @@ class TestNotificationAPI(unittest.TestCase):
             }
         )
         self.ext.set_channel_limit(None)  # unlimited for most tests
-
-    def tearDown(self):
-        import shutil
-
-        shutil.rmtree(self.tmpdir, ignore_errors=True)
 
     def _api(self, path, method="GET", body=b""):
         return handle_community_api(
@@ -292,20 +283,13 @@ class TestNotificationAPI(unittest.TestCase):
         self.assertNotEqual(masked_url, "https://secret-webhook-url.example.com/hook")
 
 
-class TestNotificationAPIWithoutPro(unittest.TestCase):
+class TestNotificationAPIWithoutPro(StoreTestCase):
     """Test API behavior when Pro is not loaded (no channel types)."""
 
     def setUp(self):
-        self.tmpdir = tempfile.mkdtemp()
-        self.db_path = os.path.join(self.tmpdir, "test.db")
-        self.store = AnalyticsStore(db_path=self.db_path)
+        super().setUp()
         self.ext = ExtensionRegistry()
         # No channel types registered — simulates source install
-
-    def tearDown(self):
-        import shutil
-
-        shutil.rmtree(self.tmpdir, ignore_errors=True)
 
     def _api(self, path, method="GET", body=b""):
         return handle_community_api(

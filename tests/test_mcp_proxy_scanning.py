@@ -1,12 +1,11 @@
 """Tests for MCP-aware scanning in the HTTP proxy."""
 
 import json
-import shutil
-import tempfile
 import unittest
 
+from tests.helpers import StoreTestCase
+
 from lumen_argus.allowlist import AllowlistMatcher
-from lumen_argus.analytics.store import AnalyticsStore
 from lumen_argus.detectors.secrets import SecretsDetector
 from lumen_argus.mcp.scanner import (
     MCPScanner,
@@ -112,15 +111,8 @@ class TestMCPScannerShared(unittest.TestCase):
         self.assertTrue(scanner.is_tool_allowed("safe"))
 
 
-class TestMCPDetectedTools(unittest.TestCase):
+class TestMCPDetectedTools(StoreTestCase):
     """Test MCP tool tracking in analytics store."""
-
-    def setUp(self):
-        self._tmpdir = tempfile.mkdtemp()
-        self.store = AnalyticsStore(db_path=self._tmpdir + "/test.db")
-
-    def tearDown(self):
-        shutil.rmtree(self._tmpdir, ignore_errors=True)
 
     def test_record_and_get(self):
         self.store.record_mcp_tool_seen("read_file")
@@ -159,15 +151,8 @@ class TestMCPDetectedTools(unittest.TestCase):
         self.assertGreaterEqual(tools2[0]["last_seen"], tools1[0]["last_seen"])
 
 
-class TestMCPToolCallLogging(unittest.TestCase):
+class TestMCPToolCallLogging(StoreTestCase):
     """Test MCP tool call logging for chain analysis."""
-
-    def setUp(self):
-        self._tmpdir = tempfile.mkdtemp()
-        self.store = AnalyticsStore(db_path=self._tmpdir + "/test.db")
-
-    def tearDown(self):
-        shutil.rmtree(self._tmpdir, ignore_errors=True)
 
     def test_record_and_get(self):
         self.store.record_mcp_tool_call("read_file", session_id="s1", status="allowed")
@@ -208,15 +193,8 @@ class TestMCPToolCallLogging(unittest.TestCase):
         self.assertEqual(len(self.store.get_mcp_tool_calls()), 0)
 
 
-class TestMCPToolDescriptions(unittest.TestCase):
+class TestMCPToolDescriptions(StoreTestCase):
     """Test tool description and schema storage."""
-
-    def setUp(self):
-        self._tmpdir = tempfile.mkdtemp()
-        self.store = AnalyticsStore(db_path=self._tmpdir + "/test.db")
-
-    def tearDown(self):
-        shutil.rmtree(self._tmpdir, ignore_errors=True)
 
     def test_description_stored(self):
         self.store.record_mcp_tool_seen("read_file", description="Read a file", input_schema='{"type":"object"}')

@@ -75,10 +75,16 @@ def seed_findings(store: AnalyticsStore, count: int = 5) -> list:
 
 
 class StoreTestCase(unittest.TestCase):
-    """Base test case that sets up and tears down an AnalyticsStore with temp dir."""
+    """Base test case that sets up and tears down an AnalyticsStore with temp dir.
+
+    Attributes:
+        store: AnalyticsStore instance backed by a temp SQLite DB.
+        _tmpdir / tmpdir: Path to temp directory (both names for compat).
+    """
 
     def setUp(self):
         self._tmpdir = tempfile.mkdtemp()
+        self.tmpdir = self._tmpdir
         self.store = AnalyticsStore(db_path=os.path.join(self._tmpdir, "test.db"))
 
     def tearDown(self):

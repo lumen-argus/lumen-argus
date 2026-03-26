@@ -5,6 +5,8 @@ import threading
 import time
 import unittest
 
+from tests.helpers import StoreTestCase
+
 from lumen_argus.models import Finding, ScanField, SessionContext
 from lumen_argus.pipeline import ContentFingerprint, _FindingDedup
 
@@ -340,20 +342,8 @@ class TestFindingDedup(unittest.TestCase):
         self.assertEqual(errors, [])
 
 
-class TestStoreLevelDedup(unittest.TestCase):
+class TestStoreLevelDedup(StoreTestCase):
     """Layer 3: Store-level unique constraint tests."""
-
-    def setUp(self):
-        import tempfile
-        from lumen_argus.analytics.store import AnalyticsStore
-
-        self._tmpdir = tempfile.mkdtemp()
-        self.store = AnalyticsStore(db_path=self._tmpdir + "/test.db")
-
-    def tearDown(self):
-        import shutil
-
-        shutil.rmtree(self._tmpdir, ignore_errors=True)
 
     def _make_finding(self, detector="secrets", ftype="aws_access_key", preview="AKIA****"):
         return Finding(
@@ -480,21 +470,16 @@ class TestStoreLevelDedup(unittest.TestCase):
         self.assertEqual(findings[0]["seen_count"], 1)
 
 
-class TestValueHash(unittest.TestCase):
+class TestValueHash(StoreTestCase):
     """HMAC-SHA-256 value_hash tests."""
 
     def setUp(self):
-        import tempfile
+        super().setUp()
+        import os
         from lumen_argus.analytics.store import AnalyticsStore
 
-        self._tmpdir = tempfile.mkdtemp()
         self._hmac_key = b"\x00" * 32  # 32-byte test key
-        self.store = AnalyticsStore(db_path=self._tmpdir + "/test.db", hmac_key=self._hmac_key)
-
-    def tearDown(self):
-        import shutil
-
-        shutil.rmtree(self._tmpdir, ignore_errors=True)
+        self.store = AnalyticsStore(db_path=os.path.join(self._tmpdir, "test.db"), hmac_key=self._hmac_key)
 
     def _make_finding(self, matched="AKIAIOSFODNN7EXAMPLE"):
         return Finding(

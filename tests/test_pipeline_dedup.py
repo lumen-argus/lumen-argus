@@ -1,14 +1,13 @@
 """Integration tests for cross-request dedup in the scanner pipeline."""
 
 import json
-import tempfile
 import unittest
 from unittest.mock import MagicMock
 
-from lumen_argus.analytics.store import AnalyticsStore
 from lumen_argus.extensions import ExtensionRegistry
 from lumen_argus.models import SessionContext
 from lumen_argus.pipeline import ScannerPipeline
+from tests.helpers import StoreTestCase
 
 
 # Build dynamically to avoid GitHub push protection
@@ -29,12 +28,11 @@ def _make_anthropic_body(messages):
     ).encode()
 
 
-class TestPipelineDedup(unittest.TestCase):
+class TestPipelineDedup(StoreTestCase):
     """End-to-end pipeline dedup tests."""
 
     def setUp(self):
-        self._tmpdir = tempfile.mkdtemp()
-        self.store = AnalyticsStore(db_path=self._tmpdir + "/test.db")
+        super().setUp()
         self.ext = ExtensionRegistry()
         self.ext.set_analytics_store(self.store)
         # Use short TTLs for testing
@@ -46,11 +44,6 @@ class TestPipelineDedup(unittest.TestCase):
                 "finding_ttl_minutes": 30,
             },
         )
-
-    def tearDown(self):
-        import shutil
-
-        shutil.rmtree(self._tmpdir, ignore_errors=True)
 
     def test_second_scan_same_body_records_zero_new_findings(self):
         """Full pipeline: identical body → no new DB rows on second scan."""
@@ -302,7 +295,7 @@ class TestPipelineDedup(unittest.TestCase):
         self.assertEqual(len(hook_results), 1)
 
 
-class TestBlockedContentRescanned(unittest.TestCase):
+class TestBlockedContentRescanned(StoreTestCase):
     """Regression tests: blocked content must be re-scanned on retry.
 
     Prevents the bug where Layer 1 fingerprinting cached blocked content,
@@ -310,15 +303,9 @@ class TestBlockedContentRescanned(unittest.TestCase):
     """
 
     def setUp(self):
-        self._tmpdir = tempfile.mkdtemp()
-        self.store = AnalyticsStore(db_path=self._tmpdir + "/test.db")
+        super().setUp()
         self.ext = ExtensionRegistry()
         self.ext.set_analytics_store(self.store)
-
-    def tearDown(self):
-        import shutil
-
-        shutil.rmtree(self._tmpdir, ignore_errors=True)
 
     def test_blocked_request_retry_is_blocked_again(self):
         """Core regression: block → retry same content → must block again."""

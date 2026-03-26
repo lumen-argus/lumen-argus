@@ -27,7 +27,7 @@ from lumen_argus.dashboard.server import (
 )
 from lumen_argus.dashboard.sse import SSEBroadcaster
 from lumen_argus.extensions import ExtensionRegistry
-from tests.helpers import free_port as _free_port, make_store, seed_findings as _seed_findings
+from tests.helpers import StoreTestCase, free_port as _free_port, make_store, seed_findings as _seed_findings
 
 
 def _make_store(tmpdir):
@@ -1052,21 +1052,8 @@ class TestCommunityAPIDirect(unittest.TestCase):
         self.assertEqual(status, 500)
 
 
-class TestConfigOverrides(unittest.TestCase):
+class TestConfigOverrides(StoreTestCase):
     """Tests for community config save (SQLite-backed overrides)."""
-
-    def setUp(self):
-        import tempfile
-
-        from lumen_argus.analytics.store import AnalyticsStore
-
-        self._tmpdir = tempfile.mkdtemp()
-        self.store = AnalyticsStore(db_path=self._tmpdir + "/test.db")
-
-    def tearDown(self):
-        import shutil
-
-        shutil.rmtree(self._tmpdir, ignore_errors=True)
 
     def test_set_and_get_override(self):
         self.store.set_config_override("proxy.timeout", "60")

@@ -14,12 +14,11 @@ Covers:
 """
 
 import hashlib
-import os
-import tempfile
 import unittest
 from unittest.mock import MagicMock
 
 from lumen_argus.models import AuditEntry, Finding, SessionContext
+from tests.helpers import StoreTestCase
 from lumen_argus.session import (
     _derive_session_fingerprint,
     extract_session as _extract_session,
@@ -419,19 +418,7 @@ class TestAuditEntrySession(unittest.TestCase):
 # --- Analytics store ---
 
 
-class TestAnalyticsStoreSession(unittest.TestCase):
-    def setUp(self):
-        self.tmpdir = tempfile.mkdtemp()
-        self.db_path = os.path.join(self.tmpdir, "test.db")
-        from lumen_argus.analytics.store import AnalyticsStore
-
-        self.store = AnalyticsStore(db_path=self.db_path)
-
-    def tearDown(self):
-        import shutil
-
-        shutil.rmtree(self.tmpdir, ignore_errors=True)
-
+class TestAnalyticsStoreSession(StoreTestCase):
     def _finding(self):
         return Finding(
             detector="secrets",

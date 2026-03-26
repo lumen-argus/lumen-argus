@@ -1,11 +1,9 @@
 """Tests for pipeline configuration — config parsing, API endpoints, stage toggles."""
 
 import json
-import shutil
-import tempfile
 import unittest
 
-from lumen_argus.analytics.store import AnalyticsStore
+from tests.helpers import StoreTestCase
 from lumen_argus.config import (
     Config,
     PipelineConfig,
@@ -146,15 +144,8 @@ class TestPipelineStageToggle(unittest.TestCase):
         self.assertTrue(len(result.findings) > 0)
 
 
-class TestPipelineDBOverrides(unittest.TestCase):
+class TestPipelineDBOverrides(StoreTestCase):
     """Test pipeline config overrides via analytics store."""
-
-    def setUp(self):
-        self._tmpdir = tempfile.mkdtemp()
-        self.store = AnalyticsStore(db_path=self._tmpdir + "/test.db")
-
-    def tearDown(self):
-        shutil.rmtree(self._tmpdir, ignore_errors=True)
 
     def test_set_stage_enabled_override(self):
         self.store.set_config_override("pipeline.stages.outbound_dlp.enabled", "false")
@@ -188,16 +179,12 @@ class TestPipelineDBOverrides(unittest.TestCase):
         self.assertEqual(len(overrides), len(stages))
 
 
-class TestPipelineAPI(unittest.TestCase):
+class TestPipelineAPI(StoreTestCase):
     """Test GET/PUT /api/v1/pipeline API endpoints."""
 
     def setUp(self):
-        self._tmpdir = tempfile.mkdtemp()
-        self.store = AnalyticsStore(db_path=self._tmpdir + "/test.db")
+        super().setUp()
         self.config = Config()
-
-    def tearDown(self):
-        shutil.rmtree(self._tmpdir, ignore_errors=True)
 
     def test_get_pipeline_returns_stages(self):
         status, body = handle_community_api("/api/v1/pipeline", "GET", b"", self.store, config=self.config)

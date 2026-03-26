@@ -1,13 +1,11 @@
 """Tests for session tracking Phase 2: analytics queries and API endpoints."""
 
 import json
-import os
-import tempfile
 import unittest
 
-from lumen_argus.analytics.store import AnalyticsStore
 from lumen_argus.dashboard.api import handle_community_api
 from lumen_argus.models import Finding, SessionContext
+from tests.helpers import StoreTestCase
 
 
 _finding_counter = 0
@@ -27,16 +25,7 @@ def _make_finding():
     )
 
 
-class TestGetSessions(unittest.TestCase):
-    def setUp(self):
-        self.tmpdir = tempfile.mkdtemp()
-        self.store = AnalyticsStore(db_path=os.path.join(self.tmpdir, "test.db"))
-
-    def tearDown(self):
-        import shutil
-
-        shutil.rmtree(self.tmpdir, ignore_errors=True)
-
+class TestGetSessions(StoreTestCase):
     def test_groups_by_session_id(self):
         s1 = SessionContext(session_id="fp:aaa111", account_id="acct-1")
         s2 = SessionContext(session_id="fp:ccc333", account_id="acct-2")
@@ -77,20 +66,14 @@ class TestGetSessions(unittest.TestCase):
         self.assertEqual(self.store.get_sessions(), [])
 
 
-class TestFindingsFilters(unittest.TestCase):
+class TestFindingsFilters(StoreTestCase):
     def setUp(self):
-        self.tmpdir = tempfile.mkdtemp()
-        self.store = AnalyticsStore(db_path=os.path.join(self.tmpdir, "test.db"))
+        super().setUp()
         sa = SessionContext(session_id="sa", account_id="acct-a")
         sb = SessionContext(session_id="sb", account_id="acct-b")
         self.store.record_findings([_make_finding()], session=sa)
         self.store.record_findings([_make_finding()], session=sa)
         self.store.record_findings([_make_finding()], session=sb)
-
-    def tearDown(self):
-        import shutil
-
-        shutil.rmtree(self.tmpdir, ignore_errors=True)
 
     def test_filter_by_session_id(self):
         _, total = self.store.get_findings_page(session_id="sa")
@@ -105,18 +88,12 @@ class TestFindingsFilters(unittest.TestCase):
         self.assertEqual(total, 3)
 
 
-class TestSessionsAPI(unittest.TestCase):
+class TestSessionsAPI(StoreTestCase):
     def setUp(self):
-        self.tmpdir = tempfile.mkdtemp()
-        self.store = AnalyticsStore(db_path=os.path.join(self.tmpdir, "test.db"))
+        super().setUp()
         s = SessionContext(session_id="fp:abc", account_id="acct-1", working_directory="/repo", git_branch="main")
         self.store.record_findings([_make_finding()], provider="anthropic", model="opus", session=s)
         self.store.record_findings([_make_finding()], provider="anthropic", model="opus", session=s)
-
-    def tearDown(self):
-        import shutil
-
-        shutil.rmtree(self.tmpdir, ignore_errors=True)
 
     def _api(self, path):
         return handle_community_api(path, "GET", b"", self.store)

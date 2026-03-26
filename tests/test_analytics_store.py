@@ -9,7 +9,7 @@ import unittest
 from datetime import datetime, timezone
 
 from lumen_argus.analytics.store import AnalyticsStore
-from tests.helpers import make_finding as _make_finding
+from tests.helpers import StoreTestCase, make_finding as _make_finding
 
 
 class TestAnalyticsStore(unittest.TestCase):
@@ -726,16 +726,8 @@ class TestAdvancedAnalytics(unittest.TestCase):
         self.assertEqual(result["pro_imported"], 0)
 
 
-class TestWebSocketConnections(unittest.TestCase):
+class TestWebSocketConnections(StoreTestCase):
     """Tests for WebSocket connection lifecycle store methods."""
-
-    def setUp(self):
-        self.tmpdir = tempfile.mkdtemp()
-        self.db_path = os.path.join(self.tmpdir, "test_analytics.db")
-        self.store = AnalyticsStore(db_path=self.db_path)
-
-    def tearDown(self):
-        shutil.rmtree(self.tmpdir, ignore_errors=True)
 
     def test_record_open_and_close(self):
         """Record WS connection open then close."""

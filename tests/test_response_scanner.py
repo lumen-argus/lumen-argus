@@ -1,11 +1,10 @@
 """Tests for response scanning — secret detection and injection patterns in API responses."""
 
 import os
-import shutil
-import tempfile
 import unittest
 
-from lumen_argus.analytics.store import AnalyticsStore
+from tests.helpers import StoreTestCase
+
 from lumen_argus.response_scanner import ResponseScanner, _FALLBACK_INJECTION_PATTERNS
 from lumen_argus.detectors.secrets import SecretsDetector
 from lumen_argus.detectors.pii import PIIDetector
@@ -178,15 +177,8 @@ class TestResponseScannerConfig(unittest.TestCase):
         self.assertTrue(len(injection) > 0, "zero-width evasion bypassed injection detection")
 
 
-class TestDBInjectionRules(unittest.TestCase):
+class TestDBInjectionRules(StoreTestCase):
     """Test injection pattern loading from rules DB."""
-
-    def setUp(self):
-        self._tmpdir = tempfile.mkdtemp()
-        self.store = AnalyticsStore(db_path=os.path.join(self._tmpdir, "test.db"))
-
-    def tearDown(self):
-        shutil.rmtree(self._tmpdir, ignore_errors=True)
 
     def test_fallback_when_db_empty(self):
         """No injection rules in DB = fallback to hardcoded patterns."""
