@@ -954,7 +954,7 @@ class TestAsyncProxySessionExtraction(unittest.TestCase):
     """Test session context extraction in async proxy."""
 
     def test_extract_session_anthropic(self):
-        from lumen_argus.async_proxy import _extract_session
+        from lumen_argus.session import extract_session as _extract_session
 
         req_data = {
             "model": "claude-opus-4-6",
@@ -977,7 +977,7 @@ class TestAsyncProxySessionExtraction(unittest.TestCase):
         self.assertTrue(ctx.api_key_hash)
 
     def test_extract_session_explicit_header(self):
-        from lumen_argus.async_proxy import _extract_session
+        from lumen_argus.session import extract_session as _extract_session
 
         headers = {"x-session-id": "explicit-session"}
         ctx = _extract_session(None, "anthropic", headers, "10.0.0.1")
@@ -985,14 +985,14 @@ class TestAsyncProxySessionExtraction(unittest.TestCase):
         self.assertEqual(ctx.source_ip, "10.0.0.1")
 
     def test_extract_session_xff(self):
-        from lumen_argus.async_proxy import _extract_session
+        from lumen_argus.session import extract_session as _extract_session
 
         headers = {"x-forwarded-for": "1.2.3.4, 10.0.0.1"}
         ctx = _extract_session(None, "anthropic", headers, "10.0.0.1")
         self.assertEqual(ctx.source_ip, "1.2.3.4")
 
     def test_extract_session_openai(self):
-        from lumen_argus.async_proxy import _extract_session
+        from lumen_argus.session import extract_session as _extract_session
 
         req_data = {
             "model": "gpt-4",

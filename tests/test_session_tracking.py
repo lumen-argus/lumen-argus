@@ -20,9 +20,9 @@ import unittest
 from unittest.mock import MagicMock
 
 from lumen_argus.models import AuditEntry, Finding, SessionContext
-from lumen_argus.async_proxy import (
+from lumen_argus.session import (
     _derive_session_fingerprint,
-    _extract_session,
+    extract_session as _extract_session,
     _extract_system_field,
     _extract_working_directory,
     _get_system_text,
