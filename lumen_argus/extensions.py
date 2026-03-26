@@ -18,12 +18,23 @@ write custom detectors using the same mechanism.
 """
 
 import logging
+from dataclasses import dataclass, field
 from typing import Callable, List, Optional
 
 from lumen_argus.detectors import BaseDetector
 from lumen_argus.models import Finding
 
 log = logging.getLogger("argus.extensions")
+
+
+@dataclass(frozen=True)
+class CliCommandDef:
+    """Definition of a plugin-provided CLI subcommand."""
+
+    name: str  # subcommand name (e.g., "enroll")
+    handler: Callable  # callable(args) invoked when subcommand runs
+    help: str = ""  # help text for argparse
+    arguments: list = field(default_factory=list)  # list of {"args": [...], "kwargs": {...}}
 
 
 class ExtensionRegistry:
@@ -63,6 +74,7 @@ class ExtensionRegistry:
         self._rule_metrics_collector = None  # type: Optional[object]
         self._accelerator_factory = None  # type: Optional[Callable]
         self._extra_clients = []  # type: list
+        self._extra_cli_commands = []  # type: list
         self._allowlist_matcher_factory = None  # type: Optional[Callable]
         # MCP Pro hooks
         self._mcp_policy_engine = None  # type: Optional[object]
@@ -255,6 +267,30 @@ class ExtensionRegistry:
     def get_extra_clients(self) -> list:
         """Return plugin-registered client definitions."""
         return list(self._extra_clients)
+
+    # --- CLI extension hooks ---
+
+    def register_cli_commands(self, commands: List[CliCommandDef]) -> None:
+        """Register additional CLI subcommands from a plugin.
+
+        Args:
+            commands: List of CliCommandDef instances defining subcommands.
+        """
+        for cmd in commands:
+            if not isinstance(cmd, CliCommandDef):
+                raise TypeError(
+                    "expected CliCommandDef, got %s (name=%r)" % (type(cmd).__name__, getattr(cmd, "name", "?"))
+                )
+            if not cmd.name:
+                raise ValueError("CliCommandDef.name must not be empty")
+            if not callable(cmd.handler):
+                raise ValueError("CliCommandDef.handler must be callable for command %r" % cmd.name)
+        self._extra_cli_commands.extend(commands)
+        log.debug("registered %d CLI command(s): %s", len(commands), ", ".join(c.name for c in commands))
+
+    def get_extra_cli_commands(self) -> List[CliCommandDef]:
+        """Return plugin-registered CLI commands."""
+        return list(self._extra_cli_commands)
 
     # --- Notification channel hooks ---
 
@@ -449,9 +485,9 @@ class ExtensionRegistry:
                 version = "unknown"
                 try:
                     version = ep.dist.metadata["Version"]
-                except Exception:
-                    pass
+                except Exception as ve:
+                    log.debug("could not read version for %s: %s", ep.name, ve)
                 self._loaded_plugins.append((ep.name, version))
                 log.info("loaded extension: %s", ep.name)
             except Exception as e:
-                log.error("failed to load extension '%s': %s", ep.name, e)
+                log.error("failed to load extension '%s': %s", ep.name, e, exc_info=True)

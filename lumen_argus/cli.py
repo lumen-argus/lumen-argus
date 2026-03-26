@@ -22,6 +22,14 @@ from lumen_argus.provider import ProviderRouter
 log = logging.getLogger("argus.cli")
 
 
+def _setup_minimal_logging():
+    """Configure minimal stderr logging for non-serve CLI commands."""
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setFormatter(logging.Formatter("  [%(name)s] %(levelname)s: %(message)s"))
+    logging.getLogger().addHandler(handler)
+    logging.getLogger().setLevel(logging.WARNING)
+
+
 def _initialize_analytics(config, args, extensions, action_overrides):
     """Initialize analytics store, auto-import rules, reconcile YAML, apply DB overrides.
 
@@ -389,15 +397,32 @@ def main(argv=None):
         help="MCP server command (after --)",
     )
 
+    # Register plugin CLI commands (Pro adds "enroll", "enrollment", etc.)
+    extensions = ExtensionRegistry()
+    extensions.load_plugins()
+    plugin_commands = {}  # name -> handler
+    for cmd in extensions.get_extra_cli_commands():
+        try:
+            sub = subparsers.add_parser(cmd.name, help=cmd.help)
+            for arg in cmd.arguments:
+                sub.add_argument(*arg["args"], **arg["kwargs"])
+            plugin_commands[cmd.name] = cmd.handler
+        except (KeyError, TypeError) as exc:
+            log.error("skipping malformed plugin command %r: %s", cmd.name, exc)
+
     args = parser.parse_args(argv)
 
+    if args.command in plugin_commands:
+        _setup_minimal_logging()
+        try:
+            plugin_commands[args.command](args)
+        except Exception:
+            log.error("plugin command %r failed", args.command, exc_info=True)
+            sys.exit(1)
+        return
+
     if args.command in ("scan", "logs", "rules", "mcp", "clients", "detect", "setup"):
-        # Set up minimal logging for non-serve commands so config
-        # warnings (log.warning) display cleanly on stderr.
-        _handler = logging.StreamHandler(sys.stderr)
-        _handler.setFormatter(logging.Formatter("  [%(name)s] %(levelname)s: %(message)s"))
-        logging.getLogger().addHandler(_handler)
-        logging.getLogger().setLevel(logging.WARNING)
+        _setup_minimal_logging()
         if args.command == "scan":
             _run_scan(args)
         elif args.command == "rules":
@@ -481,15 +506,18 @@ def main(argv=None):
     else:
         display = TerminalDisplay(no_color=args.no_color)
     audit = AuditLogger(log_dir=audit_log_dir, retention_days=config.audit.retention_days)
-    extensions = ExtensionRegistry()
+    # Reuse the registry created before parse_args (plugins already loaded)
 
-    # Register community notification infrastructure (before plugins so Pro can override)
+    # Register community notification defaults — Pro registers its own
+    # hooks during load_plugins(), so community only sets defaults when
+    # Pro is absent (first-write-wins: Pro loads first, community defers).
     from lumen_argus.notifiers import WEBHOOK_CHANNEL_TYPE, build_notifier
 
-    extensions.register_channel_types(WEBHOOK_CHANNEL_TYPE)
-    extensions.set_notifier_builder(build_notifier)
+    if not extensions.get_notifier_builder():
+        extensions.set_notifier_builder(build_notifier)
+    if not extensions.get_channel_types():
+        extensions.register_channel_types(WEBHOOK_CHANNEL_TYPE)
 
-    extensions.load_plugins()
     for pname, pver in extensions.loaded_plugins():
         log.info("plugin: %s v%s", pname, pver)
     log.info("audit log: %s", os.path.expanduser(audit_log_dir))
