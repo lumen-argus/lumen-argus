@@ -18,6 +18,7 @@ log = logging.getLogger("argus.clients")
 class ClientDef:
     """Definition of a supported AI CLI agent."""
 
+    # Identity
     id: str  # stable key stored in DB (e.g., "claude_code")
     display_name: str  # human-readable (e.g., "Claude Code")
     category: str  # "cli" | "ide"
@@ -26,10 +27,19 @@ class ClientDef:
     env_var: str  # primary env var for setup
     setup_cmd: str  # one-liner setup example
     website: str  # project URL
+    # Detection hints (used by lumen_argus/detect.py)
+    detect_binary: tuple = ()  # binary names to check via shutil.which()
+    detect_pip: str = ""  # pip package name (importlib.metadata)
+    detect_npm: str = ""  # npm global package name
+    detect_vscode_ext: str = ""  # VS Code extension ID
+    detect_jetbrains_plugin: str = ""  # JetBrains plugin dir name
+    detect_app_name: str = ""  # macOS /Applications/*.app
+    proxy_settings_key: str = ""  # IDE settings JSON key for proxy
+    version_command: tuple = ()  # command to get version
 
 
 # ---------------------------------------------------------------------------
-# Built-in registry — 15 popular AI CLI agents
+# Built-in registry — 16 popular AI CLI agents
 # Ordered by specificity (longer/more-specific prefixes first)
 # ---------------------------------------------------------------------------
 
@@ -43,6 +53,9 @@ CLIENT_REGISTRY: List[ClientDef] = [
         env_var="ANTHROPIC_BASE_URL",
         setup_cmd="ANTHROPIC_BASE_URL=http://localhost:8080 claude",
         website="https://claude.ai/code",
+        detect_binary=("claude",),
+        detect_npm="@anthropic-ai/claude-code",
+        version_command=("claude", "--version"),
     ),
     ClientDef(
         id="cursor",
@@ -53,6 +66,8 @@ CLIENT_REGISTRY: List[ClientDef] = [
         env_var="OPENAI_BASE_URL",
         setup_cmd="OPENAI_BASE_URL=http://localhost:8080 cursor",
         website="https://cursor.com",
+        detect_binary=("cursor",),
+        detect_app_name="Cursor.app",
     ),
     ClientDef(
         id="copilot",
@@ -63,6 +78,9 @@ CLIENT_REGISTRY: List[ClientDef] = [
         env_var="OPENAI_BASE_URL",
         setup_cmd="OPENAI_BASE_URL=http://localhost:8080",
         website="https://github.com/features/copilot",
+        detect_vscode_ext="github.copilot",
+        detect_jetbrains_plugin="github-copilot-intellij",
+        proxy_settings_key="http.proxy",
     ),
     ClientDef(
         id="aider",
@@ -73,6 +91,9 @@ CLIENT_REGISTRY: List[ClientDef] = [
         env_var="OPENAI_BASE_URL",
         setup_cmd="OPENAI_BASE_URL=http://localhost:8080 aider",
         website="https://aider.chat",
+        detect_binary=("aider",),
+        detect_pip="aider-chat",
+        version_command=("aider", "--version"),
     ),
     ClientDef(
         id="continue",
@@ -83,6 +104,8 @@ CLIENT_REGISTRY: List[ClientDef] = [
         env_var="OPENAI_BASE_URL",
         setup_cmd="OPENAI_BASE_URL=http://localhost:8080",
         website="https://continue.dev",
+        detect_vscode_ext="continue.continue",
+        proxy_settings_key="continue.proxy",
     ),
     ClientDef(
         id="cody",
@@ -93,6 +116,9 @@ CLIENT_REGISTRY: List[ClientDef] = [
         env_var="OPENAI_BASE_URL",
         setup_cmd="OPENAI_BASE_URL=http://localhost:8080",
         website="https://sourcegraph.com/cody",
+        detect_vscode_ext="sourcegraph.cody-ai",
+        detect_jetbrains_plugin="sourcegraph",
+        proxy_settings_key="cody.proxy",
     ),
     ClientDef(
         id="windsurf",
@@ -103,6 +129,8 @@ CLIENT_REGISTRY: List[ClientDef] = [
         env_var="OPENAI_BASE_URL",
         setup_cmd="OPENAI_BASE_URL=http://localhost:8080",
         website="https://codeium.com/windsurf",
+        detect_binary=("windsurf",),
+        detect_app_name="Windsurf.app",
     ),
     ClientDef(
         id="amazon_q",
@@ -113,6 +141,10 @@ CLIENT_REGISTRY: List[ClientDef] = [
         env_var="OPENAI_BASE_URL",
         setup_cmd="OPENAI_BASE_URL=http://localhost:8080",
         website="https://aws.amazon.com/q/developer/",
+        detect_binary=("q",),
+        detect_vscode_ext="amazonwebservices.aws-toolkit-vscode",
+        detect_jetbrains_plugin="aws-toolkit-jetbrains",
+        proxy_settings_key="aws.proxy",
     ),
     ClientDef(
         id="tabnine",
@@ -123,6 +155,9 @@ CLIENT_REGISTRY: List[ClientDef] = [
         env_var="OPENAI_BASE_URL",
         setup_cmd="OPENAI_BASE_URL=http://localhost:8080",
         website="https://www.tabnine.com",
+        detect_vscode_ext="tabnine.tabnine-vscode",
+        detect_jetbrains_plugin="tabnine-intellij",
+        proxy_settings_key="tabnine.proxy",
     ),
     ClientDef(
         id="cline",
@@ -133,6 +168,7 @@ CLIENT_REGISTRY: List[ClientDef] = [
         env_var="OPENAI_BASE_URL",
         setup_cmd="OPENAI_BASE_URL=http://localhost:8080",
         website="https://cline.bot",
+        detect_vscode_ext="saoudrizwan.claude-dev",
     ),
     ClientDef(
         id="roo_code",
@@ -143,6 +179,7 @@ CLIENT_REGISTRY: List[ClientDef] = [
         env_var="ANTHROPIC_BASE_URL",
         setup_cmd="ANTHROPIC_BASE_URL=http://localhost:8080",
         website="https://roocode.com",
+        detect_vscode_ext="rooveterinaryinc.roo-cline",
     ),
     ClientDef(
         id="augment",
@@ -153,6 +190,8 @@ CLIENT_REGISTRY: List[ClientDef] = [
         env_var="OPENAI_BASE_URL",
         setup_cmd="OPENAI_BASE_URL=http://localhost:8080",
         website="https://www.augmentcode.com",
+        detect_vscode_ext="augment.augment-vscode",
+        proxy_settings_key="http.proxy",
     ),
     ClientDef(
         id="gemini_assist",
@@ -163,6 +202,8 @@ CLIENT_REGISTRY: List[ClientDef] = [
         env_var="GEMINI_BASE_URL",
         setup_cmd="GEMINI_BASE_URL=http://localhost:8080",
         website="https://cloud.google.com/gemini/docs/codeassist",
+        detect_vscode_ext="google.gemini-code-assist",
+        proxy_settings_key="http.proxy",
     ),
     ClientDef(
         id="codex_cli",
@@ -173,6 +214,9 @@ CLIENT_REGISTRY: List[ClientDef] = [
         env_var="OPENAI_BASE_URL",
         setup_cmd="OPENAI_BASE_URL=http://localhost:8080 codex",
         website="https://github.com/openai/codex",
+        detect_binary=("codex",),
+        detect_npm="@openai/codex",
+        version_command=("codex", "--version"),
     ),
     ClientDef(
         id="aide",
@@ -183,6 +227,8 @@ CLIENT_REGISTRY: List[ClientDef] = [
         env_var="OPENAI_BASE_URL",
         setup_cmd="OPENAI_BASE_URL=http://localhost:8080",
         website="https://aide.dev",
+        detect_binary=("aide",),
+        detect_app_name="Aide.app",
     ),
     ClientDef(
         id="opencode",
@@ -193,6 +239,9 @@ CLIENT_REGISTRY: List[ClientDef] = [
         env_var="OPENAI_BASE_URL",
         setup_cmd="OPENAI_BASE_URL=http://localhost:8080 opencode",
         website="https://opencode.ai",
+        detect_binary=("opencode",),
+        detect_npm="opencode",
+        version_command=("opencode", "--version"),
     ),
 ]
 

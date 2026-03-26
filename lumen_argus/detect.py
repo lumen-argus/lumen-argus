@@ -1,0 +1,559 @@
+"""Client auto-detection engine — scans for installed AI CLI agents.
+
+Discovers installed AI coding tools via binary lookup, package managers,
+IDE extensions, and app bundles. Checks proxy configuration status in
+shell profiles and IDE settings.
+
+All detection is read-only — never modifies files. Setup is in setup_wizard.py.
+"""
+
+import glob
+import json
+import logging
+import os
+import platform
+import re
+import shutil
+import subprocess
+from dataclasses import asdict, dataclass, field
+from typing import List, Optional
+
+from lumen_argus.clients import CLIENT_REGISTRY, ClientDef
+
+log = logging.getLogger("argus.detect")
+
+# Env vars that route AI tools through the proxy
+PROXY_ENV_VARS = ("ANTHROPIC_BASE_URL", "OPENAI_BASE_URL", "GEMINI_BASE_URL")
+
+# Shell profile files to scan (in priority order per shell)
+_SHELL_PROFILES = {
+    "zsh": ("~/.zshrc", "~/.zshenv", "~/.zprofile"),
+    "bash": ("~/.bashrc", "~/.bash_profile", "~/.profile"),
+    "fish": ("~/.config/fish/config.fish",),
+}
+
+# VS Code variants and their extensions/settings paths
+_VSCODE_VARIANTS = {
+    "VS Code": {
+        "extensions": (
+            "~/.vscode/extensions",
+            "~/Library/Application Support/Code/User/extensions",  # macOS alt
+        ),
+        "settings": (
+            "~/Library/Application Support/Code/User/settings.json",  # macOS
+            "~/.config/Code/User/settings.json",  # Linux
+        ),
+    },
+    "VS Code Insiders": {
+        "extensions": ("~/.vscode-insiders/extensions",),
+        "settings": (
+            "~/Library/Application Support/Code - Insiders/User/settings.json",
+            "~/.config/Code - Insiders/User/settings.json",
+        ),
+    },
+    "VSCodium": {
+        "extensions": ("~/.vscode-oss/extensions",),
+        "settings": (
+            "~/Library/Application Support/VSCodium/User/settings.json",
+            "~/.config/VSCodium/User/settings.json",
+        ),
+    },
+    "Cursor": {
+        "extensions": ("~/.cursor/extensions",),
+        "settings": (
+            "~/.cursor/User/settings.json",
+            "~/Library/Application Support/Cursor/User/settings.json",
+        ),
+    },
+    "Windsurf": {
+        "extensions": ("~/.windsurf/extensions",),
+        "settings": (
+            "~/.windsurf/User/settings.json",
+            "~/Library/Application Support/Windsurf/User/settings.json",
+        ),
+    },
+}
+
+_VERSION_RE = re.compile(r"(\d+\.\d+(?:\.\d+)?(?:[.-]\w+)?)")
+
+
+def load_jsonc(path: str) -> dict:
+    """Load a JSONC file (JSON with // comments). Returns parsed dict or empty dict on error."""
+    expanded = os.path.expanduser(path)
+    try:
+        with open(expanded, "r", encoding="utf-8") as f:
+            lines = [line for line in f if not line.lstrip().startswith("//")]
+        return json.loads("".join(lines))
+    except json.JSONDecodeError as e:
+        log.warning("invalid JSON in %s: %s", path, e)
+        return {}
+    except OSError as e:
+        log.warning("could not read %s: %s", path, e)
+        return {}
+
+
+# Pre-compiled env var extraction patterns (one set per var)
+_ENV_VAR_PATTERNS = {
+    var: [
+        re.compile(r"export\s+%s=[\"']?([^\s\"'#]+)" % re.escape(var)),
+        re.compile(r"%s=[\"']?([^\s\"'#]+)" % re.escape(var)),
+        re.compile(r"set\s+-x\s+%s\s+[\"']?([^\s\"'#]+)" % re.escape(var)),  # fish
+    ]
+    for var in PROXY_ENV_VARS
+}
+
+
+# ---------------------------------------------------------------------------
+# Data model
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class DetectedClient:
+    """Result of detecting a single AI CLI agent."""
+
+    client_id: str = ""
+    display_name: str = ""
+    installed: bool = False
+    version: str = ""
+    install_method: str = ""  # binary, pip, npm, vscode_ext, app_bundle, jetbrains_plugin
+    install_path: str = ""
+    proxy_configured: bool = False
+    proxy_url: str = ""
+    proxy_config_location: str = ""
+    env_var: str = ""
+    setup_cmd: str = ""
+    website: str = ""
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+@dataclass
+class DetectionReport:
+    """Aggregate detection results for all agents."""
+
+    clients: List[DetectedClient] = field(default_factory=list)
+    shell_env_vars: dict = field(default_factory=dict)  # {var_name: (value, file, line_num)}
+    platform: str = ""
+    total_detected: int = 0
+    total_configured: int = 0
+
+    def to_dict(self) -> dict:
+        return {
+            "platform": self.platform,
+            "total_detected": self.total_detected,
+            "total_configured": self.total_configured,
+            "clients": [c.to_dict() for c in self.clients],
+            "shell_env_vars": {k: {"value": v[0], "file": v[1], "line": v[2]} for k, v in self.shell_env_vars.items()},
+        }
+
+
+# ---------------------------------------------------------------------------
+# Scanner functions
+# ---------------------------------------------------------------------------
+
+
+def _scan_binary(client: ClientDef) -> Optional[DetectedClient]:
+    """Check if a CLI binary exists in PATH."""
+    for name in client.detect_binary:
+        path = shutil.which(name)
+        if path:
+            log.debug("binary found: %s → %s", name, path)
+            return DetectedClient(
+                client_id=client.id,
+                display_name=client.display_name,
+                installed=True,
+                install_method="binary",
+                install_path=path,
+                env_var=client.env_var,
+                setup_cmd=client.setup_cmd,
+                website=client.website,
+            )
+    return None
+
+
+def _scan_pip_package(client: ClientDef) -> Optional[DetectedClient]:
+    """Check if a pip package is installed (no subprocess — uses importlib.metadata)."""
+    if not client.detect_pip:
+        return None
+    try:
+        from importlib.metadata import version as pkg_version
+
+        ver = pkg_version(client.detect_pip)
+        log.debug("pip package found: %s==%s", client.detect_pip, ver)
+        return DetectedClient(
+            client_id=client.id,
+            display_name=client.display_name,
+            installed=True,
+            version=ver,
+            install_method="pip",
+            install_path="pip:%s" % client.detect_pip,
+            env_var=client.env_var,
+            setup_cmd=client.setup_cmd,
+            website=client.website,
+        )
+    except ImportError:
+        log.debug("importlib.metadata not available")
+        return None
+    except Exception as e:
+        # PackageNotFoundError inherits from ModuleNotFoundError on Python 3.9+
+        err_name = type(e).__name__
+        if "NotFound" in err_name or "PackageNotFound" in err_name:
+            log.debug("pip package %s not installed", client.detect_pip)
+        else:
+            log.warning("unexpected error checking pip package %s: %s", client.detect_pip, e, exc_info=True)
+        return None
+
+
+def _scan_vscode_extension(client: ClientDef) -> Optional[DetectedClient]:
+    """Check if a VS Code extension is installed across all VS Code variants."""
+    if not client.detect_vscode_ext:
+        return None
+    ext_id_lower = client.detect_vscode_ext.lower()
+
+    for variant_name, paths in _VSCODE_VARIANTS.items():
+        for ext_dir in paths["extensions"]:
+            ext_dir = os.path.expanduser(ext_dir)
+            if not os.path.isdir(ext_dir):
+                continue
+            # Extension dirs: <publisher>.<name>-<version>/
+            pattern = os.path.join(ext_dir, "%s-*" % ext_id_lower)
+            matches = glob.glob(pattern)
+            if matches:
+                # Take the newest version (last alphabetically)
+                match_path = sorted(matches)[-1]
+                dir_name = os.path.basename(match_path)
+                # Extract version from dir name: github.copilot-1.200.0 → 1.200.0
+                version = ""
+                dash_idx = dir_name.rfind("-")
+                if dash_idx > 0:
+                    version = dir_name[dash_idx + 1 :]
+                log.debug("VS Code extension found: %s in %s (%s)", client.detect_vscode_ext, variant_name, dir_name)
+                return DetectedClient(
+                    client_id=client.id,
+                    display_name=client.display_name,
+                    installed=True,
+                    version=version,
+                    install_method="vscode_ext",
+                    install_path=match_path,
+                    env_var=client.env_var,
+                    setup_cmd=client.setup_cmd,
+                    website=client.website,
+                )
+    return None
+
+
+def _scan_app_bundle(client: ClientDef) -> Optional[DetectedClient]:
+    """Check for macOS .app bundle in /Applications."""
+    if not client.detect_app_name or platform.system() != "Darwin":
+        return None
+    app_path = "/Applications/%s" % client.detect_app_name
+    if os.path.isdir(app_path):
+        # Try to read version from Info.plist
+        version = ""
+        plist_path = os.path.join(app_path, "Contents", "Info.plist")
+        if os.path.exists(plist_path):
+            try:
+                import plistlib
+
+                with open(plist_path, "rb") as f:
+                    info = plistlib.load(f)
+                version = info.get("CFBundleShortVersionString", "")
+                log.debug("app bundle version: %s → %s", client.detect_app_name, version)
+            except Exception as e:
+                log.warning("failed to read Info.plist for %s: %s", client.detect_app_name, e)
+        log.debug("app bundle found: %s", app_path)
+        return DetectedClient(
+            client_id=client.id,
+            display_name=client.display_name,
+            installed=True,
+            version=version,
+            install_method="app_bundle",
+            install_path=app_path,
+            env_var=client.env_var,
+            setup_cmd=client.setup_cmd,
+            website=client.website,
+        )
+    return None
+
+
+def _scan_jetbrains_plugin(client: ClientDef) -> Optional[DetectedClient]:
+    """Check for JetBrains IDE plugins."""
+    if not client.detect_jetbrains_plugin:
+        return None
+
+    # JetBrains plugin dirs vary by product and OS
+    if platform.system() == "Darwin":
+        base = os.path.expanduser("~/Library/Application Support/JetBrains")
+    else:
+        base = os.path.expanduser("~/.local/share/JetBrains")
+
+    if not os.path.isdir(base):
+        return None
+
+    # Search across all JetBrains products (IntelliJIdea, PyCharm, etc.)
+    try:
+        entries = os.listdir(base)
+    except OSError as e:
+        log.debug("could not list JetBrains dir %s: %s", base, e)
+        return None
+    for product_dir in entries:
+        plugin_dir = os.path.join(base, product_dir, "plugins", client.detect_jetbrains_plugin)
+        if os.path.isdir(plugin_dir):
+            log.debug("JetBrains plugin found: %s in %s", client.detect_jetbrains_plugin, product_dir)
+            return DetectedClient(
+                client_id=client.id,
+                display_name=client.display_name,
+                installed=True,
+                install_method="jetbrains_plugin",
+                install_path=plugin_dir,
+                env_var=client.env_var,
+                setup_cmd=client.setup_cmd,
+                website=client.website,
+            )
+    return None
+
+
+def _detect_version(client: ClientDef, detected: DetectedClient) -> str:
+    """Run --version command to get precise version. Returns version string or empty."""
+    if not client.version_command or detected.version:
+        return detected.version
+    try:
+        result = subprocess.run(
+            list(client.version_command),
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        output = (result.stdout or "") + (result.stderr or "")
+        match = _VERSION_RE.search(output)
+        if match:
+            version = match.group(1)
+            log.debug("version detected via command: %s → %s", client.version_command[0], version)
+            return version
+        log.debug("version command produced no match: %s → %r", client.version_command[0], output[:100])
+    except FileNotFoundError:
+        log.debug("version command not found: %s", client.version_command[0])
+    except subprocess.TimeoutExpired:
+        log.warning("version command timed out: %s", client.version_command[0])
+    except OSError as e:
+        log.warning("version command failed: %s — %s", client.version_command[0], e)
+    return ""
+
+
+# ---------------------------------------------------------------------------
+# Shell profile scanning
+# ---------------------------------------------------------------------------
+
+
+def _scan_shell_profiles(proxy_url: str = "") -> dict:
+    """Scan shell profile files for proxy env vars.
+
+    Returns {var_name: (value, file_path, line_number)} for each found var.
+    """
+    found = {}
+    current_shell = os.path.basename(os.environ.get("SHELL", ""))
+
+    # Determine which profiles to scan (current shell first, then others)
+    profiles_to_scan = []
+    if current_shell in _SHELL_PROFILES:
+        profiles_to_scan.extend(_SHELL_PROFILES[current_shell])
+    for shell, profiles in _SHELL_PROFILES.items():
+        if shell != current_shell:
+            profiles_to_scan.extend(profiles)
+
+    for profile_path in profiles_to_scan:
+        expanded = os.path.expanduser(profile_path)
+        if not os.path.isfile(expanded):
+            continue
+        try:
+            with open(expanded, "r", encoding="utf-8", errors="replace") as f:
+                for line_num, line in enumerate(f, 1):
+                    stripped = line.strip()
+                    if stripped.startswith("#"):
+                        continue
+                    for var in PROXY_ENV_VARS:
+                        # Match: export VAR=value, VAR=value, set -x VAR value (fish)
+                        if var in stripped:
+                            # Extract value
+                            value = _extract_env_value(stripped, var)
+                            if value and var not in found:
+                                found[var] = (value, profile_path, line_num)
+                                log.debug("shell env found: %s=%s in %s:%d", var, value, profile_path, line_num)
+        except OSError as e:
+            log.warning("could not read shell profile %s: %s", profile_path, e)
+    return found
+
+
+def _extract_env_value(line: str, var_name: str) -> str:
+    """Extract env var value from a shell profile line."""
+    compiled = _ENV_VAR_PATTERNS.get(var_name)
+    if not compiled:
+        return ""
+    for pattern in compiled:
+        match = pattern.search(line)
+        if match:
+            return match.group(1)
+    return ""
+
+
+# ---------------------------------------------------------------------------
+# IDE settings scanning
+# ---------------------------------------------------------------------------
+
+
+def _build_settings_cache() -> dict:
+    """Load and parse all existing IDE settings files once. Returns {expanded_path: dict}."""
+    cache = {}
+    for variant_name, paths in _VSCODE_VARIANTS.items():
+        for settings_path in paths["settings"]:
+            expanded = os.path.expanduser(settings_path)
+            if expanded in cache:
+                continue
+            settings = load_jsonc(expanded)
+            if settings:
+                cache[expanded] = (settings, settings_path)
+                log.debug("cached IDE settings: %s (%d keys)", settings_path, len(settings))
+    return cache
+
+
+def _check_ide_proxy_settings(client: ClientDef, proxy_url: str = "", settings_cache: dict = None) -> Optional[tuple]:
+    """Check if IDE settings have proxy configured for this client.
+
+    Returns (is_configured, proxy_value, settings_file) or None if no settings found.
+    """
+    if not client.proxy_settings_key:
+        return None
+
+    if settings_cache is None:
+        settings_cache = _build_settings_cache()
+
+    for expanded, (settings, settings_path) in settings_cache.items():
+        value = settings.get(client.proxy_settings_key, "")
+        if value:
+            is_match = proxy_url and proxy_url in value
+            log.debug(
+                "IDE setting found: %s=%s in %s (match=%s)",
+                client.proxy_settings_key,
+                value,
+                settings_path,
+                is_match,
+            )
+            return is_match, value, settings_path
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Main detection API
+# ---------------------------------------------------------------------------
+
+
+def detect_installed_clients(
+    proxy_url: str = "http://localhost:8080",
+    include_versions: bool = False,
+    extra_clients: list = None,
+) -> DetectionReport:
+    """Scan the system for installed AI CLI agents and their proxy configuration status.
+
+    Args:
+        proxy_url: Expected proxy URL to check against configured values.
+        include_versions: If True, run --version commands (slower).
+        extra_clients: Additional ClientDef entries from Pro extensions.
+
+    Returns:
+        DetectionReport with all detection results.
+    """
+    log.info("starting client detection (versions=%s, proxy_url=%s)", include_versions, proxy_url)
+
+    clients_to_scan = list(CLIENT_REGISTRY)
+    if extra_clients:
+        clients_to_scan.extend(extra_clients)
+
+    # Scan shell profiles and IDE settings once (shared across all clients)
+    shell_env = _scan_shell_profiles(proxy_url)
+    settings_cache = _build_settings_cache()
+
+    results = []
+    for client in clients_to_scan:
+        detected = _detect_single_client(client, shell_env, proxy_url, include_versions, settings_cache)
+        results.append(detected)
+
+    total_detected = sum(1 for r in results if r.installed)
+    total_configured = sum(1 for r in results if r.installed and r.proxy_configured)
+
+    report = DetectionReport(
+        clients=results,
+        shell_env_vars=shell_env,
+        platform="%s %s" % (platform.system(), platform.machine()),
+        total_detected=total_detected,
+        total_configured=total_configured,
+    )
+
+    log.info(
+        "detection complete: %d/%d tools detected, %d/%d configured for proxy",
+        total_detected,
+        len(clients_to_scan),
+        total_configured,
+        total_detected,
+    )
+    return report
+
+
+def _detect_single_client(
+    client: ClientDef,
+    shell_env: dict,
+    proxy_url: str,
+    include_versions: bool,
+    settings_cache: dict = None,
+) -> DetectedClient:
+    """Run all scanners for a single client, merge results."""
+    # Try each scanner in order — first match wins for install detection
+    detected = None
+    scanners = [
+        _scan_binary,
+        _scan_pip_package,
+        _scan_vscode_extension,
+        _scan_app_bundle,
+        _scan_jetbrains_plugin,
+    ]
+    for scanner in scanners:
+        try:
+            result = scanner(client)
+            if result:
+                detected = result
+                break
+        except Exception as e:
+            log.error("scanner failed for %s: %s", client.id, e, exc_info=True)
+
+    if detected is None:
+        return DetectedClient(
+            client_id=client.id,
+            display_name=client.display_name,
+            env_var=client.env_var,
+            setup_cmd=client.setup_cmd,
+            website=client.website,
+        )
+
+    # Version detection (optional, runs subprocess)
+    if include_versions:
+        detected.version = _detect_version(client, detected)
+
+    # Check proxy configuration from shell env vars
+    env_var = client.env_var
+    if env_var in shell_env:
+        value, file_path, line_num = shell_env[env_var]
+        detected.proxy_url = value
+        detected.proxy_config_location = "%s:%d" % (file_path, line_num)
+        detected.proxy_configured = proxy_url and proxy_url in value
+
+    # Check IDE proxy settings (for extension-based tools)
+    if not detected.proxy_configured and client.proxy_settings_key:
+        ide_result = _check_ide_proxy_settings(client, proxy_url, settings_cache)
+        if ide_result:
+            is_configured, value, settings_file = ide_result
+            detected.proxy_url = value
+            detected.proxy_config_location = settings_file
+            detected.proxy_configured = is_configured
+
+    return detected

@@ -322,6 +322,21 @@ def main(argv=None):
     clients_parser = subparsers.add_parser("clients", help="List supported AI CLI agents")
     clients_parser.add_argument("--json", action="store_true", help="Output as JSON")
 
+    # detect subcommand — scan for installed AI CLI agents
+    detect_parser = subparsers.add_parser("detect", help="Detect installed AI CLI agents")
+    detect_parser.add_argument("--versions", action="store_true", help="Detect versions (slower, runs subprocesses)")
+    detect_parser.add_argument("--json", action="store_true", help="Output as JSON")
+    detect_parser.add_argument("--audit", action="store_true", help="Audit proxy configuration compliance")
+    detect_parser.add_argument("--proxy-url", type=str, default="http://localhost:8080", help="Expected proxy URL")
+
+    # setup subcommand — configure tools to use proxy
+    setup_parser = subparsers.add_parser("setup", help="Configure AI tools to route through proxy")
+    setup_parser.add_argument("client", nargs="?", default="", help="Configure specific client (e.g., 'aider')")
+    setup_parser.add_argument("--proxy-url", type=str, default="http://localhost:8080", help="Proxy URL to configure")
+    setup_parser.add_argument("--undo", action="store_true", help="Remove all proxy configuration")
+    setup_parser.add_argument("--dry-run", action="store_true", help="Show changes without applying")
+    setup_parser.add_argument("--non-interactive", action="store_true", help="Auto-configure without prompting")
+
     # mcp subcommand — unified MCP proxy with multiple transport modes
     mcp_parser = subparsers.add_parser(
         "mcp",
@@ -376,7 +391,7 @@ def main(argv=None):
 
     args = parser.parse_args(argv)
 
-    if args.command in ("scan", "logs", "rules", "mcp", "clients"):
+    if args.command in ("scan", "logs", "rules", "mcp", "clients", "detect", "setup"):
         # Set up minimal logging for non-serve commands so config
         # warnings (log.warning) display cleanly on stderr.
         _handler = logging.StreamHandler(sys.stderr)
@@ -391,6 +406,10 @@ def main(argv=None):
             _run_mcp(args)
         elif args.command == "clients":
             _run_clients(args)
+        elif args.command == "detect":
+            _run_detect(args)
+        elif args.command == "setup":
+            _run_setup(args)
         else:
             _run_logs(args)
         return
@@ -1018,6 +1037,83 @@ def _run_clients(args):
         print("  %-20s %-5s %-18s %s" % (c["display_name"], c["category"], provider, c["env_var"]))
     print("\nSetup: set the env var to http://localhost:<proxy_port> before launching your tool.")
     print("Example: %s" % clients[0]["setup_cmd"])
+    print("\nRun 'lumen-argus detect' to scan for installed tools.")
+    print("Run 'lumen-argus setup' to auto-configure detected tools.")
+
+
+def _run_detect(args):
+    """Execute the 'detect' subcommand — scan for installed AI CLI agents."""
+    from lumen_argus.detect import detect_installed_clients
+
+    report = detect_installed_clients(
+        proxy_url=args.proxy_url,
+        include_versions=args.versions,
+    )
+
+    if args.json:
+        print(json.dumps(report.to_dict(), indent=2))
+        return
+
+    if args.audit:
+        # Audit mode — focus on compliance
+        print("AI Tool Proxy Compliance Audit:\n")
+        detected = [c for c in report.clients if c.installed]
+        if not detected:
+            print("  No AI tools detected on this machine.")
+            return
+        for c in detected:
+            ver = " %s" % c.version if c.version else ""
+            if c.proxy_configured:
+                print("  [OK]   %-20s%s  Proxied (%s)" % (c.display_name, ver, c.proxy_config_location))
+            else:
+                print("  [FAIL] %-20s%s  NOT PROXIED — %s not configured" % (c.display_name, ver, c.env_var))
+        print("\nSummary: %d/%d tools routed through proxy" % (report.total_configured, report.total_detected))
+        if report.total_configured < report.total_detected:
+            print("Action required: run 'lumen-argus setup' to configure uncovered tools.")
+        return
+
+    # Standard output
+    if report.total_detected == 0:
+        print("No AI tools detected on this machine.\n")
+        print("Popular tools you can install:")
+        print("  Claude Code    pip install claude-code        https://claude.ai/code")
+        print("  Aider          pip install aider-chat         https://aider.chat")
+        print("  Codex CLI      npm install -g @openai/codex   https://github.com/openai/codex")
+        print("  OpenCode       npm install -g opencode        https://opencode.ai")
+        return
+
+    print("Detected AI tools (%d):\n" % report.total_detected)
+    for c in report.clients:
+        if not c.installed:
+            continue
+        ver = " %s" % c.version if c.version else ""
+        status = "proxied" if c.proxy_configured else "not configured"
+        marker = "+" if c.proxy_configured else "-"
+        print("  [%s] %-20s%-12s %-10s %s" % (marker, c.display_name, ver, c.install_method, status))
+
+    print("\n%d/%d configured for proxy (%s)" % (report.total_configured, report.total_detected, args.proxy_url))
+    if report.total_configured < report.total_detected:
+        print("Run 'lumen-argus setup' to configure remaining tools.")
+
+
+def _run_setup(args):
+    """Execute the 'setup' subcommand — configure tools to use proxy."""
+    from lumen_argus.setup_wizard import run_setup, undo_setup
+
+    if args.undo:
+        reverted = undo_setup()
+        if reverted:
+            print("Reverted %d change(s). Proxy configuration removed." % reverted)
+        else:
+            print("Nothing to undo.")
+        return
+
+    run_setup(
+        proxy_url=args.proxy_url,
+        client_id=args.client,
+        non_interactive=args.non_interactive,
+        dry_run=args.dry_run,
+    )
 
 
 def _load_rules_bundle(path: str = None, pro: bool = False) -> tuple:
