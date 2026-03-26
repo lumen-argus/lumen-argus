@@ -207,7 +207,7 @@ class TestClientName(unittest.TestCase):
         """_extract_session populates client_name from user-agent header."""
         handler = _make_handler()
         ctx = handler._extract_session({}, "anthropic", {"user-agent": "claude-code/1.5.0 python/3.12"})
-        self.assertEqual(ctx.client_name, "claude-code/1.5.0")
+        self.assertEqual(ctx.client_name, "claude_code")
 
 
 # --- System text extraction helper ---
@@ -645,7 +645,7 @@ class TestRealClaudeCodeFormat(unittest.TestCase):
         self.assertEqual(ctx.os_platform, "darwin")
 
         # Client
-        self.assertEqual(ctx.client_name, "claude-code/1.0.33")
+        self.assertEqual(ctx.client_name, "claude_code")
 
     def test_no_metadata_falls_back_to_fingerprint(self):
         """Without metadata, session_id is derived fingerprint."""

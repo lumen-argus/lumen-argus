@@ -11,6 +11,7 @@ import json
 import logging
 import re
 
+from lumen_argus.clients import identify_client
 from lumen_argus.models import SessionContext
 
 log = logging.getLogger("argus.session")
@@ -188,8 +189,9 @@ def extract_session(req_data, provider: str, headers: dict, source_ip: str) -> S
             api_key = api_key[7:]
         ctx.api_key_hash = hashlib.sha256(api_key.encode()).hexdigest()[:16]
 
-    # Client tool name from User-Agent
-    ctx.client_name = _parse_client_name(headers.get("user-agent", ""))
+    # Client tool identification from User-Agent
+    client_id, _, _ = identify_client(headers.get("user-agent", ""))
+    ctx.client_name = client_id
 
     # Explicit session header (highest priority)
     explicit_session = headers.get("x-session-id", "")

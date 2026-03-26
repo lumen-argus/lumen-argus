@@ -965,7 +965,7 @@ class TestAsyncProxySessionExtraction(unittest.TestCase):
         self.assertEqual(ctx.working_directory, "/home/user/project")
         self.assertEqual(ctx.git_branch, "main")
         self.assertEqual(ctx.os_platform, "linux")
-        self.assertEqual(ctx.client_name, "claude-code/1.0")
+        self.assertEqual(ctx.client_name, "claude_code")
         self.assertTrue(ctx.api_key_hash)
 
     def test_extract_session_explicit_header(self):

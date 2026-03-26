@@ -62,6 +62,7 @@ class ExtensionRegistry:
         self._ws_connection_hook = None  # type: Optional[Callable]
         self._rule_metrics_collector = None  # type: Optional[object]
         self._accelerator_factory = None  # type: Optional[Callable]
+        self._extra_clients = []  # type: list
         self._allowlist_matcher_factory = None  # type: Optional[Callable]
         # MCP Pro hooks
         self._mcp_policy_engine = None  # type: Optional[object]
@@ -244,6 +245,18 @@ class ExtensionRegistry:
     def get_auth_providers(self) -> list:
         """Return list of registered auth providers."""
         return list(self._auth_providers)
+
+    # --- Notification channel hooks ---
+
+    # --- Client registry hooks ---
+
+    def register_clients(self, clients: list) -> None:
+        """Register additional client definitions from a plugin (Pro/Enterprise)."""
+        self._extra_clients.extend(clients)
+
+    def get_extra_clients(self) -> list:
+        """Return plugin-registered client definitions."""
+        return list(self._extra_clients)
 
     # --- Notification channel hooks ---
 
