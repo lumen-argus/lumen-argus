@@ -93,8 +93,16 @@ class RulesRepository:
         conditions = []
         params = []  # type: list
         if search:
-            conditions.append("(name LIKE ? OR description LIKE ?)")
-            params.extend(["%" + search + "%", "%" + search + "%"])
+            terms = [t.strip() for t in search.split(",") if t.strip()]
+            if len(terms) == 1:
+                conditions.append("(name LIKE ? OR description LIKE ?)")
+                params.extend(["%" + terms[0] + "%", "%" + terms[0] + "%"])
+            elif terms:
+                clauses = []
+                for t in terms:
+                    clauses.append("(name LIKE ? OR description LIKE ?)")
+                    params.extend(["%" + t + "%", "%" + t + "%"])
+                conditions.append("(" + " OR ".join(clauses) + ")")
         if detector:
             conditions.append("detector = ?")
             params.append(detector)

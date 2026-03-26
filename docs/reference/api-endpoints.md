@@ -266,6 +266,21 @@ The dashboard runs on a separate port (default `8081`) and provides a REST API f
 
 `POST /api/v1/rules` and `PUT /api/v1/rules/:name` validate the `action` field. Community allows: empty string (default), `log`, `alert`, `block`. Pro overrides to also allow `redact`.
 
+`GET /api/v1/rules` search supports comma-separated terms for OR matching (e.g., `?search=generic_secret,env_file_assignment` returns rules matching either name).
+
+### Rule Analysis endpoints
+
+Rule overlap analysis using [Crossfire](https://github.com/slima4/crossfire) (optional dependency). When crossfire is not installed, GET returns `{"available": false}`.
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/v1/rules/analysis` | GET | Get cached analysis results (duplicates, subsets, overlaps, clusters) |
+| `/api/v1/rules/analysis` | POST | Trigger new analysis (runs in background, returns 202). Returns 409 if already running |
+| `/api/v1/rules/analysis/status` | GET | Analysis progress (running, phase, progress text, log lines). Supports `?since=N` for incremental log streaming |
+| `/api/v1/rules/analysis/dismiss` | POST | Dismiss a finding pair. Body: `{"rule_a": "...", "rule_b": "..."}` |
+
+Install crossfire: `pip install lumen-argus[rules-analysis]` or `pip install git+https://github.com/slima4/crossfire.git`
+
 ### Allowlist endpoints
 
 | Endpoint | Method | Description |

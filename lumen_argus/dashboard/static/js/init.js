@@ -126,6 +126,9 @@ function startSSE(){
     sseConnectedOnce=true;
   });
   sseSource.addEventListener('finding',function(){loadData();});
+  sseSource.addEventListener('rule_analysis_complete',function(){
+    if(typeof loadRuleAnalysis==='function')loadRuleAnalysis();
+  });
   sseSource.addEventListener('heartbeat',function(){
     document.getElementById('live-label').textContent='Live';
     document.getElementById('live-toggle').classList.remove('reconnecting');

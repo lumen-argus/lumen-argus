@@ -86,6 +86,14 @@ class AnalyticsConfig:
 
 
 @dataclass
+class RuleAnalysisConfig:
+    samples: int = 50  # corpus strings per rule (higher = more stable, slower)
+    threshold: float = 0.8  # overlap fraction to classify as duplicate/subset
+    seed: int = 42  # reproducible corpus generation
+    auto_on_import: bool = True  # re-run analysis after rule import
+
+
+@dataclass
 class RulesConfig:
     auto_import: bool = True  # auto-import community rules on first serve
     rebuild_delay_seconds: float = 2.0  # debounce delay for async accelerator rebuild
@@ -217,6 +225,7 @@ class Config:
     dashboard: DashboardConfig = field(default_factory=DashboardConfig)
     analytics: AnalyticsConfig = field(default_factory=AnalyticsConfig)
     rules: RulesConfig = field(default_factory=RulesConfig)
+    rule_analysis: RuleAnalysisConfig = field(default_factory=RuleAnalysisConfig)
     dedup: DedupConfig = field(default_factory=DedupConfig)
     pipeline: PipelineConfig = field(default_factory=PipelineConfig)
     mcp: MCPConfig = field(default_factory=MCPConfig)
@@ -251,6 +260,7 @@ _KNOWN_TOP_KEYS = {
     "notifications",
     "dedup",
     "rules",
+    "rule_analysis",
     "enterprise",
     "custom_detectors",
 }
@@ -940,6 +950,18 @@ def _apply_config(config: Config, data: dict) -> None:
             config.rules.auto_import = bool(rules_sec["auto_import"])
         if "rebuild_delay_seconds" in rules_sec:
             config.rules.rebuild_delay_seconds = float(rules_sec["rebuild_delay_seconds"])
+
+    # Rule analysis
+    ra = data.get("rule_analysis", {})
+    if isinstance(ra, dict):
+        if "samples" in ra:
+            config.rule_analysis.samples = max(10, int(ra["samples"]))
+        if "threshold" in ra:
+            config.rule_analysis.threshold = float(ra["threshold"])
+        if "seed" in ra:
+            config.rule_analysis.seed = int(ra["seed"])
+        if "auto_on_import" in ra:
+            config.rule_analysis.auto_on_import = bool(ra["auto_on_import"])
 
     # Dedup
     dedup = data.get("dedup", {})

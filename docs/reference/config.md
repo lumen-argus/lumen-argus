@@ -223,6 +223,29 @@ analytics:
 
 ---
 
+## `rule_analysis`
+
+Configuration for rule overlap analysis via [Crossfire](https://github.com/slima4/crossfire) (optional dependency).
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `rule_analysis.samples` | `int` | `50` | Corpus strings generated per rule. Higher = more stable results, slower analysis. Minimum 10. |
+| `rule_analysis.threshold` | `float` | `0.8` | Overlap fraction to classify as duplicate or subset (0.0–1.0). |
+| `rule_analysis.seed` | `int` | `42` | Random seed for reproducible corpus generation. |
+| `rule_analysis.auto_on_import` | `bool` | `true` | Automatically run analysis after rule import (CLI and auto-import on first startup). |
+
+```yaml
+rule_analysis:
+  samples: 100
+  threshold: 0.8
+  seed: 42
+  auto_on_import: true
+```
+
+Install crossfire: `pip install lumen-argus[rules-analysis]` or `pip install git+https://github.com/slima4/crossfire.git`. Docker image includes it by default.
+
+---
+
 ## `notifications`
 
 Notification channels managed via IaC. Reconciled to SQLite on startup and SIGHUP using Kubernetes-style declarative reconciliation — YAML is fully authoritative.
@@ -460,6 +483,12 @@ analytics:
   enabled: true
   db_path: "~/.lumen-argus/analytics.db"
   retention_days: 365
+
+rule_analysis:
+  samples: 50
+  threshold: 0.8
+  seed: 42
+  auto_on_import: true
 
 logging:
   log_dir: "~/.lumen-argus/logs"

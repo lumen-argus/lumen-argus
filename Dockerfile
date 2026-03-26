@@ -5,12 +5,13 @@ WORKDIR /build
 
 # Install build tools + deps first (cached unless pyproject.toml changes)
 COPY pyproject.toml README.md ./
-RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev \
+RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev git \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy source and install (only re-runs on code changes, gcc is cached)
 COPY lumen_argus/ lumen_argus/
-RUN pip install --no-cache-dir --prefix=/install .
+RUN pip install --no-cache-dir --prefix=/install . \
+    && pip install --no-cache-dir --prefix=/install git+https://github.com/slima4/crossfire.git
 
 # ---- runtime stage ----
 FROM python:3.12-slim

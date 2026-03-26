@@ -115,6 +115,12 @@ When the `rules` DB table has rules (auto-imported on first run), the pipeline u
 
 All regex patterns are compiled at load time (startup or SIGHUP reload) to avoid runtime compilation overhead. The `RulesDetector` supports named validators (`luhn`, `ssn_range`, `iban_mod97`, `exclude_private_ips`) and is license-aware — Pro rules (`tier='pro'`) are skipped when no valid license is present.
 
+### Rule Overlap Analysis
+
+Optional integration with [Crossfire](https://github.com/slima4/crossfire) (`pip install lumen-argus[rules-analysis]`). Detects duplicate, subset, and overlapping rules using corpus-based analysis. The `rule_analysis.py` module generates test strings per rule via `CorpusGenerator`, cross-evaluates all rules against all corpora via `Evaluator`, then classifies pairs via `Classifier` into duplicates, subsets, and overlaps.
+
+Results cached in the `rule_analysis` SQLite table. Dashboard "Rule Analysis" page shows findings with Disable/Review/Dismiss actions. Auto-analysis runs in a background thread after rule import. Configurable via `rule_analysis:` config section (samples, threshold, seed, auto_on_import). Rules page shows `[N ovr]` overlap badges linking to the analysis page.
+
 ### Response Scanning
 
 **Module:** `lumen_argus/response_scanner.py`

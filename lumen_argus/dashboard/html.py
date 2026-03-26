@@ -33,6 +33,7 @@ _JS_MODULES = [
     "js/rules.js",
     "js/allowlists.js",
     "js/pipeline.js",
+    "js/rule-analysis.js",
     "js/init.js",
 ]
 

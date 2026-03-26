@@ -30,6 +30,17 @@ def _setup_minimal_logging():
     logging.getLogger().setLevel(logging.WARNING)
 
 
+def _trigger_auto_analysis(store, extensions, config=None):
+    """Run rule overlap analysis in background if crossfire is available and enabled."""
+    if config and not config.rule_analysis.auto_on_import:
+        return
+    try:
+        from lumen_argus.rule_analysis import run_analysis_in_background
+    except ImportError:
+        return
+    run_analysis_in_background(store, extensions, thread_name="rule-analysis-auto", config=config)
+
+
 def _initialize_analytics(config, args, extensions, action_overrides):
     """Initialize analytics store, auto-import rules, reconcile YAML, apply DB overrides.
 
@@ -62,6 +73,7 @@ def _initialize_analytics(config, args, extensions, action_overrides):
             rules, version, tier = _load_rules_bundle()
             result = analytics_store.import_rules(rules, tier=tier)
             log.info("auto-imported %d community rules v%s", result["created"], version)
+            _trigger_auto_analysis(analytics_store, extensions, config=config)
 
     # Reconcile YAML custom_rules to DB (Kubernetes-style)
     if analytics_store and config.custom_rules:
@@ -1221,6 +1233,7 @@ def _run_rules(args):
         )
         total = store.get_rules_count()
         print("  total: %d rules in DB" % total)
+        _trigger_auto_analysis(store, None)
 
     elif args.rules_command == "export":
         rules = store.export_rules(tier=args.tier, detector=args.detector)

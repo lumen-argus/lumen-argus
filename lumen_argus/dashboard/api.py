@@ -199,6 +199,12 @@ def handle_community_api(
         if path == "/api/v1/rules/stats":
             return _handle_rules_stats(store)
 
+        if path == "/api/v1/rules/analysis":
+            return _handle_rule_analysis_get(store)
+
+        if path == "/api/v1/rules/analysis/status":
+            return _handle_rule_analysis_status(params)
+
         if path.startswith("/api/v1/rules/"):
             rule_name = path[len("/api/v1/rules/") :]
             return _handle_rule_detail(rule_name, store)
@@ -240,6 +246,14 @@ def handle_community_api(
     if path.startswith("/api/v1/allowlists/") and method == "DELETE":
         entry_id = path[len("/api/v1/allowlists/") :]
         return _handle_allowlist_delete(entry_id, store)
+
+    # --- Rule analysis endpoints ---
+
+    if path == "/api/v1/rules/analysis" and method == "POST":
+        return _handle_rule_analysis_trigger(body, store, extensions, config)
+
+    if path == "/api/v1/rules/analysis/dismiss" and method == "POST":
+        return _handle_rule_analysis_dismiss(body, store)
 
     # --- Rules mutation endpoints ---
 
@@ -1544,3 +1558,128 @@ def _handle_ws_stats(params: dict, store) -> tuple:
     stats = store.get_ws_stats(days=days)
     log.debug("GET /api/v1/ws/stats: days=%d, %d connections", days, stats.get("total_connections", 0))
     return _json_response(200, stats)
+
+
+# ---------------------------------------------------------------------------
+# Rule Analysis handlers
+# ---------------------------------------------------------------------------
+
+
+def _handle_rule_analysis_get(store):
+    """GET /api/v1/rules/analysis — return cached results or unavailable status."""
+    from lumen_argus.rule_analysis import HAS_CROSSFIRE
+
+    log.debug("GET /api/v1/rules/analysis")
+
+    if not HAS_CROSSFIRE:
+        return _json_response(
+            200,
+            {
+                "available": False,
+                "message": (
+                    "Rule overlap analysis requires the crossfire package. Install with: pip install crossfire"
+                ),
+            },
+        )
+
+    err = _require_store(store, "rule analysis")
+    if err:
+        return err
+
+    cached = store.rule_analysis.get_latest_analysis()
+    if not cached:
+        return _json_response(
+            200,
+            {
+                "available": True,
+                "has_results": False,
+                "message": "No analysis results yet. Click Analyze to detect rule overlaps.",
+            },
+        )
+
+    from lumen_argus.rule_analysis import filter_dismissed
+
+    dismissed = cached.pop("dismissed", [])
+    if dismissed:
+        cached = filter_dismissed(cached, dismissed)
+
+    cached["available"] = True
+    cached["has_results"] = True
+    return _json_response(200, cached)
+
+
+def _handle_rule_analysis_trigger(body, store, extensions, config=None):
+    """POST /api/v1/rules/analysis — trigger new analysis."""
+    from lumen_argus.rule_analysis import HAS_CROSSFIRE, is_analysis_running, run_analysis_in_background
+
+    log.debug("POST /api/v1/rules/analysis")
+
+    if not HAS_CROSSFIRE:
+        return _json_response(
+            400,
+            {
+                "error": "crossfire_not_installed",
+                "message": (
+                    "Rule overlap analysis requires the crossfire package. Install with: pip install crossfire"
+                ),
+            },
+        )
+
+    err = _require_store(store, "rule analysis")
+    if err:
+        return err
+
+    if is_analysis_running():
+        return _json_response(
+            409,
+            {
+                "error": "analysis_already_running",
+                "message": "Analysis is already in progress. Please wait for it to complete.",
+            },
+        )
+
+    run_analysis_in_background(store, extensions, thread_name="rule-analysis-api", config=config)
+
+    return _json_response(
+        202,
+        {
+            "status": "started",
+            "message": "Rule analysis started. Results will be available shortly.",
+        },
+    )
+
+
+def _handle_rule_analysis_dismiss(body, store):
+    """POST /api/v1/rules/analysis/dismiss — dismiss a finding pair."""
+    log.debug("POST /api/v1/rules/analysis/dismiss")
+
+    err = _require_store(store, "rule analysis dismiss")
+    if err:
+        return err
+
+    data = _parse_json_body(body, "rule analysis dismiss")
+    if isinstance(data, tuple):
+        return data
+
+    rule_a = data.get("rule_a", "")
+    rule_b = data.get("rule_b", "")
+    if not rule_a or not rule_b:
+        return _json_response(400, {"error": "rule_a and rule_b are required"})
+
+    added = store.rule_analysis.dismiss_finding(rule_a, rule_b)
+    if added:
+        return _json_response(200, {"status": "dismissed", "rule_a": rule_a, "rule_b": rule_b})
+    return _json_response(200, {"status": "already_dismissed", "rule_a": rule_a, "rule_b": rule_b})
+
+
+def _handle_rule_analysis_status(params):
+    """GET /api/v1/rules/analysis/status — return current analysis progress."""
+    from lumen_argus.rule_analysis import get_analysis_status
+
+    since = 0
+    try:
+        since = int(params.get("since", 0))
+    except (ValueError, TypeError) as exc:
+        log.debug("invalid 'since' param, defaulting to 0: %s", exc)
+    status = get_analysis_status(since=since)
+    return _json_response(200, status)

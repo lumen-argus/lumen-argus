@@ -257,7 +257,7 @@ Scanning overhead stays under 50ms for typical payloads. Connection pooling elim
 
 Built-in web dashboard at `http://localhost:8081`:
 
-**Community pages:** Dashboard (quick stats cards, severity breakdown, trend chart with 7d/30d/90d toggle, top detectors, top providers, activity feed, recent sessions with severity breakdown, pipeline health), Findings (paginated table with 8 filters: severity, detector, action, type, provider, client, time range, session; CSV/JSON export), Rules (paginated rule list with search/filter, stat chips, tag chips, rule cards with enable toggle, action select, add/edit/clone/delete; URL hash deep-links from findings), Allowlists (secrets/PII/paths allowlists — merged YAML config + API entries, inline add/delete, pattern test panel against recent findings), Audit (log viewer with search), Pipeline (scanning stage config — toggle stages, detectors, encoding settings, default action), Settings (proxy config, license activation), Notifications (channel management).
+**Community pages:** Dashboard (quick stats cards, severity breakdown, trend chart with 7d/30d/90d toggle, top detectors, top providers, activity feed, recent sessions with severity breakdown, pipeline health), Findings (paginated table with 8 filters: severity, detector, action, type, provider, client, time range, session; CSV/JSON export), Rules (paginated rule list with search/filter, stat chips, tag chips, rule cards with enable toggle, action select, add/edit/clone/delete; URL hash deep-links from findings; overlap badges linking to Rule Analysis), Rule Analysis (Crossfire-powered overlap detection — duplicate/subset/overlap cards with Disable/Review/Dismiss actions, live progress with log streaming; `pip install lumen-argus[rules-analysis]`), Allowlists (secrets/PII/paths allowlists — merged YAML config + API entries, inline add/delete, pattern test panel against recent findings), Audit (log viewer with search), Pipeline (scanning stage config — toggle stages, detectors, encoding settings, default action), Settings (proxy config, license activation), Notifications (channel management).
 
 **Pro pages:** MCP, Performance — unlocked with a Pro license. Pro extends the Rules page with "Import Pro Rules" button and `redact` action. Pro also adds 6 analytics charts to the Dashboard: actions trend (stacked area), activity heatmap (hour × weekday), top accounts, top projects, detection coverage gauge, and notification health.
 
@@ -282,6 +282,10 @@ Built-in web dashboard at `http://localhost:8081`:
 | `PUT /api/v1/rules/:name` | Update rule (action, enabled, severity, etc.) |
 | `DELETE /api/v1/rules/:name` | Delete dashboard-created rules |
 | `POST /api/v1/rules/:name/clone` | Clone rule to custom tier |
+| `GET /api/v1/rules/analysis` | Cached overlap analysis results (requires crossfire) |
+| `POST /api/v1/rules/analysis` | Trigger new overlap analysis (background, 202) |
+| `GET /api/v1/rules/analysis/status` | Analysis progress with incremental log streaming |
+| `POST /api/v1/rules/analysis/dismiss` | Dismiss an overlap finding pair |
 | `GET /api/v1/allowlists` | Merged allowlist entries (YAML config + API-managed) |
 | `POST /api/v1/allowlists` | Add allowlist entry (type: secrets/pii/paths) |
 | `POST /api/v1/allowlists/test` | Test pattern against value and recent findings |

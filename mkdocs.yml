@@ -64,6 +64,7 @@ nav:
     - Detection: guide/detection.md
     - Allowlists: guide/allowlists.md
     - Custom Rules: guide/custom-rules.md
+    - Rule Analysis: guide/rule-analysis.md
     - Scanning Files: guide/scan-cli.md
   - Operations:
     - Logging: operations/logging.md

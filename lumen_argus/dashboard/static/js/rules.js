@@ -54,6 +54,21 @@ var _rulesHtml=''
 
 registerPage('rules','Rules',{order:25,loadFn:loadRules,html:_rulesHtml});
 
+var _rulesOverlapCounts={};
+function _buildOverlapCounts(analysis){
+  var counts={};
+  if(!analysis||!analysis.has_results)return counts;
+  var lists=['duplicates','subsets','overlaps'];
+  for(var i=0;i<lists.length;i++){
+    var items=analysis[lists[i]]||[];
+    for(var j=0;j<items.length;j++){
+      counts[items[j].rule_a]=(counts[items[j].rule_a]||0)+1;
+      counts[items[j].rule_b]=(counts[items[j].rule_b]||0)+1;
+    }
+  }
+  return counts;
+}
+
 function loadRules(){
   _wireRulesEvents();
   /* Read hash query params (e.g. #rules?q=stripe_secret_key) */
@@ -77,9 +92,11 @@ function loadRules(){
   if(_rulesTag)url+='&tag='+encodeURIComponent(_rulesTag);
   Promise.all([
     fetch(url).then(function(r){return r.json()}),
-    fetch('/api/v1/rules/stats').then(function(r){return r.json()})
+    fetch('/api/v1/rules/stats').then(function(r){return r.json()}),
+    fetch('/api/v1/rules/analysis').then(function(r){return r.json()}).catch(function(){return{}})
   ]).then(function(res){
-    var data=res[0],stats=res[1];
+    var data=res[0],stats=res[1],analysis=res[2]||{};
+    _rulesOverlapCounts=_buildOverlapCounts(analysis);
     _rulesTotal=data.total;
     document.getElementById('rules-total').textContent=_rulesTotal+' rules';
     _renderRulesStats(stats);
@@ -150,6 +167,13 @@ function _ruleCard(r){
   var sev=document.createElement('span');sev.className='badge '+sevCls(r.severity);
   var dot=document.createElement('span');dot.className='badge-dot';sev.appendChild(dot);
   sev.appendChild(document.createTextNode(r.severity));head.appendChild(sev);
+  /* Overlap badge */
+  var ovrCount=_rulesOverlapCounts[r.name]||0;
+  if(ovrCount>0){
+    var ovrBadge=document.createElement('a');ovrBadge.className='ra-ovr-badge';
+    ovrBadge.textContent=ovrCount+' ovr';ovrBadge.href='#rule-analysis';
+    head.appendChild(ovrBadge);
+  }
   /* Actions area */
   var acts=document.createElement('div');acts.className='rule-actions';
   /* Toggle */

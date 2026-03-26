@@ -23,6 +23,7 @@ from lumen_argus.analytics.config_overrides import ConfigOverridesRepository, _C
 from lumen_argus.analytics.mcp_tool_lists import MCPToolListsRepository, _MCP_TOOL_LISTS_SCHEMA
 from lumen_argus.analytics.ws_connections import WebSocketConnectionsRepository, _WS_CONNECTIONS_SCHEMA
 from lumen_argus.analytics.allowlists import AllowlistRepository, _ALLOWLIST_SCHEMA
+from lumen_argus.analytics.rule_analysis_repo import RuleAnalysisRepository, _RULE_ANALYSIS_SCHEMA
 
 log = logging.getLogger("argus.analytics")
 
@@ -94,6 +95,7 @@ class AnalyticsStore:
         self.mcp_tool_lists = MCPToolListsRepository(self)
         self.ws_connections = WebSocketConnectionsRepository(self)
         self.allowlists = AllowlistRepository(self)
+        self.rule_analysis = RuleAnalysisRepository(self)
 
     def _ensure_db(self) -> None:
         """Create the database and schema if they don't exist."""
@@ -111,6 +113,7 @@ class AnalyticsStore:
             conn.executescript(_MCP_TOOL_BASELINES_SCHEMA)
             conn.executescript(_WS_CONNECTIONS_SCHEMA)
             conn.executescript(_ALLOWLIST_SCHEMA)
+            conn.executescript(_RULE_ANALYSIS_SCHEMA)
         # Secure file permissions — same 0o600 as audit JSONL files
         try:
             os.chmod(self._db_path, 0o600)
