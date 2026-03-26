@@ -1089,7 +1089,8 @@ def _run_detect(args):
         ver = " %s" % c.version if c.version else ""
         status = "proxied" if c.proxy_configured else "not configured"
         marker = "+" if c.proxy_configured else "-"
-        print("  [%s] %-20s%-12s %-10s %s" % (marker, c.display_name, ver, c.install_method, status))
+        method = c.install_method.value if hasattr(c.install_method, "value") else c.install_method
+        print("  [%s] %-20s%-12s %-10s %s" % (marker, c.display_name, ver, method, status))
 
     print("\n%d/%d configured for proxy (%s)" % (report.total_configured, report.total_detected, args.proxy_url))
     if report.total_configured < report.total_detected:

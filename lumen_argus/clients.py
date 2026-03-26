@@ -31,8 +31,10 @@ class ClientDef:
     detect_binary: tuple = ()  # binary names to check via shutil.which()
     detect_pip: str = ""  # pip package name (importlib.metadata)
     detect_npm: str = ""  # npm global package name
+    detect_brew: str = ""  # homebrew formula name
     detect_vscode_ext: str = ""  # VS Code extension ID
     detect_jetbrains_plugin: str = ""  # JetBrains plugin dir name
+    detect_neovim_plugin: str = ""  # Neovim plugin dir name (lazy.nvim/vim-plug/native)
     detect_app_name: str = ""  # macOS /Applications/*.app
     proxy_settings_key: str = ""  # IDE settings JSON key for proxy
     version_command: tuple = ()  # command to get version
@@ -80,6 +82,7 @@ CLIENT_REGISTRY: List[ClientDef] = [
         website="https://github.com/features/copilot",
         detect_vscode_ext="github.copilot",
         detect_jetbrains_plugin="github-copilot-intellij",
+        detect_neovim_plugin="copilot.vim",
         proxy_settings_key="http.proxy",
     ),
     ClientDef(
@@ -93,6 +96,7 @@ CLIENT_REGISTRY: List[ClientDef] = [
         website="https://aider.chat",
         detect_binary=("aider",),
         detect_pip="aider-chat",
+        detect_brew="aider",
         version_command=("aider", "--version"),
     ),
     ClientDef(
@@ -105,6 +109,7 @@ CLIENT_REGISTRY: List[ClientDef] = [
         setup_cmd="OPENAI_BASE_URL=http://localhost:8080",
         website="https://continue.dev",
         detect_vscode_ext="continue.continue",
+        detect_neovim_plugin="continue.nvim",
         proxy_settings_key="continue.proxy",
     ),
     ClientDef(
@@ -118,6 +123,7 @@ CLIENT_REGISTRY: List[ClientDef] = [
         website="https://sourcegraph.com/cody",
         detect_vscode_ext="sourcegraph.cody-ai",
         detect_jetbrains_plugin="sourcegraph",
+        detect_neovim_plugin="sg.nvim",
         proxy_settings_key="cody.proxy",
     ),
     ClientDef(

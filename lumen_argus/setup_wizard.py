@@ -382,7 +382,9 @@ def run_setup(
             InstallMethod.BINARY,
             InstallMethod.PIP,
             InstallMethod.NPM,
+            InstallMethod.BREW,
             InstallMethod.APP_BUNDLE,
+            InstallMethod.NEOVIM_PLUGIN,
         ):
             _try_add_env_var()
 

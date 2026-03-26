@@ -1,6 +1,8 @@
 """Tests for the client detection engine."""
 
+import json
 import os
+import platform
 import shutil
 import tempfile
 import unittest
@@ -13,6 +15,9 @@ from lumen_argus.detect import (
     InstallMethod,
     _extract_env_value,
     _scan_binary,
+    _scan_brew_package,
+    _scan_neovim_plugin,
+    _scan_npm_package,
     _scan_shell_profiles,
     _scan_vscode_extension,
     detect_installed_clients,
@@ -213,6 +218,196 @@ class TestScanShellProfiles(unittest.TestCase):
         self.assertEqual(len(result), 0)
 
 
+class TestScanNpmPackage(unittest.TestCase):
+    """Test npm global package detection with mock filesystem."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def test_package_found(self):
+        client = ClientDef(
+            id="codex_cli",
+            display_name="Codex CLI",
+            category="cli",
+            provider="openai",
+            ua_prefixes=("codex/",),
+            env_var="OPENAI_BASE_URL",
+            setup_cmd="test",
+            website="https://test.com",
+            detect_npm="@openai/codex",
+        )
+        # NPM_CONFIG_PREFIX/lib/node_modules is where npm installs globals
+        lib_dir = os.path.join(self.tmpdir, "lib", "node_modules", "@openai", "codex")
+        os.makedirs(lib_dir)
+        with open(os.path.join(lib_dir, "package.json"), "w") as f:
+            json.dump({"name": "@openai/codex", "version": "0.1.0"}, f)
+
+        with patch.dict(os.environ, {"NPM_CONFIG_PREFIX": self.tmpdir}):
+            result = _scan_npm_package(client)
+        self.assertIsNotNone(result)
+        self.assertEqual(result.version, "0.1.0")
+        self.assertEqual(result.install_method, InstallMethod.NPM)
+
+    def test_package_not_found(self):
+        client = ClientDef(
+            id="codex_cli",
+            display_name="Codex CLI",
+            category="cli",
+            provider="openai",
+            ua_prefixes=("codex/",),
+            env_var="OPENAI_BASE_URL",
+            setup_cmd="test",
+            website="https://test.com",
+            detect_npm="@openai/codex",
+        )
+        with patch.dict(os.environ, {"NPM_CONFIG_PREFIX": self.tmpdir}):
+            result = _scan_npm_package(client)
+        self.assertIsNone(result)
+
+    def test_no_detect_npm(self):
+        client = ClientDef(
+            id="test",
+            display_name="Test",
+            category="cli",
+            provider="openai",
+            ua_prefixes=("test/",),
+            env_var="OPENAI_BASE_URL",
+            setup_cmd="test",
+            website="https://test.com",
+        )
+        result = _scan_npm_package(client)
+        self.assertIsNone(result)
+
+
+class TestScanBrewPackage(unittest.TestCase):
+    """Test homebrew formula detection with mock filesystem."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    @unittest.skipUnless(platform.system() == "Darwin", "macOS only")
+    def test_formula_found(self):
+        cellar = os.path.join(self.tmpdir, "Cellar")
+        os.makedirs(os.path.join(cellar, "aider", "0.50.1"))
+
+        client = ClientDef(
+            id="aider",
+            display_name="Aider",
+            category="cli",
+            provider="multi",
+            ua_prefixes=("aider/",),
+            env_var="OPENAI_BASE_URL",
+            setup_cmd="test",
+            website="https://test.com",
+            detect_brew="aider",
+        )
+        with patch("lumen_argus.detect._BREW_CELLAR_PATHS", [cellar]):
+            result = _scan_brew_package(client)
+        self.assertIsNotNone(result)
+        self.assertEqual(result.version, "0.50.1")
+        self.assertEqual(result.install_method, InstallMethod.BREW)
+
+    def test_skips_non_darwin(self):
+        client = ClientDef(
+            id="aider",
+            display_name="Aider",
+            category="cli",
+            provider="multi",
+            ua_prefixes=("aider/",),
+            env_var="OPENAI_BASE_URL",
+            setup_cmd="test",
+            website="https://test.com",
+            detect_brew="aider",
+        )
+        with patch("platform.system", return_value="Linux"):
+            result = _scan_brew_package(client)
+        self.assertIsNone(result)
+
+    def test_no_detect_brew(self):
+        client = ClientDef(
+            id="test",
+            display_name="Test",
+            category="cli",
+            provider="openai",
+            ua_prefixes=("test/",),
+            env_var="OPENAI_BASE_URL",
+            setup_cmd="test",
+            website="https://test.com",
+        )
+        result = _scan_brew_package(client)
+        self.assertIsNone(result)
+
+
+class TestScanNeovimPlugin(unittest.TestCase):
+    """Test Neovim plugin detection with mock filesystem."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def test_lazy_nvim_plugin_found(self):
+        lazy_dir = os.path.join(self.tmpdir, "lazy")
+        os.makedirs(os.path.join(lazy_dir, "copilot.vim"))
+
+        client = ClientDef(
+            id="copilot",
+            display_name="GitHub Copilot",
+            category="ide",
+            provider="openai",
+            ua_prefixes=("copilot/",),
+            env_var="OPENAI_BASE_URL",
+            setup_cmd="test",
+            website="https://test.com",
+            detect_neovim_plugin="copilot.vim",
+        )
+        with patch("lumen_argus.detect._NEOVIM_PLUGIN_DIRS", [lazy_dir]):
+            result = _scan_neovim_plugin(client)
+        self.assertIsNotNone(result)
+        self.assertEqual(result.install_method, InstallMethod.NEOVIM_PLUGIN)
+        self.assertIn("copilot.vim", result.install_path)
+
+    def test_plugin_not_found(self):
+        lazy_dir = os.path.join(self.tmpdir, "lazy")
+        os.makedirs(lazy_dir)
+
+        client = ClientDef(
+            id="copilot",
+            display_name="GitHub Copilot",
+            category="ide",
+            provider="openai",
+            ua_prefixes=("copilot/",),
+            env_var="OPENAI_BASE_URL",
+            setup_cmd="test",
+            website="https://test.com",
+            detect_neovim_plugin="copilot.vim",
+        )
+        with patch("lumen_argus.detect._NEOVIM_PLUGIN_DIRS", [lazy_dir]):
+            result = _scan_neovim_plugin(client)
+        self.assertIsNone(result)
+
+    def test_no_detect_neovim(self):
+        client = ClientDef(
+            id="test",
+            display_name="Test",
+            category="cli",
+            provider="openai",
+            ua_prefixes=("test/",),
+            env_var="OPENAI_BASE_URL",
+            setup_cmd="test",
+            website="https://test.com",
+        )
+        result = _scan_neovim_plugin(client)
+        self.assertIsNone(result)
+
+
 class TestDetectInstalledClients(unittest.TestCase):
     """Test the main detection orchestrator."""
 
@@ -220,9 +415,12 @@ class TestDetectInstalledClients(unittest.TestCase):
         with (
             patch("lumen_argus.detect._scan_binary", return_value=None),
             patch("lumen_argus.detect._scan_pip_package", return_value=None),
+            patch("lumen_argus.detect._scan_npm_package", return_value=None),
+            patch("lumen_argus.detect._scan_brew_package", return_value=None),
             patch("lumen_argus.detect._scan_vscode_extension", return_value=None),
             patch("lumen_argus.detect._scan_app_bundle", return_value=None),
             patch("lumen_argus.detect._scan_jetbrains_plugin", return_value=None),
+            patch("lumen_argus.detect._scan_neovim_plugin", return_value=None),
             patch("lumen_argus.detect._scan_shell_profiles", return_value={}),
         ):
             report = detect_installed_clients()

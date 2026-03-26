@@ -81,6 +81,8 @@ _VERSION_RE = re.compile(r"(\d+\.\d+(?:\.\d+)?(?:[.-]\w+)?)")
 def load_jsonc(path: str) -> dict:
     """Load a JSONC file (JSON with // comments). Returns parsed dict or empty dict on error."""
     expanded = os.path.expanduser(path)
+    if not os.path.isfile(expanded):
+        return {}
     try:
         with open(expanded, "r", encoding="utf-8") as f:
             lines = [line for line in f if not line.lstrip().startswith("//")]
@@ -115,9 +117,11 @@ class InstallMethod(str, enum.Enum):
     BINARY = "binary"
     PIP = "pip"
     NPM = "npm"
+    BREW = "brew"
     VSCODE_EXT = "vscode_ext"
     APP_BUNDLE = "app_bundle"
     JETBRAINS_PLUGIN = "jetbrains_plugin"
+    NEOVIM_PLUGIN = "neovim_plugin"
 
 
 @dataclass
@@ -327,6 +331,137 @@ def _scan_jetbrains_plugin(client: ClientDef) -> Optional[DetectedClient]:
     return None
 
 
+def _scan_npm_package(client: ClientDef) -> Optional[DetectedClient]:
+    """Check if an npm global package is installed by reading package.json."""
+    if not client.detect_npm:
+        return None
+
+    # Common global node_modules locations
+    npm_prefixes = []
+    npm_root = os.environ.get("NPM_CONFIG_PREFIX", "")
+    if npm_root:
+        npm_prefixes.append(os.path.join(npm_root, "lib", "node_modules"))
+    # nvm-managed
+    nvm_dir = os.environ.get("NVM_DIR", os.path.expanduser("~/.nvm"))
+    if os.path.isdir(nvm_dir):
+        # Current node version's global modules
+        current = os.path.join(nvm_dir, "current", "lib", "node_modules")
+        if os.path.isdir(current):
+            npm_prefixes.append(current)
+    # System defaults
+    npm_prefixes.extend(
+        [
+            "/opt/homebrew/lib/node_modules",  # Homebrew Node on Apple Silicon
+            "/usr/local/lib/node_modules",
+            "/usr/lib/node_modules",
+            os.path.expanduser("~/.npm-global/lib/node_modules"),
+        ]
+    )
+
+    for prefix in npm_prefixes:
+        pkg_dir = os.path.join(prefix, client.detect_npm)
+        pkg_json = os.path.join(pkg_dir, "package.json")
+        if not os.path.isfile(pkg_json):
+            continue
+        version = ""
+        try:
+            with open(pkg_json, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            version = data.get("version", "")
+            log.debug("npm package found: %s@%s at %s", client.detect_npm, version, prefix)
+        except (json.JSONDecodeError, OSError) as e:
+            log.warning("could not read package.json for %s: %s", client.detect_npm, e)
+        return DetectedClient(
+            client_id=client.id,
+            display_name=client.display_name,
+            installed=True,
+            version=version,
+            install_method=InstallMethod.NPM,
+            install_path=pkg_dir,
+            env_var=client.env_var,
+            setup_cmd=client.setup_cmd,
+            website=client.website,
+        )
+    return None
+
+
+_BREW_CELLAR_PATHS = [
+    "/opt/homebrew/Cellar",  # Apple Silicon
+    "/usr/local/Cellar",  # Intel
+]
+
+
+def _scan_brew_package(client: ClientDef) -> Optional[DetectedClient]:
+    """Check if a homebrew formula is installed (macOS only)."""
+    if not client.detect_brew or platform.system() != "Darwin":
+        return None
+
+    cellar_paths = _BREW_CELLAR_PATHS
+    for cellar in cellar_paths:
+        formula_dir = os.path.join(cellar, client.detect_brew)
+        if not os.path.isdir(formula_dir):
+            continue
+        # Version is the subdirectory name (e.g., /opt/homebrew/Cellar/aider/0.50.1/)
+        try:
+            versions = sorted(os.listdir(formula_dir))
+            version = versions[-1] if versions else ""
+            log.debug("brew formula found: %s@%s at %s", client.detect_brew, version, cellar)
+            return DetectedClient(
+                client_id=client.id,
+                display_name=client.display_name,
+                installed=True,
+                version=version,
+                install_method=InstallMethod.BREW,
+                install_path=formula_dir,
+                env_var=client.env_var,
+                setup_cmd=client.setup_cmd,
+                website=client.website,
+            )
+        except OSError as e:
+            log.warning("could not list brew cellar for %s: %s — trying next cellar", client.detect_brew, e)
+            continue
+    return None
+
+
+# Neovim plugin manager paths (checked in order)
+_NEOVIM_PLUGIN_DIRS = [
+    "~/.local/share/nvim/lazy",  # lazy.nvim (most popular)
+    "~/.local/share/nvim/plugged",  # vim-plug
+    "~/.local/share/nvim/site/pack/*/start",  # native packages (glob)
+    "~/.local/share/nvim/site/pack/*/opt",  # native opt packages
+]
+
+
+def _scan_neovim_plugin(client: ClientDef) -> Optional[DetectedClient]:
+    """Check if a Neovim plugin is installed across common plugin managers."""
+    if not client.detect_neovim_plugin:
+        return None
+
+    for dir_pattern in _NEOVIM_PLUGIN_DIRS:
+        expanded = os.path.expanduser(dir_pattern)
+        if "*" in expanded:
+            # Glob for native pack dirs
+            parent_dirs = glob.glob(expanded)
+        else:
+            parent_dirs = [expanded] if os.path.isdir(expanded) else []
+
+        for parent in parent_dirs:
+            plugin_dir = os.path.join(parent, client.detect_neovim_plugin)
+            if os.path.isdir(plugin_dir):
+                log.debug("Neovim plugin found: %s at %s", client.detect_neovim_plugin, plugin_dir)
+                return DetectedClient(
+                    client_id=client.id,
+                    display_name=client.display_name,
+                    installed=True,
+                    install_method=InstallMethod.NEOVIM_PLUGIN,
+                    install_path=plugin_dir,
+                    env_var=client.env_var,
+                    setup_cmd=client.setup_cmd,
+                    website=client.website,
+                )
+    return None
+
+
 def _detect_version(client: ClientDef, detected: DetectedClient) -> str:
     """Run --version command to get precise version. Returns version string or empty."""
     if not client.version_command or detected.version:
@@ -525,9 +660,12 @@ def _detect_single_client(
     scanners = [
         _scan_binary,
         _scan_pip_package,
+        _scan_npm_package,
+        _scan_brew_package,
         _scan_vscode_extension,
         _scan_app_bundle,
         _scan_jetbrains_plugin,
+        _scan_neovim_plugin,
     ]
     for scanner in scanners:
         try:
