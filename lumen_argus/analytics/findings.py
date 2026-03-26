@@ -283,12 +283,19 @@ class FindingsRepository:
             ):
                 by_model[row["model"] or "unknown"] = row["cnt"]
 
-            by_client = {}
+            by_client_raw = {}
             for row in conn.execute(
                 "SELECT client_name, COUNT(*) as cnt FROM findings "
                 "WHERE client_name != '' GROUP BY client_name ORDER BY cnt DESC"
             ):
-                by_client[row["client_name"]] = row["cnt"]
+                by_client_raw[row["client_name"]] = row["cnt"]
+            # Normalize legacy client names (e.g., "claude-code/1.2.3" → "claude_code")
+            from lumen_argus.clients import normalize_legacy_client
+
+            by_client = {}
+            for raw_name, cnt in by_client_raw.items():
+                normalized = normalize_legacy_client(raw_name)
+                by_client[normalized] = by_client.get(normalized, 0) + cnt
 
             daily = []
             for row in conn.execute(

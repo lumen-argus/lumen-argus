@@ -167,6 +167,9 @@ def handle_community_api(
         if path == "/api/v1/pipeline":
             return _handle_pipeline_get(config, store)
 
+        if path == "/api/v1/clients":
+            return _handle_clients_list(extensions)
+
         if path == "/api/v1/sessions":
             return _handle_sessions(params, store)
 
@@ -358,6 +361,14 @@ def _handle_status(store, extensions=None) -> tuple:
         "pro_version": pro_version,
     }
     return _json_response(200, data)
+
+
+def _handle_clients_list(extensions) -> tuple:
+    """Return catalog of supported AI CLI agents with setup instructions."""
+    from lumen_argus.clients import get_all_clients
+
+    extra = extensions.get_extra_clients() if extensions else []
+    return _json_response(200, {"clients": get_all_clients(extra_clients=extra)})
 
 
 def _handle_findings_list(params: dict, store) -> tuple:

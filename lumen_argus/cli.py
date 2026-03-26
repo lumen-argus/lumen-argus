@@ -318,6 +318,10 @@ def main(argv=None):
     validate_parser = rules_sub.add_parser("validate", help="Validate rules JSON file")
     validate_parser.add_argument("--file", type=str, required=True, help="JSON file to validate")
 
+    # clients subcommand — list supported AI CLI agents
+    clients_parser = subparsers.add_parser("clients", help="List supported AI CLI agents")
+    clients_parser.add_argument("--json", action="store_true", help="Output as JSON")
+
     # mcp subcommand — unified MCP proxy with multiple transport modes
     mcp_parser = subparsers.add_parser(
         "mcp",
@@ -372,7 +376,7 @@ def main(argv=None):
 
     args = parser.parse_args(argv)
 
-    if args.command in ("scan", "logs", "rules", "mcp"):
+    if args.command in ("scan", "logs", "rules", "mcp", "clients"):
         # Set up minimal logging for non-serve commands so config
         # warnings (log.warning) display cleanly on stderr.
         _handler = logging.StreamHandler(sys.stderr)
@@ -385,6 +389,8 @@ def main(argv=None):
             _run_rules(args)
         elif args.command == "mcp":
             _run_mcp(args)
+        elif args.command == "clients":
+            _run_clients(args)
         else:
             _run_logs(args)
         return
@@ -992,6 +998,26 @@ def _run_logs(args):
     config = _load_config(config_path=args.config)
     exit_code = export_logs(config, sanitize=args.sanitize)
     sys.exit(exit_code)
+
+
+def _run_clients(args):
+    """Execute the 'clients' subcommand — list supported AI CLI agents."""
+    from lumen_argus.clients import get_all_clients
+
+    clients = get_all_clients()
+
+    if args.json:
+        print(json.dumps({"clients": clients}, indent=2))
+        return
+
+    print("Supported AI CLI agents (%d):\n" % len(clients))
+    for c in clients:
+        provider = c["provider"]
+        if provider == "multi":
+            provider = "anthropic/openai"
+        print("  %-20s %-5s %-18s %s" % (c["display_name"], c["category"], provider, c["env_var"]))
+    print("\nSetup: set the env var to http://localhost:<proxy_port> before launching your tool.")
+    print("Example: %s" % clients[0]["setup_cmd"])
 
 
 def _load_rules_bundle(path: str = None, pro: bool = False) -> tuple:
