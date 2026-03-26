@@ -282,6 +282,7 @@ Built-in web dashboard at `http://localhost:8081`:
 | `PUT /api/v1/rules/:name` | Update rule (action, enabled, severity, etc.) |
 | `DELETE /api/v1/rules/:name` | Delete dashboard-created rules |
 | `POST /api/v1/rules/:name/clone` | Clone rule to custom tier |
+| `POST /api/v1/rules/bulk-update` | Batch update rules (max 500 per request) |
 | `GET /api/v1/rules/analysis` | Cached overlap analysis results (requires crossfire) |
 | `POST /api/v1/rules/analysis` | Trigger new overlap analysis (background, 202) |
 | `GET /api/v1/rules/analysis/status` | Analysis progress with incremental log streaming |

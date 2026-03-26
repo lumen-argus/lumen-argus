@@ -250,6 +250,7 @@ The dashboard runs on a separate port (default `8081`) and provides a REST API f
 | `/api/v1/rules/:name` | PUT | Update rule (action, enabled, severity, pattern, tags, etc.) |
 | `/api/v1/rules/:name` | DELETE | Delete dashboard-created rules only (source='dashboard') |
 | `/api/v1/rules/:name/clone` | POST | Clone rule to custom tier (source='dashboard') |
+| `/api/v1/rules/bulk-update` | POST | Batch update rules in a single transaction (max 500) |
 
 `GET /api/v1/rules` supports these query parameters:
 
@@ -267,6 +268,8 @@ The dashboard runs on a separate port (default `8081`) and provides a REST API f
 `POST /api/v1/rules` and `PUT /api/v1/rules/:name` validate the `action` field. Community allows: empty string (default), `log`, `alert`, `block`. Pro overrides to also allow `redact`.
 
 `GET /api/v1/rules` search supports comma-separated terms for OR matching (e.g., `?search=generic_secret,env_file_assignment` returns rules matching either name).
+
+`POST /api/v1/rules/bulk-update` applies the same update to multiple rules in a single transaction. Body: `{"names": ["rule_a", "rule_b"], "update": {"enabled": false}}`. Returns `{"updated": 2, "failed": [], "message": "Updated 2 rules"}`. Failed names include per-name reason. Capped at 500 names per request.
 
 ### Rule Analysis endpoints
 
