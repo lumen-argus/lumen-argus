@@ -246,8 +246,6 @@ class ExtensionRegistry:
         """Return list of registered auth providers."""
         return list(self._auth_providers)
 
-    # --- Notification channel hooks ---
-
     # --- Client registry hooks ---
 
     def register_clients(self, clients: list) -> None:

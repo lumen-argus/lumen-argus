@@ -91,13 +91,6 @@ def _extract_working_directory(data: dict, provider: str) -> str:
     return _extract_system_field(data, provider, _WORKDIR_PATTERNS, sanitize_path=True)
 
 
-def _parse_client_name(user_agent: str) -> str:
-    """Extract client tool name from User-Agent header."""
-    if not user_agent or user_agent.startswith("Mozilla/"):
-        return ""
-    return user_agent.split()[0][:128]
-
-
 def _derive_session_fingerprint(data: dict, provider: str) -> str:
     """Derive session fingerprint from first 3 conversation fields."""
     parts = [provider]

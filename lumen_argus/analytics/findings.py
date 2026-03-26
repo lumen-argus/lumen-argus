@@ -5,6 +5,7 @@ import hmac as hmac_mod
 import logging
 from typing import List, Optional
 
+from lumen_argus.clients import normalize_legacy_client
 from lumen_argus.models import Finding, SessionContext
 from lumen_argus.time_utils import now_iso_ms
 
@@ -286,12 +287,10 @@ class FindingsRepository:
             by_client_raw = {}
             for row in conn.execute(
                 "SELECT client_name, COUNT(*) as cnt FROM findings "
-                "WHERE client_name != '' GROUP BY client_name ORDER BY cnt DESC"
+                "WHERE client_name != '' GROUP BY client_name ORDER BY cnt DESC LIMIT 50"
             ):
                 by_client_raw[row["client_name"]] = row["cnt"]
             # Normalize legacy client names (e.g., "claude-code/1.2.3" → "claude_code")
-            from lumen_argus.clients import normalize_legacy_client
-
             by_client = {}
             for raw_name, cnt in by_client_raw.items():
                 normalized = normalize_legacy_client(raw_name)

@@ -19,13 +19,13 @@ from unittest.mock import MagicMock
 
 from lumen_argus.models import AuditEntry, Finding, SessionContext
 from tests.helpers import StoreTestCase
+from lumen_argus.clients import identify_client
 from lumen_argus.session import (
     _derive_session_fingerprint,
     extract_session as _extract_session,
     _extract_system_field,
     _extract_working_directory,
     _get_system_text,
-    _parse_client_name,
     _GIT_BRANCH_PATTERNS,
     _OS_PLATFORM_PATTERNS,
 )
@@ -183,28 +183,31 @@ class TestSessionExtractionPriority(unittest.TestCase):
 
 
 class TestClientName(unittest.TestCase):
-    """User-Agent parsing for client_name."""
+    """Client identification via identify_client() and session extraction."""
 
-    def test_claude_code_ua(self):
-        self.assertEqual(_parse_client_name("claude-code/1.2.3 python/3.12"), "claude-code/1.2.3")
+    def test_claude_code_identified(self):
+        cid, name, _ = identify_client("claude-code/1.2.3 python/3.12")
+        self.assertEqual(cid, "claude_code")
+        self.assertEqual(name, "Claude Code")
 
-    def test_cursor_ua(self):
-        self.assertEqual(_parse_client_name("Cursor/0.45.1"), "Cursor/0.45.1")
+    def test_cursor_identified(self):
+        cid, _, _ = identify_client("Cursor/0.45.1")
+        self.assertEqual(cid, "cursor")
 
-    def test_python_requests_ua(self):
-        self.assertEqual(_parse_client_name("python-requests/2.31.0"), "python-requests/2.31.0")
+    def test_unknown_passthrough(self):
+        cid, _, _ = identify_client("python-requests/2.31.0")
+        self.assertEqual(cid, "python-requests/2.31.0")
 
     def test_browser_skipped(self):
-        self.assertEqual(_parse_client_name("Mozilla/5.0 (Macintosh; Intel Mac OS X)"), "")
+        cid, _, _ = identify_client("Mozilla/5.0 (Macintosh; Intel Mac OS X)")
+        self.assertEqual(cid, "")
 
     def test_empty_ua(self):
-        self.assertEqual(_parse_client_name(""), "")
-
-    def test_truncated_to_128(self):
-        self.assertEqual(len(_parse_client_name("x" * 200)), 128)
+        cid, _, _ = identify_client("")
+        self.assertEqual(cid, "")
 
     def test_client_name_in_session(self):
-        """_extract_session populates client_name from user-agent header."""
+        """extract_session populates client_name with normalized registry ID."""
         handler = _make_handler()
         ctx = handler._extract_session({}, "anthropic", {"user-agent": "claude-code/1.5.0 python/3.12"})
         self.assertEqual(ctx.client_name, "claude_code")
