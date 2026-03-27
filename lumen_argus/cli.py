@@ -1199,7 +1199,7 @@ def _load_rules_bundle(path: str | None = None, pro: bool = False) -> tuple[list
 
             pro_path = str(_files("lumen_argus_pro.rules").joinpath("pro.json"))
         except (ImportError, ModuleNotFoundError):
-            # Fallback for Python 3.9-3.11
+            # Fallback for edge cases (frozen apps, etc.)
             import importlib.resources as _resources
 
             try:

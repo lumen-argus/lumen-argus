@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/python-3.9+-blue?logo=python&logoColor=white" alt="Python 3.9+">
+  <img src="https://img.shields.io/badge/python-3.11+-blue?logo=python&logoColor=white" alt="Python 3.11+">
   <a href="https://github.com/lumen-argus/lumen-argus/actions/workflows/test.yml"><img src="https://github.com/lumen-argus/lumen-argus/actions/workflows/test.yml/badge.svg" alt="tests"></a>
   <img src="https://img.shields.io/badge/dependencies-minimal-brightgreen" alt="Minimal dependencies">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License">
@@ -54,7 +54,7 @@ lumen-argus sits between your AI tool and the provider, scanning every outbound 
 
 ## Quick Start
 
-**Requirements:** Python 3.9+
+**Requirements:** Python 3.11+
 
 ```bash
 pip install lumen-argus

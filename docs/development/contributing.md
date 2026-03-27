@@ -34,8 +34,8 @@ All tests must pass before submitting a pull request.
 
 ### Python Version
 
-- Target Python 3.9+ (tested 3.9–3.14)
-- Use type comments (`# type: List[str]`) instead of annotations for 3.8 compatibility in core modules
+- Target Python 3.11+ (tested 3.11–3.13)
+- Use modern type annotations (no need for `from __future__ import annotations`)
 
 ### Zero Dependencies
 
