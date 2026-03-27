@@ -6,9 +6,13 @@ from lumen_argus.allowlist import AllowlistMatcher
 from lumen_argus.detectors.pii import PIIDetector
 from lumen_argus.models import ScanField
 from lumen_argus.validators import (
-    validate_luhn as _luhn_check,
-    validate_ssn as _validate_ssn,
     validate_ip_not_private as _exclude_private_ips,
+)
+from lumen_argus.validators import (
+    validate_luhn as _luhn_check,
+)
+from lumen_argus.validators import (
+    validate_ssn as _validate_ssn,
 )
 
 

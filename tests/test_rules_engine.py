@@ -6,10 +6,10 @@ import shutil
 import tempfile
 import unittest
 
+from lumen_argus.allowlist import AllowlistMatcher
 from lumen_argus.analytics.store import AnalyticsStore
 from lumen_argus.detectors.rules import RulesDetector
 from lumen_argus.models import ScanField
-from lumen_argus.allowlist import AllowlistMatcher
 from tests.helpers import StoreTestCase
 
 

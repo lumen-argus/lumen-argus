@@ -1,7 +1,10 @@
 """Basic webhook notifier — sends findings as JSON POST."""
 
+from __future__ import annotations
+
 import json
 import logging
+from typing import Any
 from urllib.request import Request, urlopen
 
 log = logging.getLogger("argus.notifiers.webhook")
@@ -31,7 +34,7 @@ WEBHOOK_CHANNEL_TYPE = {
 }
 
 
-def build_notifier(channel):
+def build_notifier(channel: dict[str, Any]) -> WebhookNotifier | None:
     """Build a WebhookNotifier from a channel dict. Returns None if type unknown."""
     if channel.get("type") != "webhook":
         return None
@@ -64,12 +67,12 @@ class WebhookNotifier:
     (caller handles retry/logging).
     """
 
-    def __init__(self, url, headers=None, min_severity="critical"):
+    def __init__(self, url: str, headers: dict[str, str] | None = None, min_severity: str = "critical") -> None:
         self.url = url
         self.headers = headers or {}
         self.min_severity = min_severity
 
-    def notify(self, findings, provider="", model="", **kwargs):
+    def notify(self, findings: list[Any], provider: str = "", model: str = "", **kwargs: Any) -> None:
         """Send findings to the webhook endpoint.
 
         Args:

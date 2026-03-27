@@ -1,5 +1,7 @@
 """Secrets detector: regex pattern matching + Shannon entropy analysis."""
 
+from __future__ import annotations
+
 import math
 import re
 from typing import List, Tuple
@@ -7,7 +9,7 @@ from typing import List, Tuple
 from lumen_argus.allowlist import AllowlistMatcher
 from lumen_argus.detectors import BaseDetector
 from lumen_argus.models import Finding, ScanField
-from lumen_argus.patterns.secrets_patterns import SECRETS_PATTERNS, SECRET_PROXIMITY_KEYWORDS
+from lumen_argus.patterns.secrets_patterns import SECRET_PROXIMITY_KEYWORDS, SECRETS_PATTERNS
 
 
 def shannon_entropy(s: str) -> float:

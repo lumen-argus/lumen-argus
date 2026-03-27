@@ -5,6 +5,8 @@ POST /api/v1/license (activate). Known Pro endpoint paths return 402 instead
 of 404 when no Pro handler is registered, giving API consumers a clear upgrade signal.
 """
 
+from __future__ import annotations
+
 import fnmatch
 import json
 import logging
@@ -12,7 +14,13 @@ import os
 import re
 import signal
 import time
+from typing import TYPE_CHECKING, Any
 from urllib.parse import unquote_plus
+
+if TYPE_CHECKING:
+    from lumen_argus.analytics.store import AnalyticsStore
+    from lumen_argus.config import Config
+    from lumen_argus.extensions import ExtensionRegistry
 
 from lumen_argus import __version__
 from lumen_argus.log_utils import sanitize_user_input
@@ -20,7 +28,7 @@ from lumen_argus.log_utils import sanitize_user_input
 log = logging.getLogger("argus.dashboard.api")
 
 # Pro endpoint prefixes — return 402 when Pro is not installed
-_PRO_ENDPOINTS = ()
+_PRO_ENDPOINTS: tuple[str, ...] = ()
 
 _SENSITIVE_FIELDS = frozenset(
     {
@@ -42,7 +50,7 @@ _COMMUNITY_ACTIONS = ("log", "alert", "block")
 _start_time = time.monotonic()
 
 
-def _parse_query(path: str) -> tuple:
+def _parse_query(path: str) -> tuple[str, dict[str, str]]:
     """Split path and query string, return (path, params_dict)."""
     query = ""
     if "?" in path:
@@ -56,7 +64,7 @@ def _parse_query(path: str) -> tuple:
     return path, params
 
 
-def _json_response(status: int, data) -> tuple:
+def _json_response(status: int, data: object) -> tuple[int, bytes]:
     """Return (status, body_bytes) JSON response."""
     body = json.dumps(data).encode("utf-8")
     return status, body
@@ -67,7 +75,9 @@ def _json_response(status: int, data) -> tuple:
 # ---------------------------------------------------------------------------
 
 
-def _parse_pagination(params: dict, default_limit: int = 50, max_limit: int = 100):
+def _parse_pagination(
+    params: dict[str, str], default_limit: int = 50, max_limit: int = 100
+) -> tuple[int, bytes] | tuple[int, int]:
     """Parse limit/offset from query params with bounds.
 
     Returns (limit, offset) or a (status, body) error response tuple.
@@ -80,7 +90,7 @@ def _parse_pagination(params: dict, default_limit: int = 50, max_limit: int = 10
     return limit, offset
 
 
-def _parse_json_body(body: bytes, context: str = ""):
+def _parse_json_body(body: bytes, context: str = "") -> dict[str, Any] | tuple[int, bytes]:
     """Parse JSON body with sanitization and error handling.
 
     Returns parsed dict or a (status, body) error response tuple.
@@ -96,19 +106,23 @@ def _parse_json_body(body: bytes, context: str = ""):
     return data
 
 
-def _require_store(store, context: str = ""):
+def _require_store(store: AnalyticsStore | None, context: str = "") -> AnalyticsStore:
     """Check that the analytics store is available.
 
-    Returns None if store is available, or a (status, body) error response.
+    Returns the store if available, raises _StoreUnavailable if not.
     """
     if not store:
         if context:
             log.error("%s: analytics store not available", context)
-        return _json_response(500, {"error": "analytics store not available"})
-    return None
+        raise _StoreUnavailable()
+    return store
 
 
-def _parse_days(params: dict, default: int = 30) -> int:
+class _StoreUnavailable(Exception):
+    """Raised by _require_store when the analytics store is not available."""
+
+
+def _parse_days(params: dict[str, str], default: int = 30) -> int:
     """Parse a 'days' query parameter with fallback to default."""
     val = params.get("days")
     if val is None:
@@ -136,8 +150,15 @@ def _send_sighup() -> bool:
 
 
 def handle_community_api(
-    path: str, method: str, body: bytes, store, audit_reader=None, config=None, extensions=None, request_user: str = ""
-) -> tuple:
+    path: str,
+    method: str,
+    body: bytes,
+    store: AnalyticsStore | None,
+    audit_reader: Any = None,
+    config: Config | None = None,
+    extensions: ExtensionRegistry | None = None,
+    request_user: str = "",
+) -> tuple[int, bytes]:
     """Handle a community API request.
 
     Args:
@@ -147,6 +168,23 @@ def handle_community_api(
 
     Returns (status_code, response_body_bytes).
     """
+    try:
+        return _dispatch_api(path, method, body, store, audit_reader, config, extensions, request_user)
+    except _StoreUnavailable:
+        return _json_response(500, {"error": "analytics store not available"})
+
+
+def _dispatch_api(
+    path: str,
+    method: str,
+    body: bytes,
+    store: AnalyticsStore | None,
+    audit_reader: Any = None,
+    config: Config | None = None,
+    extensions: ExtensionRegistry | None = None,
+    request_user: str = "",
+) -> tuple[int, bytes]:
+    """Internal dispatcher — _StoreUnavailable propagates to handle_community_api."""
     path, params = _parse_query(path)
 
     # --- GET endpoints ---
@@ -187,12 +225,12 @@ def handle_community_api(
 
         # Finding by ID: /api/v1/findings/123
         if path.startswith("/api/v1/findings/"):
-            finding_id = path.split("/")[-1]
+            finding_id_str = path.split("/")[-1]
             try:
-                finding_id = int(finding_id)
+                finding_id_int = int(finding_id_str)
             except (ValueError, TypeError):
                 return _json_response(400, {"error": "invalid finding ID"})
-            return _handle_finding_detail(finding_id, store)
+            return _handle_finding_detail(finding_id_int, store)
 
         # --- Rules GET endpoints ---
 
@@ -287,12 +325,12 @@ def handle_community_api(
             return _handle_mcp_tools_add(body, store)
 
     if path.startswith("/api/v1/mcp/tools/") and method == "DELETE":
-        entry_id = path.split("/")[-1]
+        entry_id_str = path.split("/")[-1]
         try:
-            entry_id = int(entry_id)
+            entry_id_int = int(entry_id_str)
         except (ValueError, TypeError):
             return _json_response(400, {"error": "invalid entry ID"})
-        return _handle_mcp_tools_delete(entry_id, store)
+        return _handle_mcp_tools_delete(entry_id_int, store)
 
     # --- PUT config (community settings) ---
 
@@ -322,7 +360,7 @@ def handle_community_api(
 # --- Handler implementations ---
 
 
-def _handle_config_update(body: bytes, config, store) -> tuple:
+def _handle_config_update(body: bytes, config: Config | None, store: AnalyticsStore | None) -> tuple[int, bytes]:
     """Handle PUT /api/v1/config — save community-editable settings to DB.
 
     Uses the same config_overrides SQLite table as Pro, so settings
@@ -335,9 +373,7 @@ def _handle_config_update(body: bytes, config, store) -> tuple:
         log.debug("PUT /api/v1/config: empty body")
         return _json_response(400, {"error": "expected a JSON object with settings to update"})
 
-    err = _require_store(store, "PUT /api/v1/config")
-    if err:
-        return err
+    store = _require_store(store, "PUT /api/v1/config")
 
     log.debug("PUT /api/v1/config: %d change(s) requested: %s", len(changes), list(changes.keys()))
     errors = []
@@ -364,7 +400,7 @@ def _handle_config_update(body: bytes, config, store) -> tuple:
     return _json_response(200, {"applied": applied})
 
 
-def _handle_status(store, extensions=None) -> tuple:
+def _handle_status(store: AnalyticsStore | None, extensions: ExtensionRegistry | None = None) -> tuple[int, bytes]:
     uptime = time.monotonic() - _start_time
     plugins = extensions.loaded_plugins() if extensions else []
     pro_active = any(name == "pro" for name, _ in plugins)
@@ -383,7 +419,7 @@ def _handle_status(store, extensions=None) -> tuple:
     return _json_response(200, data)
 
 
-def _handle_clients_list(extensions) -> tuple:
+def _handle_clients_list(extensions: ExtensionRegistry | None) -> tuple[int, bytes]:
     """Return catalog of supported AI CLI agents with setup instructions."""
     from lumen_argus.clients import get_all_clients
 
@@ -391,7 +427,7 @@ def _handle_clients_list(extensions) -> tuple:
     return _json_response(200, {"clients": get_all_clients(extra_clients=extra)})
 
 
-def _handle_findings_list(params: dict, store) -> tuple:
+def _handle_findings_list(params: dict[str, str], store: AnalyticsStore | None) -> tuple[int, bytes]:
     if not store:
         return _json_response(200, {"findings": [], "total": 0})
 
@@ -426,7 +462,7 @@ def _handle_findings_list(params: dict, store) -> tuple:
     return _json_response(200, {"findings": findings, "total": total})
 
 
-def _handle_finding_detail(finding_id: int, store) -> tuple:
+def _handle_finding_detail(finding_id: int, store: AnalyticsStore | None) -> tuple[int, bytes]:
     if not store:
         return _json_response(404, {"error": "not_found"})
 
@@ -436,7 +472,7 @@ def _handle_finding_detail(finding_id: int, store) -> tuple:
     return _json_response(200, finding)
 
 
-def _handle_sessions(params: dict, store) -> tuple:
+def _handle_sessions(params: dict[str, str], store: AnalyticsStore | None) -> tuple[int, bytes]:
     if not store:
         return _json_response(200, {"sessions": []})
     result = _parse_pagination(params)
@@ -447,7 +483,7 @@ def _handle_sessions(params: dict, store) -> tuple:
     return _json_response(200, {"sessions": sessions})
 
 
-def _handle_dashboard_sessions(params: dict, store) -> tuple:
+def _handle_dashboard_sessions(params: dict[str, str], store: AnalyticsStore | None) -> tuple[int, bytes]:
     """Return active sessions (last 24h) with severity breakdown for dashboard."""
     if not store:
         return _json_response(200, {"sessions": [], "total": 0})
@@ -459,7 +495,7 @@ def _handle_dashboard_sessions(params: dict, store) -> tuple:
     return _json_response(200, data)
 
 
-def _handle_stats(params: dict, store) -> tuple:
+def _handle_stats(params: dict[str, str], store: AnalyticsStore | None) -> tuple[int, bytes]:
     if not store:
         return _json_response(
             200,
@@ -482,7 +518,9 @@ def _handle_stats(params: dict, store) -> tuple:
     return _json_response(200, stats)
 
 
-def _handle_stats_advanced(params: dict, store, extensions) -> tuple:
+def _handle_stats_advanced(
+    params: dict[str, str], store: AnalyticsStore | None, extensions: ExtensionRegistry | None
+) -> tuple[int, bytes]:
     """Pro-gated advanced analytics for dashboard charts."""
     # Check if Pro is active via extensions
     if extensions:
@@ -512,7 +550,7 @@ def _handle_stats_advanced(params: dict, store, extensions) -> tuple:
     )
 
 
-def _handle_config(config, store=None) -> tuple:
+def _handle_config(config: Config | None, store: AnalyticsStore | None = None) -> tuple[int, bytes]:
     """Return sanitized config with DB overrides applied."""
     if not config:
         return _json_response(200, {"community": {}})
@@ -566,8 +604,8 @@ def _handle_config(config, store=None) -> tuple:
 # --- Allowlist handlers ---
 
 
-def _handle_allowlists(store, config) -> tuple:
-    result = {"secrets": [], "pii": [], "paths": [], "api_entries": []}
+def _handle_allowlists(store: AnalyticsStore | None, config: Config | None) -> tuple[int, bytes]:
+    result: dict[str, Any] = {"secrets": [], "pii": [], "paths": [], "api_entries": []}
     if config:
         try:
             result["secrets"] = [{"pattern": p, "source": "config"} for p in config.allowlist.secrets]
@@ -588,10 +626,8 @@ def _handle_allowlists(store, config) -> tuple:
     return _json_response(200, result)
 
 
-def _handle_allowlist_add(body: bytes, store) -> tuple:
-    err = _require_store(store, "POST /api/v1/allowlists")
-    if err:
-        return err
+def _handle_allowlist_add(body: bytes, store: AnalyticsStore | None) -> tuple[int, bytes]:
+    store = _require_store(store, "POST /api/v1/allowlists")
     data = _parse_json_body(body, "POST /api/v1/allowlists")
     if isinstance(data, tuple):
         return data
@@ -611,7 +647,7 @@ def _handle_allowlist_add(body: bytes, store) -> tuple:
         return _json_response(400, {"error": str(e)})
 
 
-def _handle_allowlist_test(body: bytes, store) -> tuple:
+def _handle_allowlist_test(body: bytes, store: AnalyticsStore | None) -> tuple[int, bytes]:
     data = _parse_json_body(body, "POST /api/v1/allowlists/test")
     if isinstance(data, tuple):
         return data
@@ -620,7 +656,7 @@ def _handle_allowlist_test(body: bytes, store) -> tuple:
     if not pattern:
         return _json_response(400, {"error": "pattern is required"})
     value_match = fnmatch.fnmatch(test_value, pattern) if test_value else False
-    matching = []
+    matching: list[dict[str, Any]] = []
     matching_count = 0
     if store:
         try:
@@ -646,10 +682,8 @@ def _handle_allowlist_test(body: bytes, store) -> tuple:
     )
 
 
-def _handle_allowlist_delete(entry_id: str, store) -> tuple:
-    err = _require_store(store, "DELETE /api/v1/allowlists")
-    if err:
-        return err
+def _handle_allowlist_delete(entry_id: str, store: AnalyticsStore | None) -> tuple[int, bytes]:
+    store = _require_store(store, "DELETE /api/v1/allowlists")
     try:
         entry_id_int = int(entry_id)
     except (ValueError, TypeError):
@@ -663,7 +697,7 @@ def _handle_allowlist_delete(entry_id: str, store) -> tuple:
 # --- Rules handlers ---
 
 
-def _handle_rules_list(params: dict, store) -> tuple:
+def _handle_rules_list(params: dict[str, str], store: AnalyticsStore | None) -> tuple[int, bytes]:
     if not store:
         return _json_response(200, {"rules": [], "total": 0})
     result = _parse_pagination(params, max_limit=200)
@@ -694,7 +728,7 @@ def _handle_rules_list(params: dict, store) -> tuple:
     return _json_response(200, {"rules": rules, "total": total, "limit": limit, "offset": offset})
 
 
-def _handle_rules_stats(store) -> tuple:
+def _handle_rules_stats(store: AnalyticsStore | None) -> tuple[int, bytes]:
     if not store:
         return _json_response(200, {"total": 0, "enabled": 0, "disabled": 0, "by_tier": {}, "by_detector": {}})
     stats = store.get_rule_stats()
@@ -706,7 +740,7 @@ def _handle_rules_stats(store) -> tuple:
     return _json_response(200, stats)
 
 
-def _handle_rule_detail(rule_name: str, store) -> tuple:
+def _handle_rule_detail(rule_name: str, store: AnalyticsStore | None) -> tuple[int, bytes]:
     rule_name = unquote_plus(rule_name)
     if not store:
         return _json_response(404, {"error": "rule not found"})
@@ -716,10 +750,8 @@ def _handle_rule_detail(rule_name: str, store) -> tuple:
     return _json_response(200, rule)
 
 
-def _handle_rule_create(body: bytes, store) -> tuple:
-    err = _require_store(store, "POST /api/v1/rules")
-    if err:
-        return err
+def _handle_rule_create(body: bytes, store: AnalyticsStore | None) -> tuple[int, bytes]:
+    store = _require_store(store, "POST /api/v1/rules")
     data = _parse_json_body(body, "POST /api/v1/rules")
     if isinstance(data, tuple):
         return data
@@ -755,11 +787,9 @@ def _handle_rule_create(body: bytes, store) -> tuple:
         return _json_response(409, {"error": str(e)})
 
 
-def _handle_rule_update(rule_name: str, body: bytes, store) -> tuple:
+def _handle_rule_update(rule_name: str, body: bytes, store: AnalyticsStore | None) -> tuple[int, bytes]:
     rule_name = sanitize_user_input(unquote_plus(rule_name))
-    err = _require_store(store, "PUT /api/v1/rules/%s" % rule_name)
-    if err:
-        return err
+    store = _require_store(store, "PUT /api/v1/rules/%s" % rule_name)
     data = _parse_json_body(body, "PUT /api/v1/rules/%s" % rule_name)
     if isinstance(data, tuple):
         return data
@@ -778,11 +808,9 @@ def _handle_rule_update(rule_name: str, body: bytes, store) -> tuple:
     return _json_response(200, result)
 
 
-def _handle_rules_bulk_update(body: bytes, store) -> tuple:
+def _handle_rules_bulk_update(body: bytes, store: AnalyticsStore | None) -> tuple[int, bytes]:
     log.debug("POST /api/v1/rules/bulk-update")
-    err = _require_store(store, "POST /api/v1/rules/bulk-update")
-    if err:
-        return err
+    store = _require_store(store, "POST /api/v1/rules/bulk-update")
     data = _parse_json_body(body, "POST /api/v1/rules/bulk-update")
     if isinstance(data, tuple):
         return data
@@ -821,22 +849,18 @@ def _handle_rules_bulk_update(body: bytes, store) -> tuple:
     )
 
 
-def _handle_rule_delete(rule_name: str, store) -> tuple:
+def _handle_rule_delete(rule_name: str, store: AnalyticsStore | None) -> tuple[int, bytes]:
     rule_name = sanitize_user_input(unquote_plus(rule_name))
-    err = _require_store(store, "DELETE /api/v1/rules")
-    if err:
-        return err
+    store = _require_store(store, "DELETE /api/v1/rules")
     if store.delete_rule(rule_name):
         log.info("rule deleted [dashboard]: %s", rule_name)
         return _json_response(200, {"deleted": rule_name})
     return _json_response(404, {"error": "rule not found"})
 
 
-def _handle_rule_clone(rule_name: str, body: bytes, store) -> tuple:
+def _handle_rule_clone(rule_name: str, body: bytes, store: AnalyticsStore | None) -> tuple[int, bytes]:
     rule_name = sanitize_user_input(unquote_plus(rule_name))
-    err = _require_store(store, "POST /api/v1/rules/%s/clone" % rule_name)
-    if err:
-        return err
+    store = _require_store(store, "POST /api/v1/rules/%s/clone" % rule_name)
     if body:
         data = _parse_json_body(body, "POST /api/v1/rules/%s/clone" % rule_name)
         if isinstance(data, tuple):
@@ -853,7 +877,7 @@ def _handle_rule_clone(rule_name: str, body: bytes, store) -> tuple:
         return _json_response(409, {"error": str(e)})
 
 
-def _handle_audit(params: dict, audit_reader) -> tuple:
+def _handle_audit(params: dict[str, str], audit_reader: Any) -> tuple[int, bytes]:
     if not audit_reader:
         return _json_response(200, {"entries": [], "total": 0, "providers": []})
 
@@ -876,7 +900,7 @@ def _handle_audit(params: dict, audit_reader) -> tuple:
     return _json_response(200, {"entries": entries, "total": total, "providers": providers})
 
 
-def _handle_logs_tail(config) -> tuple:
+def _handle_logs_tail(config: Config | None) -> tuple[int, bytes]:
     """Return last N lines from the application log."""
     if not config:
         return _json_response(200, {"lines": []})
@@ -898,7 +922,7 @@ def _handle_logs_tail(config) -> tuple:
     return _json_response(200, {"lines": lines})
 
 
-def _handle_license_activation(body: bytes) -> tuple:
+def _handle_license_activation(body: bytes) -> tuple[int, bytes]:
     """POST /api/v1/license — save license key to disk."""
     data = _parse_json_body(body, "POST /api/v1/license")
     if isinstance(data, tuple):
@@ -932,7 +956,7 @@ def _handle_license_activation(body: bytes) -> tuple:
 # --- Notification channel handlers ---
 
 
-def _mask_channel(channel: dict) -> dict:
+def _mask_channel(channel: dict[str, Any]) -> dict[str, Any]:
     """Mask sensitive fields in channel config for API responses."""
     ch = dict(channel)
     config = ch.get("config", {})
@@ -940,7 +964,7 @@ def _mask_channel(channel: dict) -> dict:
         config = json.loads(config)
     masked = dict(config)
     for key in _SENSITIVE_FIELDS:
-        if key in masked and masked[key]:
+        if masked.get(key):
             val = str(masked[key])
             masked[key] = val[:4] + "****" + val[-4:] if len(val) > 8 else "****"
     ch["config_masked"] = masked
@@ -948,7 +972,7 @@ def _mask_channel(channel: dict) -> dict:
     return ch
 
 
-def _rebuild_dispatcher(extensions):
+def _rebuild_dispatcher(extensions: ExtensionRegistry | None) -> None:
     """Rebuild the notification dispatcher after channel CRUD."""
     dispatcher = extensions.get_dispatcher() if extensions else None
     if dispatcher and hasattr(dispatcher, "rebuild"):
@@ -958,7 +982,14 @@ def _rebuild_dispatcher(extensions):
             log.warning("dispatcher rebuild failed: %s", e)
 
 
-def _handle_notifications(path, method, body, store, extensions, request_user=""):
+def _handle_notifications(
+    path: str,
+    method: str,
+    body: bytes,
+    store: AnalyticsStore | None,
+    extensions: ExtensionRegistry | None,
+    request_user: str = "",
+) -> tuple[int, bytes] | None:
     """Community notification API — CRUD, types, test, batch."""
 
     # GET /api/v1/notifications/types
@@ -1059,6 +1090,8 @@ def _handle_notifications(path, method, body, store, extensions, request_user=""
                 )
             return _json_response(400, {"error": err})
         _rebuild_dispatcher(extensions)
+        if not channel:
+            return _json_response(500, {"error": "failed to create notification channel"})
         log.info("notification channel created: %s (type=%s)", channel.get("name"), channel.get("type"))
         return _json_response(201, _mask_channel(channel))
 
@@ -1071,10 +1104,7 @@ def _handle_notifications(path, method, body, store, extensions, request_user=""
         raw_ids = data.get("ids", [])
         if not isinstance(raw_ids, list):
             return _json_response(400, {"error": "ids must be a list"})
-        ids = []
-        for i in raw_ids:
-            if isinstance(i, int):
-                ids.append(i)
+        ids = [i for i in raw_ids if isinstance(i, int)]
         if action not in ("enable", "disable", "delete") or not ids or len(ids) > 100:
             return _json_response(400, {"error": "invalid batch action"})
         count = store.bulk_update_channels(ids, action)
@@ -1121,18 +1151,22 @@ def _handle_notifications(path, method, body, store, extensions, request_user=""
         # DELETE /api/v1/notifications/channels/:id
         if method == "DELETE" and sub is None:
             # Get name before deleting for the log
-            ch = store.get_notification_channel(channel_id)
+            del_ch: dict[str, Any] | None = store.get_notification_channel(channel_id)
             if store.delete_notification_channel(channel_id):
                 _rebuild_dispatcher(extensions)
-                log.info("notification channel deleted: id=%d name=%s", channel_id, ch["name"] if ch else "?")
+                log.info("notification channel deleted: id=%d name=%s", channel_id, del_ch["name"] if del_ch else "?")
                 return _json_response(200, {"deleted": channel_id})
             return _json_response(404, {"error": "not found"})
 
     return None  # fall through to Pro handler for extended endpoints
 
 
-def _handle_notification_test(channel_id, store, extensions):
+def _handle_notification_test(
+    channel_id: int, store: AnalyticsStore | None, extensions: ExtensionRegistry | None
+) -> tuple[int, bytes]:
     """POST /api/v1/notifications/channels/:id/test"""
+    if not store:
+        return _json_response(500, {"error": "analytics store not available"})
     channel = store.get_notification_channel(channel_id)
     if not channel:
         return _json_response(404, {"error": "not found"})
@@ -1251,7 +1285,7 @@ _PIPELINE_STAGES = [
 ]
 
 
-def _handle_pipeline_get(config, store=None) -> tuple:
+def _handle_pipeline_get(config: Config | None, store: AnalyticsStore | None = None) -> tuple[int, bytes]:
     """Return pipeline stage configuration with stats."""
     log.debug("GET /api/v1/pipeline")
     if not config:
@@ -1279,7 +1313,7 @@ def _handle_pipeline_get(config, store=None) -> tuple:
 
     stages = []
     for meta in _PIPELINE_STAGES:
-        name = meta["name"]
+        name = str(meta["name"])
         stage_cfg = getattr(config.pipeline, name, None)
 
         # Apply DB override for enabled
@@ -1397,11 +1431,9 @@ def _handle_pipeline_get(config, store=None) -> tuple:
     )
 
 
-def _handle_pipeline_update(body: bytes, config, store) -> tuple:
+def _handle_pipeline_update(body: bytes, config: Config | None, store: AnalyticsStore | None) -> tuple[int, bytes]:
     """Save pipeline configuration changes."""
-    err = _require_store(store, "PUT /api/v1/pipeline")
-    if err:
-        return err
+    store = _require_store(store, "PUT /api/v1/pipeline")
 
     changes = _parse_json_body(body, "PUT /api/v1/pipeline")
     if isinstance(changes, tuple):
@@ -1507,7 +1539,7 @@ def _handle_pipeline_update(body: bytes, config, store) -> tuple:
 # ---------------------------------------------------------------------------
 
 
-def _handle_mcp_tools_list(store, config) -> tuple:
+def _handle_mcp_tools_list(store: AnalyticsStore | None, config: Config | None) -> tuple[int, bytes]:
     """Return merged MCP tool lists (config + DB)."""
     log.debug("GET /api/v1/mcp/tools")
     if not store:
@@ -1520,15 +1552,13 @@ def _handle_mcp_tools_list(store, config) -> tuple:
         db_lists = {"allowed": [], "blocked": []}
 
     # Merge config entries (read-only, source=config)
-    config_allowed = []
-    config_blocked = []
+    config_allowed: list[dict[str, str]] = []
+    config_blocked: list[dict[str, str]] = []
     if config:
         mcp_cfg = getattr(config, "mcp", None)
         if mcp_cfg:
-            for t in mcp_cfg.allowed_tools:
-                config_allowed.append({"tool_name": t, "source": "config"})
-            for t in mcp_cfg.blocked_tools:
-                config_blocked.append({"tool_name": t, "source": "config"})
+            config_allowed.extend({"tool_name": t, "source": "config"} for t in mcp_cfg.allowed_tools)
+            config_blocked.extend({"tool_name": t, "source": "config"} for t in mcp_cfg.blocked_tools)
 
     return _json_response(
         200,
@@ -1539,11 +1569,9 @@ def _handle_mcp_tools_list(store, config) -> tuple:
     )
 
 
-def _handle_mcp_tools_add(body: bytes, store) -> tuple:
+def _handle_mcp_tools_add(body: bytes, store: AnalyticsStore | None) -> tuple[int, bytes]:
     """Add a tool to the allowed or blocked list."""
-    err = _require_store(store, "POST /api/v1/mcp/tools")
-    if err:
-        return err
+    store = _require_store(store, "POST /api/v1/mcp/tools")
 
     data = _parse_json_body(body, "POST /api/v1/mcp/tools")
     if isinstance(data, tuple):
@@ -1566,11 +1594,9 @@ def _handle_mcp_tools_add(body: bytes, store) -> tuple:
     return _json_response(201, {"id": entry_id, "list_type": list_type, "tool_name": tool_name})
 
 
-def _handle_mcp_tools_delete(entry_id: int, store) -> tuple:
+def _handle_mcp_tools_delete(entry_id: int, store: AnalyticsStore | None) -> tuple[int, bytes]:
     """Remove an API-managed MCP tool list entry."""
-    err = _require_store(store, "DELETE /api/v1/mcp/tools/%d" % entry_id)
-    if err:
-        return err
+    store = _require_store(store, "DELETE /api/v1/mcp/tools/%d" % entry_id)
 
     deleted = store.delete_mcp_tool_entry(entry_id)
     if not deleted:
@@ -1584,11 +1610,9 @@ def _handle_mcp_tools_delete(entry_id: int, store) -> tuple:
 # --- WebSocket connection endpoints ---
 
 
-def _handle_ws_connections(params: dict, store) -> tuple:
+def _handle_ws_connections(params: dict[str, str], store: AnalyticsStore | None) -> tuple[int, bytes]:
     """Return recent WebSocket connections, newest first."""
-    err = _require_store(store, "GET /api/v1/ws/connections")
-    if err:
-        return err
+    store = _require_store(store, "GET /api/v1/ws/connections")
 
     result = _parse_pagination(params, max_limit=200)
     if isinstance(result[1], bytes):
@@ -1600,11 +1624,9 @@ def _handle_ws_connections(params: dict, store) -> tuple:
     return _json_response(200, {"connections": connections, "count": len(connections)})
 
 
-def _handle_ws_stats(params: dict, store) -> tuple:
+def _handle_ws_stats(params: dict[str, str], store: AnalyticsStore | None) -> tuple[int, bytes]:
     """Return aggregate WebSocket stats for the given period."""
-    err = _require_store(store, "GET /api/v1/ws/stats")
-    if err:
-        return err
+    store = _require_store(store, "GET /api/v1/ws/stats")
 
     days = min(max(_parse_days(params, default=7), 1), 365)
 
@@ -1618,7 +1640,7 @@ def _handle_ws_stats(params: dict, store) -> tuple:
 # ---------------------------------------------------------------------------
 
 
-def _handle_rule_analysis_get(store):
+def _handle_rule_analysis_get(store: AnalyticsStore | None) -> tuple[int, bytes]:
     """GET /api/v1/rules/analysis — return cached results or unavailable status."""
     from lumen_argus.rule_analysis import HAS_CROSSFIRE
 
@@ -1635,9 +1657,7 @@ def _handle_rule_analysis_get(store):
             },
         )
 
-    err = _require_store(store, "rule analysis")
-    if err:
-        return err
+    store = _require_store(store, "rule analysis")
 
     cached = store.rule_analysis.get_latest_analysis_filtered()
     if not cached:
@@ -1655,7 +1675,9 @@ def _handle_rule_analysis_get(store):
     return _json_response(200, cached)
 
 
-def _handle_rule_analysis_trigger(body, store, extensions, config=None):
+def _handle_rule_analysis_trigger(
+    body: bytes, store: AnalyticsStore | None, extensions: ExtensionRegistry | None, config: Config | None = None
+) -> tuple[int, bytes]:
     """POST /api/v1/rules/analysis — trigger new analysis."""
     from lumen_argus.rule_analysis import HAS_CROSSFIRE, is_analysis_running, run_analysis_in_background
 
@@ -1672,9 +1694,7 @@ def _handle_rule_analysis_trigger(body, store, extensions, config=None):
             },
         )
 
-    err = _require_store(store, "rule analysis")
-    if err:
-        return err
+    store = _require_store(store, "rule analysis")
 
     if is_analysis_running():
         return _json_response(
@@ -1696,13 +1716,11 @@ def _handle_rule_analysis_trigger(body, store, extensions, config=None):
     )
 
 
-def _handle_rule_analysis_dismiss(body, store):
+def _handle_rule_analysis_dismiss(body: bytes, store: AnalyticsStore | None) -> tuple[int, bytes]:
     """POST /api/v1/rules/analysis/dismiss — dismiss a finding pair."""
     log.debug("POST /api/v1/rules/analysis/dismiss")
 
-    err = _require_store(store, "rule analysis dismiss")
-    if err:
-        return err
+    store = _require_store(store, "rule analysis dismiss")
 
     data = _parse_json_body(body, "rule analysis dismiss")
     if isinstance(data, tuple):
@@ -1719,7 +1737,7 @@ def _handle_rule_analysis_dismiss(body, store):
     return _json_response(200, {"status": "already_dismissed", "rule_a": rule_a, "rule_b": rule_b})
 
 
-def _handle_rule_analysis_status(params):
+def _handle_rule_analysis_status(params: dict[str, str]) -> tuple[int, bytes]:
     """GET /api/v1/rules/analysis/status — return current analysis progress."""
     from lumen_argus.rule_analysis import get_analysis_status
 

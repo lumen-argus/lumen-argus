@@ -1,6 +1,12 @@
 """MCP tool lists repository — extracted from AnalyticsStore."""
 
+from __future__ import annotations
+
 import logging
+from typing import TYPE_CHECKING, Any, Optional
+
+if TYPE_CHECKING:
+    from lumen_argus.analytics.store import AnalyticsStore
 
 log = logging.getLogger("argus.analytics")
 
@@ -20,17 +26,17 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_mcp_tool_unique
 class MCPToolListsRepository:
     """Repository for MCP tool allow/block list operations."""
 
-    def __init__(self, store):
+    def __init__(self, store: AnalyticsStore) -> None:
         self._store = store
 
-    def get_lists(self):
+    def get_lists(self) -> dict[str, list[dict[str, Any]]]:
         """Return MCP tool lists: {"allowed": [...], "blocked": [...]}."""
         log.debug("loading MCP tool lists from DB")
         with self._store._connect() as conn:
             rows = conn.execute(
                 "SELECT id, list_type, tool_name, source, created_at FROM mcp_tool_lists ORDER BY id"
             ).fetchall()
-        result = {"allowed": [], "blocked": []}
+        result: dict[str, list[dict[str, Any]]] = {"allowed": [], "blocked": []}
         for row in rows:
             entry = {
                 "id": row["id"],
@@ -43,7 +49,7 @@ class MCPToolListsRepository:
                 result[lt].append(entry)
         return result
 
-    def add_entry(self, list_type, tool_name):
+    def add_entry(self, list_type: str, tool_name: str) -> Optional[int]:
         """Add a tool to the allowed or blocked list. Returns the new entry ID."""
         if list_type not in ("allowed", "blocked"):
             raise ValueError("list_type must be 'allowed' or 'blocked'")
@@ -65,7 +71,7 @@ class MCPToolListsRepository:
             log.debug("mcp tool list: '%s' already in %s list (ignored)", tool_name, list_type)
         return entry_id
 
-    def delete_entry(self, entry_id):
+    def delete_entry(self, entry_id: int) -> bool:
         """Remove an MCP tool list entry by ID. Returns True if deleted."""
         with self._store._lock:
             with self._store._connect() as conn:
@@ -78,7 +84,7 @@ class MCPToolListsRepository:
             log.info("mcp tool list: deleted entry %d", entry_id)
         return deleted
 
-    def reconcile(self, yaml_allowed, yaml_blocked):
+    def reconcile(self, yaml_allowed: Optional[list[Any]], yaml_blocked: Optional[list[Any]]) -> dict[str, int]:
         """Reconcile YAML tool lists with DB entries.
 
         YAML entries are authoritative for source='config'. API entries untouched.
@@ -96,7 +102,7 @@ class MCPToolListsRepository:
                 existing_set = {(r["list_type"], r["tool_name"]): r["id"] for r in existing}
 
                 # Build target set from YAML
-                target = set()
+                target: set[tuple[str, str]] = set()
                 for t in yaml_allowed or []:
                     target.add(("allowed", str(t)))
                 for t in yaml_blocked or []:

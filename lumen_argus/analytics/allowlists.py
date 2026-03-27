@@ -1,6 +1,13 @@
 """Allowlist entries repository — DB-backed allowlist patterns."""
 
+from __future__ import annotations
+
+import builtins
 import logging
+from typing import TYPE_CHECKING, Any, Optional
+
+if TYPE_CHECKING:
+    from lumen_argus.analytics.store import AnalyticsStore
 
 log = logging.getLogger("argus.analytics")
 
@@ -29,15 +36,15 @@ _ALLOWLIST_COLUMNS = (
 class AllowlistRepository:
     """Repository for allowlist entry CRUD operations."""
 
-    def __init__(self, store):
+    def __init__(self, store: AnalyticsStore) -> None:
         self._store = store
 
-    def _row_to_dict(self, row) -> dict:
+    def _row_to_dict(self, row: Any) -> dict[str, Any]:
         d = dict(row)
         d["enabled"] = bool(d.get("enabled", 1))
         return d
 
-    def add(self, list_type: str, pattern: str, description: str = "", created_by: str = "") -> dict:
+    def add(self, list_type: str, pattern: str, description: str = "", created_by: str = "") -> dict[str, Any]:
         """Add an allowlist entry. list_type: 'secrets', 'pii', or 'paths'."""
         if list_type not in ("secrets", "pii", "paths"):
             raise ValueError("invalid list_type: %s" % list_type)
@@ -68,10 +75,10 @@ class AllowlistRepository:
             "updated_by": created_by,
         }
 
-    def update(self, entry_id: int, data: dict) -> dict:
+    def update(self, entry_id: int, data: dict[str, Any]) -> Optional[dict[str, Any]]:
         """Update an API-managed allowlist entry. Returns updated entry or None."""
-        updates = []
-        params = []
+        updates: builtins.list[str] = []
+        params: builtins.list[Any] = []
         for key in ("pattern", "description", "list_type"):
             if key in data:
                 updates.append("%s = ?" % key)
@@ -97,7 +104,7 @@ class AllowlistRepository:
                     return None
         return self.get(entry_id)
 
-    def get(self, entry_id: int) -> dict:
+    def get(self, entry_id: int) -> Optional[dict[str, Any]]:
         """Get a single entry by ID."""
         with self._store._connect() as conn:
             row = conn.execute(
@@ -118,10 +125,10 @@ class AllowlistRepository:
                 )
                 return cursor.rowcount > 0
 
-    def list(self, list_type: str = None) -> list:
+    def list(self, list_type: Optional[str] = None) -> builtins.list[dict[str, Any]]:
         """List allowlist entries, optionally filtered by type."""
         query = "SELECT " + _ALLOWLIST_COLUMNS + " FROM allowlist_entries"
-        params = []
+        params: builtins.list[str] = []
         if list_type:
             query += " WHERE list_type = ?"
             params.append(list_type)
@@ -130,10 +137,10 @@ class AllowlistRepository:
             rows = conn.execute(query, params).fetchall()
         return [self._row_to_dict(r) for r in rows]
 
-    def list_enabled(self, list_type: str = None) -> list:
+    def list_enabled(self, list_type: Optional[str] = None) -> builtins.list[dict[str, Any]]:
         """List only enabled entries (for scan-time integration)."""
         query = "SELECT " + _ALLOWLIST_COLUMNS + " FROM allowlist_entries WHERE enabled = 1"
-        params = []
+        params: builtins.list[str] = []
         if list_type:
             query += " AND list_type = ?"
             params.append(list_type)

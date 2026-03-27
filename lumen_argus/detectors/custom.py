@@ -1,6 +1,8 @@
 """Custom regex detector: user-defined patterns from config."""
 
-from typing import List
+from __future__ import annotations
+
+from typing import Any, List
 
 from lumen_argus.allowlist import AllowlistMatcher
 from lumen_argus.detectors import BaseDetector
@@ -16,14 +18,14 @@ class CustomDetector(BaseDetector):
     batch scanning approach as SecretsDetector for performance.
     """
 
-    def __init__(self, rules=None):
+    def __init__(self, rules: Any = None) -> None:
         """
         Args:
             rules: List of CustomRuleConfig with compiled regex patterns.
         """
-        self._rules = rules or []
+        self._rules: list[Any] = rules or []
 
-    def update_rules(self, rules):
+    def update_rules(self, rules: Any) -> None:
         """Replace rules — called on SIGHUP config reload."""
         self._rules = rules or []
 

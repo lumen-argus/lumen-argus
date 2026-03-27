@@ -1,7 +1,8 @@
 """Provider routing: map inbound requests to upstream HTTPS targets."""
 
-from typing import Dict, Optional, Tuple
+from __future__ import annotations
 
+from typing import Dict, Optional, Tuple
 
 # Default upstream URLs per provider.
 DEFAULT_UPSTREAMS = {
@@ -19,7 +20,7 @@ class ProviderRouter:
         if upstreams:
             self._upstreams.update(upstreams)
 
-    def route(self, path: str, headers: dict) -> Tuple[str, int, bool, str]:
+    def route(self, path: str, headers: dict[str, str]) -> Tuple[str, int, bool, str]:
         """Determine upstream host, port, SSL flag, and provider name.
 
         Args:
@@ -60,10 +61,10 @@ class ProviderRouter:
 
         return host, port, use_ssl, provider
 
-    def _detect_provider(self, path: str, headers: dict) -> str:
+    def _detect_provider(self, path: str, headers: dict[str, str]) -> str:
         """Detect provider from path and headers."""
         # Anthropic-specific paths and headers
-        if path.startswith("/v1/messages") or path.startswith("/v1/complete"):
+        if path.startswith(("/v1/messages", "/v1/complete")):
             if headers.get("x-api-key") or headers.get("anthropic-version"):
                 return "anthropic"
 

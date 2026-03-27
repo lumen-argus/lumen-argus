@@ -5,6 +5,8 @@ so it doesn't block the proxy. Supports optional password authentication
 with sessions and CSRF protection.
 """
 
+from __future__ import annotations
+
 import http.server
 import json
 import logging
@@ -14,7 +16,12 @@ import threading
 import time
 from datetime import datetime, timezone
 from http.cookies import SimpleCookie
-from typing import Optional
+from typing import TYPE_CHECKING, Any, Optional
+
+if TYPE_CHECKING:
+    from lumen_argus.analytics.store import AnalyticsStore
+    from lumen_argus.config import Config
+    from lumen_argus.extensions import ExtensionRegistry
 
 from lumen_argus.dashboard.api import handle_community_api
 
@@ -78,10 +85,12 @@ if(nextVal)document.getElementById('next-field').value=nextVal;
 class DashboardHandler(http.server.BaseHTTPRequestHandler):
     """Handles dashboard HTTP requests with optional authentication."""
 
-    def log_message(self, format, *args):
+    server: DashboardServer
+
+    def log_message(self, format: str, *args: Any) -> None:
         pass  # Suppress default access logging
 
-    def do_GET(self):
+    def do_GET(self) -> None:
         if self.path.startswith("/api/v1/live"):
             if not self._check_auth():
                 return
@@ -111,7 +120,7 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
                 return
             self._serve_dashboard()
 
-    def do_POST(self):
+    def do_POST(self) -> None:
         if self.path.startswith("/login"):
             self._handle_login()
         elif self.path.startswith("/api/"):
@@ -123,7 +132,7 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
         else:
             self._send_json(405, {"error": "method_not_allowed"})
 
-    def do_PUT(self):
+    def do_PUT(self) -> None:
         if not self._check_auth():
             return
         if not self._check_csrf():
@@ -133,7 +142,7 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
         else:
             self._send_json(405, {"error": "method_not_allowed"})
 
-    def do_DELETE(self):
+    def do_DELETE(self) -> None:
         if not self._check_auth():
             return
         if not self._check_csrf():
@@ -163,6 +172,8 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
             return True
 
         # Try plugin auth providers
+        if not self.server.extensions:
+            return False
         for provider in self.server.extensions.get_auth_providers():
             try:
                 user_info = provider.authenticate(dict(self.headers))
@@ -212,7 +223,7 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
         return True
 
     def _serve_login(self) -> None:
-        from urllib.parse import parse_qs, urlparse, quote
+        from urllib.parse import parse_qs, quote, urlparse
 
         query = urlparse(self.path).query
         params = parse_qs(query)
@@ -312,7 +323,7 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
         audit_reader = self.server.audit_reader
 
         # Try plugin API handler first
-        pro_handler = self.server.extensions.get_dashboard_api_handler()
+        pro_handler = self.server.extensions.get_dashboard_api_handler() if self.server.extensions else None
         if pro_handler:
             try:
                 result = pro_handler(self.path, method, body, store, audit_reader)
@@ -455,7 +466,7 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
                 self._send_download(body, "text/csv; charset=utf-8", "audit-%s.csv" % now)
 
     @staticmethod
-    def _findings_to_csv(findings: list) -> bytes:
+    def _findings_to_csv(findings: list[dict[str, Any]]) -> bytes:
         cols = [
             "id",
             "timestamp",
@@ -467,9 +478,9 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
             "provider",
             "model",
         ]
-        lines = [",".join(cols)]
+        lines: list[str] = [",".join(cols)]
         for f in findings:
-            row = []
+            row: list[str] = []
             for c in cols:
                 val = str(f.get(c, ""))
                 if "," in val or '"' in val or "\n" in val:
@@ -479,7 +490,7 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
         return "\n".join(lines).encode("utf-8")
 
     @staticmethod
-    def _audit_to_csv(entries: list) -> bytes:
+    def _audit_to_csv(entries: list[dict[str, Any]]) -> bytes:
         cols = [
             "timestamp",
             "request_id",
@@ -518,11 +529,10 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
             self._send_json(404, {"error": "log file not found"})
             return
 
-        lines = []
+        lines: list[str] = []
         try:
             with open(log_file, "r", encoding="utf-8", errors="replace") as f:
-                for line in f:
-                    lines.append(sanitize_log_line(line))
+                lines.extend(sanitize_log_line(line) for line in f)
         except OSError:
             self._send_json(500, {"error": "failed to read log file"})
             return
@@ -540,13 +550,13 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
         html = COMMUNITY_DASHBOARD_HTML
 
         # Inject plugin CSS before </style>
-        extra_css = self.server.extensions.get_dashboard_css()
+        extra_css = self.server.extensions.get_dashboard_css() if self.server.extensions else []
         if extra_css:
             css_block = "\n".join(extra_css)
             html = html.replace("</style>", css_block + "\n</style>")
 
         # Inject plugin page JS before </body>
-        extra_pages = self.server.extensions.get_dashboard_pages()
+        extra_pages = self.server.extensions.get_dashboard_pages() if self.server.extensions else []
         if extra_pages:
             js_blocks = []
             for page in extra_pages:
@@ -577,7 +587,7 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
 
     # --- Helpers ---
 
-    def _send_json(self, status: int, data: dict) -> None:
+    def _send_json(self, status: int, data: dict[str, Any]) -> None:
         body = json.dumps(data).encode("utf-8")
         self._send_raw(status, "application/json", body)
 
@@ -603,7 +613,7 @@ class DashboardServer(http.server.ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
 
-    def handle_error(self, request, client_address):
+    def handle_error(self, request: Any, client_address: Any) -> None:
         """Suppress ConnectionResetError from SSE client disconnections."""
         import sys
 
@@ -616,13 +626,13 @@ class DashboardServer(http.server.ThreadingHTTPServer):
         self,
         bind: str,
         port: int,
-        analytics_store,
-        extensions,
+        analytics_store: AnalyticsStore | None,
+        extensions: ExtensionRegistry | None,
         password: str = "",
-        audit_reader=None,
-        sse_broadcaster=None,
-        config=None,
-    ):
+        audit_reader: Any = None,
+        sse_broadcaster: Any = None,
+        config: Config | None = None,
+    ) -> None:
         if bind not in ("127.0.0.1", "localhost"):
             log.warning("binding to %s — dashboard is accessible on the network", bind)
         self.analytics_store = analytics_store
@@ -631,7 +641,7 @@ class DashboardServer(http.server.ThreadingHTTPServer):
         self.audit_reader = audit_reader
         self.sse_broadcaster = sse_broadcaster
         self.config = config
-        self._sessions = {}  # type: dict
+        self._sessions: dict[str, float] = {}
         self._session_lock = threading.Lock()
         super().__init__((bind, port), DashboardHandler)
 
@@ -663,12 +673,12 @@ class DashboardServer(http.server.ThreadingHTTPServer):
 def start_dashboard(
     bind: str = "127.0.0.1",
     port: int = 8081,
-    analytics_store=None,
-    extensions=None,
+    analytics_store: AnalyticsStore | None = None,
+    extensions: ExtensionRegistry | None = None,
     password: str = "",
-    audit_reader=None,
-    sse_broadcaster=None,
-    config=None,
+    audit_reader: Any = None,
+    sse_broadcaster: Any = None,
+    config: Config | None = None,
 ) -> Optional[DashboardServer]:
     """Start the dashboard server in a daemon thread.
 
@@ -709,3 +719,4 @@ def start_dashboard(
                     e,
                 )
                 return None
+    return None

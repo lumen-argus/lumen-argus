@@ -4,11 +4,16 @@ Scans tool descriptions from tools/list responses for injection patterns
 and tracks tool definition changes (rug-pull detection) via SHA-256 hashes.
 """
 
+from __future__ import annotations
+
 import hashlib
 import json
 import logging
 import re
-from typing import List, Tuple
+from typing import TYPE_CHECKING, Any, List, Tuple
+
+if TYPE_CHECKING:
+    from lumen_argus.analytics.store import AnalyticsStore
 
 from lumen_argus.models import Finding
 
@@ -81,7 +86,7 @@ _POISON_PATTERNS = [
 ]
 
 
-def scan_tool_descriptions(tools: list, action: str = "alert") -> List[Finding]:
+def scan_tool_descriptions(tools: list[dict[str, Any]], action: str = "alert") -> List[Finding]:
     """Scan tool descriptions for poisoning patterns.
 
     Args:
@@ -129,13 +134,13 @@ def scan_tool_descriptions(tools: list, action: str = "alert") -> List[Finding]:
 # --- Drift detection ---
 
 
-def hash_tool_definition(description: str, input_schema: dict) -> str:
+def hash_tool_definition(description: str, input_schema: dict[str, Any]) -> str:
     """Compute SHA-256 hash of a tool definition for drift detection."""
     content = description + "\0" + json.dumps(input_schema, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
 
-def extract_param_names(input_schema: dict) -> List[str]:
+def extract_param_names(input_schema: dict[str, Any]) -> List[str]:
     """Extract parameter names from a JSON Schema inputSchema."""
     props = input_schema.get("properties", {})
     if isinstance(props, dict):
@@ -179,8 +184,8 @@ def diff_tool_definitions(
 
 
 def check_tool_drift(
-    tools: list,
-    store,
+    tools: list[dict[str, Any]],
+    store: AnalyticsStore,
 ) -> List[Tuple[str, str]]:
     """Check tools against stored baselines and update.
 

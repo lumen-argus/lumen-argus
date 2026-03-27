@@ -17,9 +17,8 @@ import statistics
 import time
 from typing import List
 
-from lumen_argus.pipeline import ScannerPipeline
 from lumen_argus.allowlist import AllowlistMatcher
-
+from lumen_argus.pipeline import ScannerPipeline
 
 # ---------------------------------------------------------------------------
 # Payload generators

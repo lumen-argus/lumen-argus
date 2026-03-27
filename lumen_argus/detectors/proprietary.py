@@ -1,5 +1,7 @@
 """Proprietary code detector: file pattern blocklist + keyword detection."""
 
+from __future__ import annotations
+
 import fnmatch
 from typing import List
 
@@ -52,11 +54,11 @@ class ProprietaryDetector(BaseDetector):
 
     def __init__(
         self,
-        file_patterns_critical: tuple = DEFAULT_FILE_PATTERNS_CRITICAL,
-        file_patterns_warning: tuple = DEFAULT_FILE_PATTERNS_WARNING,
-        keywords_critical: tuple = DEFAULT_KEYWORDS_CRITICAL,
-        keywords_warning: tuple = DEFAULT_KEYWORDS_WARNING,
-    ):
+        file_patterns_critical: tuple[str, ...] = DEFAULT_FILE_PATTERNS_CRITICAL,
+        file_patterns_warning: tuple[str, ...] = DEFAULT_FILE_PATTERNS_WARNING,
+        keywords_critical: tuple[str, ...] = DEFAULT_KEYWORDS_CRITICAL,
+        keywords_warning: tuple[str, ...] = DEFAULT_KEYWORDS_WARNING,
+    ) -> None:
         self._file_patterns_critical = file_patterns_critical
         self._file_patterns_warning = file_patterns_warning
         self._keywords_critical = keywords_critical
@@ -108,29 +110,29 @@ class ProprietaryDetector(BaseDetector):
 
         # Keyword scan (case-insensitive)
         text_upper = field.text.upper()
-        for kw in self._keywords_critical:
-            if kw in text_upper:
-                findings.append(
-                    Finding(
-                        detector="proprietary",
-                        type="confidential_keyword",
-                        severity="critical",
-                        location=field.path,
-                        value_preview=kw,
-                        matched_value=kw,
-                    )
-                )
-        for kw in self._keywords_warning:
-            if kw in text_upper:
-                findings.append(
-                    Finding(
-                        detector="proprietary",
-                        type="sensitive_keyword",
-                        severity="warning",
-                        location=field.path,
-                        value_preview=kw,
-                        matched_value=kw,
-                    )
-                )
+        findings.extend(
+            Finding(
+                detector="proprietary",
+                type="confidential_keyword",
+                severity="critical",
+                location=field.path,
+                value_preview=kw,
+                matched_value=kw,
+            )
+            for kw in self._keywords_critical
+            if kw in text_upper
+        )
+        findings.extend(
+            Finding(
+                detector="proprietary",
+                type="sensitive_keyword",
+                severity="warning",
+                location=field.path,
+                value_preview=kw,
+                matched_value=kw,
+            )
+            for kw in self._keywords_warning
+            if kw in text_upper
+        )
 
         return findings

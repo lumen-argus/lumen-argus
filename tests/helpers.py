@@ -9,6 +9,7 @@ import shutil
 import socket
 import tempfile
 import unittest
+from typing import Optional
 
 from lumen_argus.analytics.store import AnalyticsStore
 from lumen_argus.models import Finding
@@ -21,7 +22,7 @@ def free_port() -> int:
         return s.getsockname()[1]
 
 
-def make_store(tmpdir: str = None, hmac_key: bytes = None):
+def make_store(tmpdir: Optional[str] = None, hmac_key: Optional[bytes] = None):
     """Create an AnalyticsStore in a temp directory.
 
     Returns (store, tmpdir). If tmpdir is None, creates a new one — caller

@@ -1,7 +1,13 @@
 """WebSocket connections repository — extracted from AnalyticsStore."""
 
+from __future__ import annotations
+
 import logging
 import time
+from typing import TYPE_CHECKING, Any, Optional
+
+if TYPE_CHECKING:
+    from lumen_argus.analytics.store import AnalyticsStore
 
 log = logging.getLogger("argus.analytics")
 
@@ -25,10 +31,10 @@ CREATE INDEX IF NOT EXISTS idx_ws_conn_at ON ws_connections(connected_at);
 class WebSocketConnectionsRepository:
     """Repository for WebSocket connection lifecycle operations."""
 
-    def __init__(self, store):
+    def __init__(self, store: AnalyticsStore) -> None:
         self._store = store
 
-    def record_open(self, connection_id, target_url, origin, timestamp):
+    def record_open(self, connection_id: str, target_url: str, origin: str, timestamp: float) -> None:
         """Record a new WebSocket connection."""
         with self._store._lock:
             with self._store._connect() as conn:
@@ -39,8 +45,15 @@ class WebSocketConnectionsRepository:
         log.debug("ws connection open: %s -> %s", connection_id[:8], target_url)
 
     def record_close(
-        self, connection_id, timestamp, duration, frames_sent, frames_received, findings_count, close_code
-    ):
+        self,
+        connection_id: str,
+        timestamp: float,
+        duration: float,
+        frames_sent: int,
+        frames_received: int,
+        findings_count: int,
+        close_code: Optional[int],
+    ) -> None:
         """Update a WebSocket connection record on close."""
         with self._store._lock:
             with self._store._connect() as conn:
@@ -54,7 +67,7 @@ class WebSocketConnectionsRepository:
             "ws connection close: %s (%.1fs, %d/%d frames)", connection_id[:8], duration, frames_sent, frames_received
         )
 
-    def increment_findings(self, connection_id, count):
+    def increment_findings(self, connection_id: str, count: int) -> None:
         """Increment findings count for a WebSocket connection."""
         if count <= 0:
             return
@@ -65,7 +78,7 @@ class WebSocketConnectionsRepository:
                     (count, connection_id),
                 )
 
-    def get_connections(self, limit=50, offset=0):
+    def get_connections(self, limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
         """Return recent WebSocket connections, newest first."""
         with self._store._connect() as conn:
             rows = conn.execute(
@@ -76,7 +89,7 @@ class WebSocketConnectionsRepository:
             ).fetchall()
         return [dict(r) for r in rows]
 
-    def get_stats(self, days=7):
+    def get_stats(self, days: int = 7) -> dict[str, Any]:
         """Return aggregate WebSocket stats for the given period."""
         cutoff = time.time() - (days * 86400)
         with self._store._connect() as conn:
@@ -101,7 +114,7 @@ class WebSocketConnectionsRepository:
             }
         )
 
-    def cleanup(self, retention_days=365):
+    def cleanup(self, retention_days: int = 365) -> int:
         """Delete WebSocket connection records older than retention_days."""
         cutoff = time.time() - (retention_days * 86400)
         with self._store._lock:

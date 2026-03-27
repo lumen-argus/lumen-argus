@@ -7,23 +7,26 @@ for retention enforcement.
 sqlite3 is Python stdlib — zero external dependencies.
 """
 
+from __future__ import annotations
+
 import logging
 import os
 import sqlite3
 import threading
 import time
-from lumen_argus.time_utils import now_iso
 from pathlib import Path
+from typing import Any, Callable, List, Optional
 
-
-from lumen_argus.analytics.findings import FindingsRepository, _SCHEMA
-from lumen_argus.analytics.rules import RulesRepository, _RULES_SCHEMA
-from lumen_argus.analytics.channels import ChannelsRepository, _NOTIFICATION_SCHEMA
-from lumen_argus.analytics.config_overrides import ConfigOverridesRepository, _CONFIG_OVERRIDES_SCHEMA
-from lumen_argus.analytics.mcp_tool_lists import MCPToolListsRepository, _MCP_TOOL_LISTS_SCHEMA
-from lumen_argus.analytics.ws_connections import WebSocketConnectionsRepository, _WS_CONNECTIONS_SCHEMA
-from lumen_argus.analytics.allowlists import AllowlistRepository, _ALLOWLIST_SCHEMA
-from lumen_argus.analytics.rule_analysis_repo import RuleAnalysisRepository, _RULE_ANALYSIS_SCHEMA
+from lumen_argus.analytics.allowlists import _ALLOWLIST_SCHEMA, AllowlistRepository
+from lumen_argus.analytics.channels import _NOTIFICATION_SCHEMA, ChannelsRepository
+from lumen_argus.analytics.config_overrides import _CONFIG_OVERRIDES_SCHEMA, ConfigOverridesRepository
+from lumen_argus.analytics.findings import _SCHEMA, FindingsRepository
+from lumen_argus.analytics.mcp_tool_lists import _MCP_TOOL_LISTS_SCHEMA, MCPToolListsRepository
+from lumen_argus.analytics.rule_analysis_repo import _RULE_ANALYSIS_SCHEMA, RuleAnalysisRepository
+from lumen_argus.analytics.rules import _RULES_SCHEMA, RulesRepository
+from lumen_argus.analytics.ws_connections import _WS_CONNECTIONS_SCHEMA, WebSocketConnectionsRepository
+from lumen_argus.models import Finding, SessionContext
+from lumen_argus.time_utils import now_iso
 
 log = logging.getLogger("argus.analytics")
 
@@ -81,12 +84,12 @@ class AnalyticsStore:
     Write serialization: single Lock wraps all writes; reads don't acquire it.
     """
 
-    def __init__(self, db_path: str = "~/.lumen-argus/analytics.db", hmac_key: bytes = None):
+    def __init__(self, db_path: str = "~/.lumen-argus/analytics.db", hmac_key: Optional[bytes] = None) -> None:
         self._db_path = os.path.expanduser(db_path)
         self._hmac_key = hmac_key
         self._lock = threading.Lock()
         self._local = threading.local()
-        self._rules_change_callback = None
+        self._rules_change_callback: Optional[Callable[..., Any]] = None
         self._ensure_db()
         self.findings = FindingsRepository(self)
         self.rules = RulesRepository(self)
@@ -126,10 +129,10 @@ class AnalyticsStore:
         Each thread gets its own connection, reused across method calls.
         Health check after 60s of inactivity.
         """
-        conn = getattr(self._local, "conn", None)
+        conn: Optional[sqlite3.Connection] = getattr(self._local, "conn", None)
         if conn is not None:
             now = time.monotonic()
-            last_used = getattr(self._local, "conn_last_used", 0)
+            last_used: float = getattr(self._local, "conn_last_used", 0)
             if now - last_used > 60:
                 try:
                     conn.execute("SELECT 1")
@@ -149,7 +152,7 @@ class AnalyticsStore:
     def _now(self) -> str:
         return now_iso()
 
-    def set_rules_change_callback(self, callback) -> None:
+    def set_rules_change_callback(self, callback: Optional[Callable[..., Any]]) -> None:
         """Register callback for rule changes.
 
         callback(change_type, rule_name=None)
@@ -158,7 +161,7 @@ class AnalyticsStore:
         """
         self._rules_change_callback = callback
 
-    def _notify_rules_changed(self, change_type, rule_name=None):
+    def _notify_rules_changed(self, change_type: str, rule_name: Optional[str] = None) -> None:
         if self._rules_change_callback:
             try:
                 self._rules_change_callback(change_type, rule_name=rule_name)
@@ -168,7 +171,7 @@ class AnalyticsStore:
     def start_cleanup_scheduler(self, retention_days: int = 365) -> None:
         """Start a background thread that runs cleanup daily."""
 
-        def _cleanup_loop():
+        def _cleanup_loop() -> None:
             while True:
                 time.sleep(86400)  # 24 hours
                 try:
@@ -182,23 +185,29 @@ class AnalyticsStore:
 
     # --- Findings facade ---
 
-    def record_findings(self, findings, provider="", model="", session=None):
+    def record_findings(
+        self,
+        findings: List[Finding],
+        provider: str = "",
+        model: str = "",
+        session: Optional[SessionContext] = None,
+    ) -> None:
         return self.findings.record(findings, provider=provider, model=model, session=session)
 
     def get_findings_page(
         self,
-        limit=50,
-        offset=0,
-        severity=None,
-        detector=None,
-        provider=None,
-        session_id=None,
-        account_id=None,
-        action=None,
-        finding_type=None,
-        client_name=None,
-        days=None,
-    ):
+        limit: int = 50,
+        offset: int = 0,
+        severity: Optional[str] = None,
+        detector: Optional[str] = None,
+        provider: Optional[str] = None,
+        session_id: Optional[str] = None,
+        account_id: Optional[str] = None,
+        action: Optional[str] = None,
+        finding_type: Optional[str] = None,
+        client_name: Optional[str] = None,
+        days: Optional[int] = None,
+    ) -> tuple[list[dict[str, Any]], Any]:
         return self.findings.get_page(
             limit=limit,
             offset=offset,
@@ -213,56 +222,73 @@ class AnalyticsStore:
             days=days,
         )
 
-    def get_finding_by_id(self, finding_id):
+    def get_finding_by_id(self, finding_id: int) -> Optional[dict[str, Any]]:
         return self.findings.get_by_id(finding_id)
 
-    def get_stats(self, days: int = 30):
+    def get_stats(self, days: int = 30) -> dict[str, Any]:
         return self.findings.get_stats(days=days)
 
-    def get_total_count(self, severity=None, detector=None, provider=None):
+    def get_total_count(
+        self,
+        severity: Optional[str] = None,
+        detector: Optional[str] = None,
+        provider: Optional[str] = None,
+    ) -> int:
         return self.findings.get_total_count(severity=severity, detector=detector, provider=provider)
 
-    def get_sessions(self, limit=50):
+    def get_sessions(self, limit: int = 50) -> list[dict[str, Any]]:
         return self.findings.get_sessions(limit=limit)
 
-    def get_dashboard_sessions(self, limit=5, hours=24):
+    def get_dashboard_sessions(self, limit: int = 5, hours: int = 24) -> dict[str, Any]:
         return self.findings.get_dashboard_sessions(limit=limit, hours=hours)
 
-    def get_account_stats(self, limit=10):
+    def get_account_stats(self, limit: int = 10) -> list[dict[str, Any]]:
         return self.findings.get_account_stats(limit=limit)
 
-    def bump_seen_counts(self, session_id):
+    def bump_seen_counts(self, session_id: str) -> None:
         return self.findings.bump_seen_counts(session_id)
 
-    def get_action_trend(self, days=30):
+    def get_action_trend(self, days: int = 30) -> list[dict[str, Any]]:
         return self.findings.get_action_trend(days=days)
 
-    def get_activity_matrix(self, days=30):
+    def get_activity_matrix(self, days: int = 30) -> list[dict[str, Any]]:
         return self.findings.get_activity_matrix(days=days)
 
-    def get_top_accounts(self, days=30, limit=8):
+    def get_top_accounts(self, days: int = 30, limit: int = 8) -> list[dict[str, Any]]:
         return self.findings.get_top_accounts(days=days, limit=limit)
 
-    def get_top_projects(self, days=30, limit=8):
+    def get_top_projects(self, days: int = 30, limit: int = 8) -> list[dict[str, Any]]:
         return self.findings.get_top_projects(days=days, limit=limit)
 
-    def cleanup(self, retention_days=365):
+    def cleanup(self, retention_days: int = 365) -> int:
         return self.findings.cleanup(retention_days)
 
     # --- Rules facade ---
 
-    def get_rules_count(self):
+    def get_rules_count(self) -> int:
         return self.rules.get_count()
 
-    def get_rules_coverage(self):
+    def get_rules_coverage(self) -> dict[str, int]:
         return self.rules.get_coverage()
 
-    def get_active_rules(self, detector=None, tier=None):
+    def get_active_rules(
+        self,
+        detector: Optional[str] = None,
+        tier: Optional[str] = None,
+    ) -> list[dict[str, Any]]:
         return self.rules.get_active(detector=detector, tier=tier)
 
     def get_rules_page(
-        self, limit=50, offset=0, search=None, detector=None, tier=None, enabled=None, severity=None, tag=None
-    ):
+        self,
+        limit: int = 50,
+        offset: int = 0,
+        search: Optional[str] = None,
+        detector: Optional[str] = None,
+        tier: Optional[str] = None,
+        enabled: Optional[bool] = None,
+        severity: Optional[str] = None,
+        tag: Optional[str] = None,
+    ) -> tuple[list[dict[str, Any]], Any]:
         return self.rules.get_page(
             limit=limit,
             offset=offset,
@@ -274,134 +300,174 @@ class AnalyticsStore:
             tag=tag,
         )
 
-    def get_rule_tag_stats(self):
+    def get_rule_tag_stats(self) -> list[dict[str, Any]]:
         return self.rules.get_tag_stats()
 
-    def get_rule_by_name(self, name):
+    def get_rule_by_name(self, name: str) -> Optional[dict[str, Any]]:
         return self.rules.get_by_name(name)
 
-    def create_rule(self, data):
+    def create_rule(self, data: dict[str, Any]) -> Optional[dict[str, Any]]:
         return self.rules.create(data)
 
-    def update_rule(self, name, data):
+    def update_rule(self, name: str, data: dict[str, Any]) -> Optional[dict[str, Any]]:
         return self.rules.update(name, data)
 
-    def delete_rule(self, name):
+    def delete_rule(self, name: str) -> bool:
         return self.rules.delete(name)
 
-    def clone_rule(self, name, new_name):
+    def clone_rule(self, name: str, new_name: str) -> Optional[dict[str, Any]]:
         return self.rules.clone(name, new_name)
 
-    def import_rules(self, rules, tier="community", force=False):
+    def import_rules(
+        self,
+        rules: list[dict[str, Any]],
+        tier: str = "community",
+        force: bool = False,
+    ) -> dict[str, int]:
         return self.rules.import_bulk(rules, tier=tier, force=force)
 
-    def export_rules(self, tier=None, detector=None):
+    def export_rules(
+        self,
+        tier: Optional[str] = None,
+        detector: Optional[str] = None,
+    ) -> list[dict[str, Any]]:
         return self.rules.export(tier=tier, detector=detector)
 
-    def get_rule_stats(self):
+    def get_rule_stats(self) -> dict[str, Any]:
         return self.rules.get_stats()
 
-    def reconcile_yaml_rules(self, custom_rules):
+    def reconcile_yaml_rules(self, custom_rules: list[Any]) -> dict[str, list[str]]:
         return self.rules.reconcile_yaml(custom_rules)
 
     # --- Channels facade ---
 
-    def list_notification_channels(self, source=None):
+    def list_notification_channels(self, source: Optional[str] = None) -> list[dict[str, Any]]:
         return self.channels.list(source=source)
 
-    def get_notification_channel(self, channel_id):
+    def get_notification_channel(self, channel_id: int) -> Optional[dict[str, Any]]:
         return self.channels.get(channel_id)
 
-    def count_notification_channels(self):
+    def count_notification_channels(self) -> int:
         return self.channels.count()
 
-    def create_notification_channel(self, data, channel_limit=None):
+    def create_notification_channel(
+        self,
+        data: dict[str, Any],
+        channel_limit: Optional[int] = None,
+    ) -> Optional[dict[str, Any]]:
         return self.channels.create(data, channel_limit=channel_limit)
 
-    def update_notification_channel(self, channel_id, data):
+    def update_notification_channel(self, channel_id: int, data: dict[str, Any]) -> Optional[dict[str, Any]]:
         return self.channels.update(channel_id, data)
 
-    def delete_notification_channel(self, channel_id):
+    def delete_notification_channel(self, channel_id: int) -> bool:
         return self.channels.delete(channel_id)
 
-    def bulk_update_channels(self, ids, action):
+    def bulk_update_channels(self, ids: list[int], action: str) -> int:
         return self.channels.bulk_update(ids, action)
 
-    def reconcile_yaml_channels(self, yaml_channels, channel_limit=None):
+    def reconcile_yaml_channels(
+        self,
+        yaml_channels: list[Any],
+        channel_limit: Optional[int] = None,
+    ) -> dict[str, list[str]]:
         return self.channels.reconcile_yaml(yaml_channels, channel_limit=channel_limit)
 
     # --- WebSocket connections facade ---
 
-    def record_ws_connection_open(self, connection_id, target_url, origin, timestamp):
+    def record_ws_connection_open(
+        self,
+        connection_id: str,
+        target_url: str,
+        origin: str,
+        timestamp: float,
+    ) -> None:
         return self.ws_connections.record_open(connection_id, target_url, origin, timestamp)
 
     def record_ws_connection_close(
-        self, connection_id, timestamp, duration, frames_sent, frames_received, findings_count, close_code
-    ):
+        self,
+        connection_id: str,
+        timestamp: float,
+        duration: float,
+        frames_sent: int,
+        frames_received: int,
+        findings_count: int,
+        close_code: Optional[int],
+    ) -> None:
         return self.ws_connections.record_close(
             connection_id, timestamp, duration, frames_sent, frames_received, findings_count, close_code
         )
 
-    def increment_ws_findings(self, connection_id, count):
+    def increment_ws_findings(self, connection_id: str, count: int) -> None:
         return self.ws_connections.increment_findings(connection_id, count)
 
-    def get_ws_connections(self, limit=50, offset=0):
+    def get_ws_connections(self, limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
         return self.ws_connections.get_connections(limit=limit, offset=offset)
 
-    def get_ws_stats(self, days=7):
+    def get_ws_stats(self, days: int = 7) -> dict[str, Any]:
         return self.ws_connections.get_stats(days=days)
 
-    def cleanup_ws_connections(self, retention_days=365):
+    def cleanup_ws_connections(self, retention_days: int = 365) -> int:
         return self.ws_connections.cleanup(retention_days=retention_days)
 
     # --- Allowlists facade ---
 
-    def add_allowlist_entry(self, list_type, pattern, description="", created_by=""):
+    def add_allowlist_entry(
+        self,
+        list_type: str,
+        pattern: str,
+        description: str = "",
+        created_by: str = "",
+    ) -> dict[str, Any]:
         return self.allowlists.add(list_type, pattern, description=description, created_by=created_by)
 
-    def update_allowlist_entry(self, entry_id, data):
+    def update_allowlist_entry(self, entry_id: int, data: dict[str, Any]) -> Optional[dict[str, Any]]:
         return self.allowlists.update(entry_id, data)
 
-    def get_allowlist_entry(self, entry_id):
+    def get_allowlist_entry(self, entry_id: int) -> Optional[dict[str, Any]]:
         return self.allowlists.get(entry_id)
 
-    def delete_allowlist_entry(self, entry_id):
+    def delete_allowlist_entry(self, entry_id: int) -> bool:
         return self.allowlists.delete(entry_id)
 
-    def list_allowlist_entries(self, list_type=None):
+    def list_allowlist_entries(self, list_type: Optional[str] = None) -> list[dict[str, Any]]:
         return self.allowlists.list(list_type=list_type)
 
-    def list_enabled_allowlist_entries(self, list_type=None):
+    def list_enabled_allowlist_entries(self, list_type: Optional[str] = None) -> list[dict[str, Any]]:
         return self.allowlists.list_enabled(list_type=list_type)
 
     # --- Config overrides facade ---
 
-    def get_config_overrides(self):
+    def get_config_overrides(self) -> dict[str, Any]:
         return self.config_overrides.get_all()
 
-    def set_config_override(self, key, value):
+    def set_config_override(self, key: str, value: Any) -> None:
         return self.config_overrides.set(key, value)
 
-    def delete_config_override(self, key):
+    def delete_config_override(self, key: str) -> bool:
         return self.config_overrides.delete(key)
 
     # --- MCP tool lists facade ---
 
-    def get_mcp_tool_lists(self):
+    def get_mcp_tool_lists(self) -> dict[str, list[dict[str, Any]]]:
         return self.mcp_tool_lists.get_lists()
 
-    def add_mcp_tool_entry(self, list_type, tool_name):
+    def add_mcp_tool_entry(self, list_type: str, tool_name: str) -> Optional[int]:
         return self.mcp_tool_lists.add_entry(list_type, tool_name)
 
-    def delete_mcp_tool_entry(self, entry_id):
+    def delete_mcp_tool_entry(self, entry_id: int) -> bool:
         return self.mcp_tool_lists.delete_entry(entry_id)
 
-    def reconcile_mcp_tool_lists(self, yaml_allowed, yaml_blocked):
+    def reconcile_mcp_tool_lists(
+        self,
+        yaml_allowed: Optional[list[Any]],
+        yaml_blocked: Optional[list[Any]],
+    ) -> dict[str, int]:
         return self.mcp_tool_lists.reconcile(yaml_allowed, yaml_blocked)
 
     # --- MCP detected tools tracking ---
 
-    def record_mcp_tool_seen(self, tool_name, description="", input_schema=""):
+    def record_mcp_tool_seen(self, tool_name: str, description: str = "", input_schema: str = "") -> None:
         """Record a tool seen. Upserts call_count, conditionally updates metadata."""
         if not tool_name:
             return
@@ -423,7 +489,7 @@ class AnalyticsStore:
                 )
         log.debug("mcp tool seen: %s", tool_name)
 
-    def get_mcp_detected_tools(self):
+    def get_mcp_detected_tools(self) -> list[dict[str, Any]]:
         """Return all detected MCP tools with metadata and call counts."""
         with self._connect() as conn:
             rows = conn.execute(
@@ -434,7 +500,14 @@ class AnalyticsStore:
 
     # --- MCP tool call logging ---
 
-    def record_mcp_tool_call(self, tool_name, session_id="", status="allowed", finding_count=0, source="proxy"):
+    def record_mcp_tool_call(
+        self,
+        tool_name: str,
+        session_id: str = "",
+        status: str = "allowed",
+        finding_count: int = 0,
+        source: str = "proxy",
+    ) -> None:
         """Log an MCP tool call for chain analysis."""
         if not tool_name:
             return
@@ -449,10 +522,14 @@ class AnalyticsStore:
                 )
         log.debug("mcp tool call: %s status=%s findings=%d source=%s", tool_name, status, finding_count, source)
 
-    def get_mcp_tool_calls(self, session_id=None, limit=100):
+    def get_mcp_tool_calls(
+        self,
+        session_id: Optional[str] = None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
         """Return recent MCP tool calls, optionally filtered by session."""
         query = "SELECT id, tool_name, session_id, timestamp, status, finding_count, source FROM mcp_tool_calls"
-        params = []  # type: list
+        params: list[Any] = []
         if session_id:
             query += " WHERE session_id = ?"
             params.append(session_id)
@@ -462,7 +539,7 @@ class AnalyticsStore:
             rows = conn.execute(query, params).fetchall()
         return [dict(r) for r in rows]
 
-    def cleanup_mcp_tool_calls(self, retention_days=30):
+    def cleanup_mcp_tool_calls(self, retention_days: int = 30) -> int:
         """Delete MCP tool calls older than retention_days."""
         from datetime import datetime, timedelta, timezone
 
@@ -477,7 +554,7 @@ class AnalyticsStore:
 
     # --- MCP Tool Baselines (drift detection) ---
 
-    def get_mcp_tool_baseline(self, tool_name):
+    def get_mcp_tool_baseline(self, tool_name: str) -> Optional[dict[str, Any]]:
         """Get stored baseline for a tool. Returns dict or None."""
         with self._connect() as conn:
             row = conn.execute(
@@ -487,7 +564,13 @@ class AnalyticsStore:
             ).fetchone()
         return dict(row) if row else None
 
-    def record_mcp_tool_baseline(self, tool_name, definition_hash, description, param_names):
+    def record_mcp_tool_baseline(
+        self,
+        tool_name: str,
+        definition_hash: str,
+        description: str,
+        param_names: list[str],
+    ) -> None:
         """Insert or replace a tool baseline."""
         import json as _json
 
@@ -503,7 +586,7 @@ class AnalyticsStore:
                     (tool_name, definition_hash, description, params_json, now, now),
                 )
 
-    def update_mcp_tool_baseline_seen(self, tool_name):
+    def update_mcp_tool_baseline_seen(self, tool_name: str) -> None:
         """Update last_seen timestamp for a tool baseline."""
         now = self._now()
         with self._lock:
@@ -513,7 +596,7 @@ class AnalyticsStore:
                     (now, tool_name),
                 )
 
-    def increment_mcp_tool_drift_count(self, tool_name):
+    def increment_mcp_tool_drift_count(self, tool_name: str) -> None:
         """Increment drift_count for a tool that changed."""
         with self._lock:
             with self._connect() as conn:
@@ -524,5 +607,5 @@ class AnalyticsStore:
 
     # --- Private helper kept for backward compat (used by channels internally) ---
 
-    def _parse_channel_row(self, row):
+    def _parse_channel_row(self, row: Any) -> dict[str, Any]:
         return self.channels._parse_row(row)

@@ -3,9 +3,9 @@
 import unittest
 
 from lumen_argus.config import (
+    Config,
     _parse_yaml,
     _validate_config,
-    Config,
     load_config,
 )
 

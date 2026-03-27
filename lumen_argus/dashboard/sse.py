@@ -5,10 +5,13 @@ Each connected client holds a thread (from ThreadingHTTPServer) until
 disconnected. A heartbeat thread prevents idle connection timeouts.
 """
 
+from __future__ import annotations
+
 import json
 import logging
 import threading
 import time
+from typing import Any
 
 log = logging.getLogger("argus.sse")
 
@@ -16,19 +19,19 @@ log = logging.getLogger("argus.sse")
 class SSEBroadcaster:
     """Thread-safe registry of SSE clients with broadcast capability."""
 
-    def __init__(self, heartbeat_interval: int = 30):
-        self._clients = []  # type: List[object]
+    def __init__(self, heartbeat_interval: int = 30) -> None:
+        self._clients: list[Any] = []
         self._lock = threading.Lock()
         self._heartbeat_interval = heartbeat_interval
         self._start_heartbeat()
 
-    def register(self, wfile) -> None:
+    def register(self, wfile: Any) -> None:
         """Register a new SSE client."""
         with self._lock:
             self._clients.append(wfile)
         log.debug("SSE client connected (%d total)", len(self._clients))
 
-    def unregister(self, wfile) -> None:
+    def unregister(self, wfile: Any) -> None:
         """Unregister a disconnected SSE client."""
         with self._lock:
             self._clients = [c for c in self._clients if c is not wfile]
@@ -39,7 +42,7 @@ class SSEBroadcaster:
         with self._lock:
             return len(self._clients)
 
-    def broadcast(self, event_type: str, data: dict) -> None:
+    def broadcast(self, event_type: str, data: dict[str, Any]) -> None:
         """Send an event to all connected SSE clients."""
         if not self._clients:
             return
@@ -66,7 +69,7 @@ class SSEBroadcaster:
     def _start_heartbeat(self) -> None:
         """Start background heartbeat thread to keep connections alive."""
 
-        def _heartbeat_loop():
+        def _heartbeat_loop() -> None:
             while True:
                 time.sleep(self._heartbeat_interval)
                 self.broadcast("heartbeat", {"time": time.time()})

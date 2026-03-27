@@ -6,7 +6,7 @@ import stat
 import tempfile
 import unittest
 
-from lumen_argus.config import Config, LoggingConfig, AllowlistConfig, DetectorConfig, ProxyConfig
+from lumen_argus.config import AllowlistConfig, Config, DetectorConfig, LoggingConfig, ProxyConfig
 from lumen_argus.log_utils import (
     SecureRotatingFileHandler,
     config_diff,

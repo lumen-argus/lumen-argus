@@ -1,9 +1,15 @@
 """Notification channels repository — extracted from AnalyticsStore."""
 
+from __future__ import annotations
+
+import builtins
 import json
 import logging
 import sqlite3
-from typing import Optional
+from typing import TYPE_CHECKING, Any, Optional
+
+if TYPE_CHECKING:
+    from lumen_argus.analytics.store import AnalyticsStore
 
 log = logging.getLogger("argus.analytics")
 
@@ -32,10 +38,10 @@ _CHANNEL_COLUMNS = (
 class ChannelsRepository:
     """Repository for notification channel CRUD operations."""
 
-    def __init__(self, store):
+    def __init__(self, store: AnalyticsStore) -> None:
         self._store = store
 
-    def _parse_row(self, row: sqlite3.Row) -> dict:
+    def _parse_row(self, row: sqlite3.Row) -> dict[str, Any]:
         """Convert a DB row to a dict with parsed JSON fields."""
         d = dict(row)
         for key in ("config", "events"):
@@ -47,7 +53,7 @@ class ChannelsRepository:
         d["enabled"] = bool(d.get("enabled", 1))
         return d
 
-    def list(self, source: Optional[str] = None) -> list:
+    def list(self, source: Optional[str] = None) -> builtins.list[dict[str, Any]]:
         """Return all channels, optionally filtered by source."""
         query = (
             "SELECT "
@@ -56,12 +62,12 @@ class ChannelsRepository:
             + (" WHERE source = ?" if source else "")
             + " ORDER BY id"
         )
-        params = [source] if source else []
+        params: builtins.list[Optional[str]] = [source] if source else []
         with self._store._connect() as conn:
             rows = conn.execute(query, params).fetchall()
         return [self._parse_row(r) for r in rows]
 
-    def get(self, channel_id: int) -> Optional[dict]:
+    def get(self, channel_id: int) -> Optional[dict[str, Any]]:
         """Return a single channel by ID (with full config)."""
         with self._store._connect() as conn:
             row = conn.execute(
@@ -73,15 +79,16 @@ class ChannelsRepository:
     def count(self) -> int:
         """Return total channel count (for limit enforcement)."""
         with self._store._connect() as conn:
-            return conn.execute(
+            row = conn.execute(
                 "SELECT COUNT(*) FROM notification_channels",
-            ).fetchone()[0]
+            ).fetchone()
+            return row[0] if row else 0
 
     def create(
         self,
-        data: dict,
-        channel_limit: "Optional[int]" = None,
-    ) -> dict:
+        data: dict[str, Any],
+        channel_limit: Optional[int] = None,
+    ) -> Optional[dict[str, Any]]:
         """Create a channel. Raises ValueError on validation failure.
 
         channel_limit: if set, count check + insert runs under the same
@@ -106,7 +113,7 @@ class ChannelsRepository:
             with self._store._connect() as conn:
                 # Atomic limit check under the same lock as insert
                 if channel_limit is not None:
-                    current = conn.execute("SELECT COUNT(*) FROM notification_channels").fetchone()[0]
+                    current: int = conn.execute("SELECT COUNT(*) FROM notification_channels").fetchone()[0]
                     if current >= channel_limit:
                         raise ValueError("channel_limit_reached")
                 created_by = data.get("created_by", "")
@@ -130,16 +137,16 @@ class ChannelsRepository:
                             created_by,
                         ),
                     )
-                    channel_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+                    channel_id: Any = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
                 except sqlite3.IntegrityError:
                     raise ValueError("channel name '%s' already exists" % name)
 
         return self.get(channel_id)
 
-    def update(self, channel_id: int, data: dict) -> Optional[dict]:
+    def update(self, channel_id: int, data: dict[str, Any]) -> Optional[dict[str, Any]]:
         """Update channel fields. Only updates provided keys."""
-        updates = []  # type: List[str]
-        params = []  # type: list
+        updates: builtins.list[str] = []
+        params: builtins.list[Any] = []
         for key in ("name", "type", "min_severity", "source"):
             if key in data:
                 updates.append("%s = ?" % key)
@@ -194,7 +201,7 @@ class ChannelsRepository:
                 )
                 return cursor.rowcount > 0
 
-    def bulk_update(self, ids: list, action: str) -> int:
+    def bulk_update(self, ids: builtins.list[int], action: str) -> int:
         """Bulk enable/disable/delete. Returns count affected."""
         if not ids:
             return 0
@@ -211,7 +218,7 @@ class ChannelsRepository:
                     enabled = 1 if action == "enable" else 0
                     cursor = conn.execute(
                         "UPDATE notification_channels SET enabled = ?, updated_at = ? WHERE id IN (%s)" % placeholders,
-                        [enabled, self._store._now()] + ids,
+                        [enabled, self._store._now(), *ids],
                     )
                 else:
                     return 0
@@ -219,9 +226,9 @@ class ChannelsRepository:
 
     def reconcile_yaml(
         self,
-        yaml_channels: list,
+        yaml_channels: builtins.list[Any],
         channel_limit: Optional[int] = None,
-    ) -> dict:
+    ) -> dict[str, builtins.list[str]]:
         """Kubernetes-style declarative reconciliation of YAML channels.
 
         YAML is fully authoritative for source='yaml' channels: all fields
@@ -230,10 +237,10 @@ class ChannelsRepository:
         channel_limit: max total channels (None = unlimited). Only blocks
         new creates — existing YAML channels are always updated.
         """
-        result = {"created": [], "updated": [], "deleted": []}  # type: dict
+        result: dict[str, builtins.list[str]] = {"created": [], "updated": [], "deleted": []}
 
         # Build lookup of YAML channels by name
-        yaml_by_name = {}
+        yaml_by_name: dict[str, Any] = {}
         for ch in yaml_channels:
             if not isinstance(ch, dict):
                 continue

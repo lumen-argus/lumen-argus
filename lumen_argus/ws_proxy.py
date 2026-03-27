@@ -7,8 +7,10 @@ Used by async_proxy.py which handles the WebSocket relay on the same port
 Binary frames pass through without scanning.
 """
 
+from __future__ import annotations
+
 import logging
-from typing import List
+from typing import Any, List, Optional
 
 from lumen_argus.models import Finding, ScanField
 from lumen_argus.text_utils import sanitize_text
@@ -25,9 +27,9 @@ class WebSocketScanner:
 
     def __init__(
         self,
-        detectors: list = None,
-        allowlist=None,
-        response_scanner=None,
+        detectors: Optional[list[Any]] = None,
+        allowlist: Any = None,
+        response_scanner: Any = None,
         scan_outbound: bool = True,
         scan_inbound: bool = True,
         max_frame_size: int = 1_048_576,

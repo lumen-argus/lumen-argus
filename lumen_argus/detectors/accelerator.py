@@ -11,9 +11,11 @@ Graceful fallback: if pyahocorasick is not installed, all rules are
 returned as candidates (equivalent to no pre-filter).
 """
 
+from __future__ import annotations
+
 import logging
 import time
-from typing import List, Set
+from typing import Any, Dict, List, Optional, Set
 
 from lumen_argus.detectors.literal_extractor import extract_literals
 
@@ -37,8 +39,8 @@ class AhoCorasickAccelerator:
     Build once at startup/reload, query per scan field.
     """
 
-    def __init__(self):
-        self._automaton = None  # type: Optional[ahocorasick.Automaton]
+    def __init__(self) -> None:
+        self._automaton: Optional[Any] = None  # ahocorasick.Automaton or None
         self._fallback_indices = set()  # type: Set[int]
         self._rule_count = 0
         self._literal_count = 0
@@ -50,7 +52,7 @@ class AhoCorasickAccelerator:
         return self._available and self._automaton is not None
 
     @property
-    def stats(self) -> dict:
+    def stats(self) -> dict[str, Any]:
         """Return build stats for logging/diagnostics."""
         return {
             "total_rules": self._rule_count,
@@ -60,7 +62,7 @@ class AhoCorasickAccelerator:
             "available": self.available,
         }
 
-    def build(self, compiled_rules: List[dict]) -> None:
+    def build(self, compiled_rules: List[dict[str, Any]]) -> None:
         """Build automaton from compiled rules.
 
         Args:
@@ -84,7 +86,7 @@ class AhoCorasickAccelerator:
 
         # Extract literals from each rule's regex pattern
         # Map: literal -> set of rule indices
-        literal_to_rules = {}  # type: Dict[str, Set[int]]
+        literal_to_rules: Dict[str, Set[int]] = {}
 
         for idx, rule in enumerate(compiled_rules):
             pattern_str = rule["compiled"].pattern

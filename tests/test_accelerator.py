@@ -3,7 +3,7 @@
 import re
 import unittest
 
-from lumen_argus.detectors.accelerator import AhoCorasickAccelerator, _HAS_AHOCORASICK
+from lumen_argus.detectors.accelerator import _HAS_AHOCORASICK, AhoCorasickAccelerator
 
 
 def _make_rule(name, pattern, detector="secrets", severity="high", action="alert"):

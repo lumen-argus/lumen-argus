@@ -370,8 +370,8 @@ class TestProHooksIntegration(unittest.TestCase):
     """Test policy engine and escalation hooks with mock implementations."""
 
     def test_policy_engine_blocks_tool_call(self):
-        from lumen_argus.models import Finding
         from lumen_argus.mcp.proxy import _run_policy_engine
+        from lumen_argus.models import Finding
 
         class MockPolicyEngine:
             def evaluate(self, tool_name, arguments):
@@ -448,6 +448,7 @@ class TestHTTPServerIntegration(unittest.TestCase):
     def test_http_server_initialize(self):
         async def _test():
             import aiohttp
+
             from tests.fixtures.mcp_http_server import create_app, start_server, stop_server
 
             app = create_app(scenarios=set())
@@ -470,6 +471,7 @@ class TestHTTPServerIntegration(unittest.TestCase):
     def test_http_server_tools_list(self):
         async def _test():
             import aiohttp
+
             from tests.fixtures.mcp_http_server import create_app, start_server, stop_server
 
             app = create_app(scenarios=set())
@@ -491,6 +493,7 @@ class TestHTTPServerIntegration(unittest.TestCase):
     def test_http_server_health(self):
         async def _test():
             import aiohttp
+
             from tests.fixtures.mcp_http_server import create_app, start_server, stop_server
 
             app = create_app(scenarios=set())
@@ -508,6 +511,7 @@ class TestHTTPServerIntegration(unittest.TestCase):
     def test_http_server_poisoned_scenario(self):
         async def _test():
             import aiohttp
+
             from tests.fixtures.mcp_http_server import create_app, start_server, stop_server
 
             app = create_app(scenarios={"poisoned"})
@@ -542,6 +546,7 @@ class TestWebSocketServerIntegration(unittest.TestCase):
     def test_ws_server_initialize(self):
         async def _test():
             import aiohttp
+
             from tests.fixtures.mcp_ws_server import create_app, start_server, stop_server
 
             app = create_app(scenarios=set())
@@ -562,6 +567,7 @@ class TestWebSocketServerIntegration(unittest.TestCase):
     def test_ws_server_tools_call(self):
         async def _test():
             import aiohttp
+
             from tests.fixtures.mcp_ws_server import create_app, start_server, stop_server
 
             app = create_app(scenarios=set())
@@ -593,6 +599,7 @@ class TestWebSocketServerIntegration(unittest.TestCase):
 
         async def _test():
             import aiohttp
+
             from tests.fixtures.mcp_ws_server import create_app, start_server, stop_server
 
             app = create_app(scenarios={"unsolicited"})

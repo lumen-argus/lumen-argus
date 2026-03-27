@@ -9,7 +9,6 @@ from lumen_argus.models import SessionContext
 from lumen_argus.pipeline import ScannerPipeline
 from tests.helpers import StoreTestCase
 
-
 # Build dynamically to avoid GitHub push protection
 _STRIPE_KEY = "sk" + "_test_" + "a" * 24 + "EXAMPLE"
 

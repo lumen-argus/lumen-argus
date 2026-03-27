@@ -11,12 +11,14 @@ Modes:
 - run_ws_bridge: stdio client -> WebSocket upstream
 """
 
+from __future__ import annotations
+
 import asyncio
 import json
 import logging
 import sys
 import time
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from lumen_argus.mcp.scanner import MCPScanner
 from lumen_argus.mcp.transport import (
@@ -28,7 +30,7 @@ from lumen_argus.mcp.transport import (
 log = logging.getLogger("argus.mcp")
 
 
-def _run_policy_engine(policy_engine, tool_name: str, arguments: dict) -> list:
+def _run_policy_engine(policy_engine: Any, tool_name: str, arguments: dict[str, Any]) -> list[Any]:
     """Run Pro policy engine on a tools/call request. Returns findings list.
 
     Returns empty list if no engine registered or engine raises.
@@ -36,13 +38,15 @@ def _run_policy_engine(policy_engine, tool_name: str, arguments: dict) -> list:
     if policy_engine is None:
         return []
     try:
-        return policy_engine.evaluate(tool_name, arguments)
+        return policy_engine.evaluate(tool_name, arguments)  # type: ignore[no-any-return]
     except Exception as exc:
         log.warning("mcp: policy engine raised %s", exc)
         return []
 
 
-def _signal_escalation(escalation_fn, signal_type: str, session_id: str, details: dict = None) -> Optional[str]:
+def _signal_escalation(
+    escalation_fn: Any, signal_type: str, session_id: str, details: Optional[dict[str, Any]] = None
+) -> Optional[str]:
     """Feed a threat signal to Pro's adaptive enforcement. Returns enforcement level.
 
     Returns None if no escalation function registered or it raises.
@@ -56,13 +60,13 @@ def _signal_escalation(escalation_fn, signal_type: str, session_id: str, details
         level = escalation_fn(signal_type, session_id, details or {})
         if level and level != "normal":
             log.info("mcp: session escalation level: %s (signal=%s)", level, signal_type)
-        return level
+        return str(level) if level else None
     except Exception as exc:
         log.warning("mcp: session escalation raised %s", exc)
         return None
 
 
-def _jsonrpc_error(msg_id, message: str) -> dict:
+def _jsonrpc_error(msg_id: Any, message: str) -> dict[str, Any]:
     """Build a JSON-RPC 2.0 error response."""
     return {
         "jsonrpc": "2.0",
@@ -72,13 +76,13 @@ def _jsonrpc_error(msg_id, message: str) -> dict:
 
 
 def _check_tools_call(
-    msg: dict,
+    msg: dict[str, Any],
     scanner: MCPScanner,
     action: str,
-    policy_engine,
-    escalation_fn,
+    policy_engine: Any,
+    escalation_fn: Any,
     session_id: str = "",
-) -> Optional[dict]:
+) -> Optional[dict[str, Any]]:
     """Validate a tools/call request: session binding → policy engine → scanner.
 
     Returns a JSON-RPC error dict if the call should be blocked, or None if
@@ -117,10 +121,10 @@ def _check_tools_call(
 
 
 def _handle_response(
-    msg: dict,
-    pending_requests: dict,
+    msg: dict[str, Any],
+    pending_requests: dict[Any, Any],
     scanner: MCPScanner,
-    escalation_fn,
+    escalation_fn: Any,
     session_id: str = "",
 ) -> bool:
     """Process an MCP response: confused deputy check, response scan, tools/list handling.
@@ -155,7 +159,7 @@ def _handle_response(
     return True  # forward
 
 
-def _track_outbound(msg: dict, pending_requests: dict, scanner: MCPScanner) -> None:
+def _track_outbound(msg: dict[str, Any], pending_requests: dict[Any, Any], scanner: MCPScanner) -> None:
     """Track an outbound request for confused deputy protection and method correlation."""
     method = msg.get("method", "")
     msg_id = msg.get("id")
@@ -172,9 +176,9 @@ _MAX_BODY_SIZE = 10 * 1024 * 1024
 async def run_stdio_proxy(
     command: List[str],
     scanner: MCPScanner,
-    env: Optional[dict] = None,
-    policy_engine=None,
-    escalation_fn=None,
+    env: Optional[dict[str, str]] = None,
+    policy_engine: Any = None,
+    escalation_fn: Any = None,
 ) -> int:
     """Run MCP proxy in stdio subprocess mode.
 
@@ -201,7 +205,7 @@ async def run_stdio_proxy(
         env=env,
     )
 
-    pending_requests = {}  # id -> method
+    pending_requests: dict[Any, Any] = {}  # id -> method
     _stdout_lock = asyncio.Lock()
 
     async def _write_stdout(data: bytes) -> None:
@@ -210,7 +214,7 @@ async def run_stdio_proxy(
             sys.stdout.buffer.write(data)
             sys.stdout.buffer.flush()
 
-    async def _relay_stdin():
+    async def _relay_stdin() -> None:
         """Read from client stdin, scan, forward to subprocess."""
         client = await StdioTransport.from_process_stdio()
 
@@ -226,6 +230,9 @@ async def run_stdio_proxy(
                 msg = json.loads(line_str)
             except json.JSONDecodeError:
                 # Forward unparseable lines transparently
+                if proc.stdin is None:
+                    log.error("mcp: subprocess stdin pipe closed, cannot forward data")
+                    break
                 proc.stdin.write(data + b"\n")
                 await proc.stdin.drain()
                 continue
@@ -250,6 +257,9 @@ async def run_stdio_proxy(
                 forward.append(m)
 
             if forward:
+                if proc.stdin is None:
+                    log.error("mcp: subprocess stdin pipe closed, cannot forward messages")
+                    break
                 if len(forward) == 1 and not isinstance(msg, list):
                     proc.stdin.write(data + b"\n")
                 else:
@@ -257,10 +267,14 @@ async def run_stdio_proxy(
                     proc.stdin.write(json.dumps(out).encode() + b"\n")
                 await proc.stdin.drain()
 
-        proc.stdin.close()
+        if proc.stdin is not None:
+            proc.stdin.close()
 
-    async def _relay_stdout():
+    async def _relay_stdout() -> None:
         """Read from subprocess stdout, scan, forward to client."""
+        if proc.stdout is None:
+            log.error("mcp: subprocess stdout pipe not available")
+            return
         while True:
             line = await proc.stdout.readline()
             if not line:
@@ -285,8 +299,11 @@ async def run_stdio_proxy(
 
             await _write_stdout(line)
 
-    async def _relay_stderr():
+    async def _relay_stderr() -> None:
         """Pipe subprocess stderr to our stderr."""
+        if proc.stderr is None:
+            log.error("mcp: subprocess stderr pipe not available")
+            return
         while True:
             line = await proc.stderr.readline()
             if not line:
@@ -304,15 +321,16 @@ async def run_stdio_proxy(
         log.error("mcp relay error: %s", e)
 
     await proc.wait()
-    log.info("mcp: subprocess exited with code %d", proc.returncode)
-    return proc.returncode
+    exit_code = proc.returncode or 1
+    log.info("mcp: subprocess exited with code %d", exit_code)
+    return exit_code
 
 
 async def run_http_bridge(
     upstream_url: str,
     scanner: MCPScanner,
-    policy_engine=None,
-    escalation_fn=None,
+    policy_engine: Any = None,
+    escalation_fn: Any = None,
 ) -> int:
     """Run MCP proxy in HTTP bridge mode (stdio client -> HTTP upstream).
 
@@ -324,7 +342,7 @@ async def run_http_bridge(
     action = scanner._action
     log.info("mcp: HTTP bridge to %s", upstream_url)
 
-    pending_requests = {}
+    pending_requests: dict[Any, Any] = {}
 
     async with aiohttp.ClientSession() as session:
         transport = HTTPClientTransport(session, upstream_url)
@@ -389,8 +407,8 @@ async def run_http_listener(
     listen_port: int,
     upstream_url: str,
     scanner: MCPScanner,
-    policy_engine=None,
-    escalation_fn=None,
+    policy_engine: Any = None,
+    escalation_fn: Any = None,
 ) -> int:
     """Run MCP proxy in HTTP reverse proxy mode (HTTP listener -> HTTP upstream).
 
@@ -407,7 +425,7 @@ async def run_http_listener(
     upstream_session = aiohttp.ClientSession()
     upstream = HTTPClientTransport(upstream_session, upstream_url)
 
-    async def handle_health(request):
+    async def handle_health(request: web.Request) -> web.Response:
         uptime = time.monotonic() - start_time
         return web.json_response(
             {
@@ -418,7 +436,7 @@ async def run_http_listener(
             }
         )
 
-    async def handle_post(request):
+    async def handle_post(request: web.Request) -> web.Response:
         # Extract session ID from MCP header for escalation tracking
         session_id = request.headers.get("Mcp-Session-Id", "")
 
@@ -452,7 +470,7 @@ async def run_http_listener(
 
         # Scan request
         method = msg.get("method", "") if isinstance(msg, dict) else ""
-        pending_requests = {}  # single request/response — local scope
+        pending_requests: dict[Any, Any] = {}  # single request/response — local scope
 
         if isinstance(msg, dict) and method == "tools/call":
             error = _check_tools_call(msg, scanner, action, policy_engine, escalation_fn, session_id)
@@ -514,8 +532,8 @@ async def run_http_listener(
 async def run_ws_bridge(
     upstream_url: str,
     scanner: MCPScanner,
-    policy_engine=None,
-    escalation_fn=None,
+    policy_engine: Any = None,
+    escalation_fn: Any = None,
 ) -> int:
     """Run MCP proxy in WebSocket bridge mode (stdio client -> WS upstream).
 
@@ -525,21 +543,21 @@ async def run_ws_bridge(
     import aiohttp
 
     # SSRF protection: only ws:// and wss:// schemes allowed
-    if not (upstream_url.startswith("ws://") or upstream_url.startswith("wss://")):
+    if not (upstream_url.startswith(("ws://", "wss://"))):
         log.error("mcp: invalid WebSocket URL scheme: %s", upstream_url)
         return 1
 
     action = scanner._action
     log.info("mcp: WebSocket bridge to %s", upstream_url)
 
-    pending_requests = {}
+    pending_requests: dict[Any, Any] = {}
 
     async with aiohttp.ClientSession() as session:
         async with session.ws_connect(upstream_url) as ws:
             ws_transport = WebSocketClientTransport(ws)
             client = await StdioTransport.from_process_stdio()
 
-            async def _relay_to_upstream():
+            async def _relay_to_upstream() -> None:
                 """stdin -> scan -> WebSocket."""
                 while True:
                     data = await client.read_message()
@@ -571,7 +589,7 @@ async def run_ws_bridge(
 
                 await ws_transport.close()
 
-            async def _relay_from_upstream():
+            async def _relay_from_upstream() -> None:
                 """WebSocket -> scan -> stdout."""
                 while True:
                     data = await ws_transport.read_message()
@@ -590,7 +608,7 @@ async def run_ws_bridge(
                     sys.stdout.buffer.write(data + b"\n")
                     sys.stdout.buffer.flush()
 
-            done, pending = await asyncio.wait(
+            _done, pending = await asyncio.wait(
                 [
                     asyncio.create_task(_relay_to_upstream()),
                     asyncio.create_task(_relay_from_upstream()),

@@ -6,10 +6,13 @@ to enable security investigation (WHO leaked, WHICH conversation, WHERE from).
 Moved from async_proxy.py to isolate session extraction logic from proxy transport.
 """
 
+from __future__ import annotations
+
 import hashlib
 import json
 import logging
 import re
+from typing import Any
 
 from lumen_argus.clients import identify_client
 from lumen_argus.models import SessionContext
@@ -40,7 +43,7 @@ _OS_PLATFORM_PATTERNS = [
 # ---------------------------------------------------------------------------
 
 
-def _get_system_text(data: dict, provider: str) -> str:
+def _get_system_text(data: dict[str, Any], provider: str) -> str:
     """Extract raw system prompt text from request body."""
     if provider == "anthropic":
         system = data.get("system", "")
@@ -66,11 +69,14 @@ def _get_system_text(data: dict, provider: str) -> str:
         if isinstance(sys_instr, dict):
             sys_parts = sys_instr.get("parts", [])
             if sys_parts and isinstance(sys_parts[0], dict):
-                return sys_parts[0].get("text", "")
+                result: str = sys_parts[0].get("text", "")
+                return result
     return ""
 
 
-def _extract_system_field(data: dict, provider: str, patterns: list, sanitize_path: bool = False) -> str:
+def _extract_system_field(
+    data: dict[str, Any], provider: str, patterns: list[re.Pattern[str]], sanitize_path: bool = False
+) -> str:
     """Extract a field from the system prompt using regex patterns."""
     system_text = _get_system_text(data, provider)
     if not system_text:
@@ -86,12 +92,12 @@ def _extract_system_field(data: dict, provider: str, patterns: list, sanitize_pa
     return ""
 
 
-def _extract_working_directory(data: dict, provider: str) -> str:
+def _extract_working_directory(data: dict[str, Any], provider: str) -> str:
     """Extract working directory from the system prompt."""
     return _extract_system_field(data, provider, _WORKDIR_PATTERNS, sanitize_path=True)
 
 
-def _derive_session_fingerprint(data: dict, provider: str) -> str:
+def _derive_session_fingerprint(data: dict[str, Any], provider: str) -> str:
     """Derive session fingerprint from first 3 conversation fields."""
     parts = [provider]
 
@@ -153,7 +159,7 @@ def _derive_session_fingerprint(data: dict, provider: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def extract_session(req_data, provider: str, headers: dict, source_ip: str) -> SessionContext:
+def extract_session(req_data: Any, provider: str, headers: dict[str, str], source_ip: str) -> SessionContext:
     """Extract session identity from request headers and body metadata.
 
     Args:

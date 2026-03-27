@@ -22,12 +22,14 @@ from lumen_argus.dashboard.html import (
     _build_dashboard_html,
 )
 from lumen_argus.dashboard.server import (
-    DashboardServer,
     _SESSION_TIMEOUT,
+    DashboardServer,
 )
 from lumen_argus.dashboard.sse import SSEBroadcaster
 from lumen_argus.extensions import ExtensionRegistry
-from tests.helpers import StoreTestCase, free_port as _free_port, make_store, seed_findings as _seed_findings
+from tests.helpers import StoreTestCase, make_store
+from tests.helpers import free_port as _free_port
+from tests.helpers import seed_findings as _seed_findings
 
 
 def _make_store(tmpdir):

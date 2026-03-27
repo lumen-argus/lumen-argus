@@ -9,13 +9,20 @@ Exit codes:
     3 — Findings with action "log" only (informational)
 """
 
+from __future__ import annotations
+
 import json
 import logging
 import re
 import subprocess
 import sys
 from dataclasses import replace
-from typing import Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
+
+if TYPE_CHECKING:
+    from lumen_argus.analytics.store import AnalyticsStore
+    from lumen_argus.config import Config
+    from lumen_argus.extensions import ExtensionRegistry
 
 from lumen_argus.allowlist import AllowlistMatcher
 from lumen_argus.config import load_config
@@ -34,8 +41,8 @@ _EXIT_CODES = {"block": 1, "redact": 2, "alert": 2, "log": 3}
 
 def _deduplicate(findings: List[Finding]) -> List[Finding]:
     """Collapse duplicate findings. Creates new objects to avoid mutation."""
-    seen = {}  # type: dict[tuple, int]
-    first = {}  # type: dict[tuple, Finding]
+    seen: dict[tuple[str, str, str], int] = {}
+    first: dict[tuple[str, str, str], Finding] = {}
     for f in findings:
         key = (f.detector, f.type, f.matched_value)
         if key in seen:
@@ -46,9 +53,9 @@ def _deduplicate(findings: List[Finding]) -> List[Finding]:
     return [replace(first[k], count=c) for k, c in seen.items()]
 
 
-def _build_detectors(config):
+def _build_detectors(config: Config) -> list[Any]:
     """Build detector list from config."""
-    detectors = [
+    detectors: list[Any] = [
         SecretsDetector(entropy_threshold=config.entropy_threshold),
         PIIDetector(),
         ProprietaryDetector(),
@@ -58,7 +65,7 @@ def _build_detectors(config):
     return detectors
 
 
-def _resolve_exit_code(findings, config):
+def _resolve_exit_code(findings: List[Finding], config: Config) -> int:
     """Determine exit code from findings based on resolved actions.
 
     Uses the same action resolution as PolicyEngine: per-detector
@@ -67,7 +74,7 @@ def _resolve_exit_code(findings, config):
     if not findings:
         return 0
 
-    overrides = {}
+    overrides: dict[str, str] = {}
     if config.secrets.action:
         overrides["secrets"] = config.secrets.action
     if config.pii.action:
@@ -85,7 +92,9 @@ def _resolve_exit_code(findings, config):
     return exit_code
 
 
-def _build_allowlist(config, store=None, extensions=None):
+def _build_allowlist(
+    config: Config, store: AnalyticsStore | None = None, extensions: ExtensionRegistry | None = None
+) -> AllowlistMatcher:
     """Build allowlist from YAML config + DB entries."""
     secrets = list(config.allowlist.secrets)
     pii = list(config.allowlist.pii)
@@ -107,7 +116,8 @@ def _build_allowlist(config, store=None, extensions=None):
         factory = extensions.get_allowlist_matcher_factory()
         if factory:
             try:
-                return factory(secrets=secrets, pii=pii, paths=paths)
+                result: AllowlistMatcher = factory(secrets=secrets, pii=pii, paths=paths)
+                return result
             except Exception as e:
                 log.warning("allowlist matcher factory failed, using default: %s", e)
     return AllowlistMatcher(secrets=secrets, pii=pii, paths=paths)
@@ -115,7 +125,7 @@ def _build_allowlist(config, store=None, extensions=None):
 
 def scan_text(
     text: str,
-    config_path: str = None,
+    config_path: Optional[str] = None,
     output_format: str = "text",
 ) -> int:
     """Scan text for secrets/PII/proprietary content.
@@ -175,10 +185,10 @@ def scan_text(
 
 def scan_files(
     files: List[str],
-    config_path: str = None,
+    config_path: Optional[str] = None,
     output_format: str = "text",
-    baseline_path: str = None,
-    create_baseline_path: str = None,
+    baseline_path: Optional[str] = None,
+    create_baseline_path: Optional[str] = None,
 ) -> int:
     """Scan one or more files.
 

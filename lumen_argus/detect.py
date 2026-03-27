@@ -7,6 +7,8 @@ shell profiles and IDE settings.
 All detection is read-only — never modifies files. Setup is in setup_wizard.py.
 """
 
+from __future__ import annotations
+
 import enum
 import glob
 import json
@@ -17,7 +19,7 @@ import re
 import shutil
 import subprocess
 from dataclasses import asdict, dataclass, field
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from lumen_argus.clients import CLIENT_REGISTRY, ClientDef
 
@@ -34,7 +36,7 @@ _SHELL_PROFILES = {
 }
 
 # VS Code variants and their extensions/settings paths
-_VSCODE_VARIANTS = {
+_VSCODE_VARIANTS: dict[str, dict[str, tuple[str, ...]]] = {
     "VS Code": {
         "extensions": (
             "~/.vscode/extensions",
@@ -78,7 +80,7 @@ _VSCODE_VARIANTS = {
 _VERSION_RE = re.compile(r"(\d+\.\d+(?:\.\d+)?(?:[.-]\w+)?)")
 
 
-def load_jsonc(path: str) -> dict:
+def load_jsonc(path: str) -> dict[str, Any]:
     """Load a JSONC file (JSON with // comments). Returns parsed dict or empty dict on error."""
     expanded = os.path.expanduser(path)
     if not os.path.isfile(expanded):
@@ -86,7 +88,8 @@ def load_jsonc(path: str) -> dict:
     try:
         with open(expanded, "r", encoding="utf-8") as f:
             lines = [line for line in f if not line.lstrip().startswith("//")]
-        return json.loads("".join(lines))
+        result: dict[str, Any] = json.loads("".join(lines))
+        return result
     except json.JSONDecodeError as e:
         log.warning("invalid JSON in %s: %s", path, e)
         return {}
@@ -141,7 +144,7 @@ class DetectedClient:
     setup_cmd: str = ""
     website: str = ""
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
@@ -150,12 +153,12 @@ class DetectionReport:
     """Aggregate detection results for all agents."""
 
     clients: List[DetectedClient] = field(default_factory=list)
-    shell_env_vars: dict = field(default_factory=dict)  # {var_name: (value, file, line_num)}
+    shell_env_vars: dict[str, tuple[str, str, int]] = field(default_factory=dict)  # {var_name: (value, file, line_num)}
     platform: str = ""
     total_detected: int = 0
     total_configured: int = 0
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "platform": self.platform,
             "total_detected": self.total_detected,
@@ -494,16 +497,16 @@ def _detect_version(client: ClientDef, detected: DetectedClient) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _scan_shell_profiles(proxy_url: str = "") -> dict:
+def _scan_shell_profiles(proxy_url: str = "") -> dict[str, tuple[str, str, int]]:
     """Scan shell profile files for proxy env vars.
 
     Returns {var_name: (value, file_path, line_number)} for each found var.
     """
-    found = {}
+    found: dict[str, tuple[str, str, int]] = {}
     current_shell = os.path.basename(os.environ.get("SHELL", ""))
 
     # Determine which profiles to scan (current shell first, then others)
-    profiles_to_scan = []
+    profiles_to_scan: list[str] = []
     if current_shell in _SHELL_PROFILES:
         profiles_to_scan.extend(_SHELL_PROFILES[current_shell])
     for shell, profiles in _SHELL_PROFILES.items():
@@ -550,10 +553,10 @@ def _extract_env_value(line: str, var_name: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _build_settings_cache() -> dict:
-    """Load and parse all existing IDE settings files once. Returns {expanded_path: dict}."""
-    cache = {}
-    for variant_name, paths in _VSCODE_VARIANTS.items():
+def _build_settings_cache() -> dict[str, tuple[dict[str, Any], str]]:
+    """Load and parse all existing IDE settings files once. Returns {expanded_path: (settings, path)}."""
+    cache: dict[str, tuple[dict[str, Any], str]] = {}
+    for paths in _VSCODE_VARIANTS.values():
         for settings_path in paths["settings"]:
             expanded = os.path.expanduser(settings_path)
             if expanded in cache:
@@ -565,7 +568,9 @@ def _build_settings_cache() -> dict:
     return cache
 
 
-def _check_ide_proxy_settings(client: ClientDef, proxy_url: str = "", settings_cache: dict = None) -> Optional[tuple]:
+def _check_ide_proxy_settings(
+    client: ClientDef, proxy_url: str = "", settings_cache: Optional[dict[str, tuple[dict[str, Any], str]]] = None
+) -> Optional[tuple[bool, str, str]]:
     """Check if IDE settings have proxy configured for this client.
 
     Returns (is_configured, proxy_value, settings_file) or None if no settings found.
@@ -576,10 +581,10 @@ def _check_ide_proxy_settings(client: ClientDef, proxy_url: str = "", settings_c
     if settings_cache is None:
         settings_cache = _build_settings_cache()
 
-    for expanded, (settings, settings_path) in settings_cache.items():
-        value = settings.get(client.proxy_settings_key, "")
+    for settings, settings_path in settings_cache.values():
+        value: str = str(settings.get(client.proxy_settings_key, ""))
         if value:
-            is_match = proxy_url and proxy_url in value
+            is_match = bool(proxy_url and proxy_url in value)
             log.debug(
                 "IDE setting found: %s=%s in %s (match=%s)",
                 client.proxy_settings_key,
@@ -599,7 +604,7 @@ def _check_ide_proxy_settings(client: ClientDef, proxy_url: str = "", settings_c
 def detect_installed_clients(
     proxy_url: str = "http://localhost:8080",
     include_versions: bool = False,
-    extra_clients: list = None,
+    extra_clients: Optional[list[ClientDef]] = None,
 ) -> DetectionReport:
     """Scan the system for installed AI CLI agents and their proxy configuration status.
 
@@ -649,10 +654,10 @@ def detect_installed_clients(
 
 def _detect_single_client(
     client: ClientDef,
-    shell_env: dict,
+    shell_env: dict[str, tuple[str, str, int]],
     proxy_url: str,
     include_versions: bool,
-    settings_cache: dict = None,
+    settings_cache: Optional[dict[str, tuple[dict[str, Any], str]]] = None,
 ) -> DetectedClient:
     """Run all scanners for a single client, merge results."""
     # Try each scanner in order — first match wins for install detection
@@ -695,7 +700,7 @@ def _detect_single_client(
         value, file_path, line_num = shell_env[env_var]
         detected.proxy_url = value
         detected.proxy_config_location = "%s:%d" % (file_path, line_num)
-        detected.proxy_configured = proxy_url and proxy_url in value
+        detected.proxy_configured = bool(proxy_url and proxy_url in value)
 
     # Check IDE proxy settings (for extension-based tools)
     if not detected.proxy_configured and client.proxy_settings_key:

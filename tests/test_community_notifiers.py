@@ -7,7 +7,7 @@ import tempfile
 import threading
 import time
 import unittest
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from lumen_argus.analytics.store import AnalyticsStore
 from lumen_argus.models import Finding

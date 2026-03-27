@@ -5,10 +5,9 @@ import threading
 import time
 import unittest
 
-from tests.helpers import StoreTestCase
-
 from lumen_argus.models import Finding, ScanField, SessionContext
 from lumen_argus.pipeline import ContentFingerprint, _FindingDedup
+from tests.helpers import StoreTestCase
 
 
 class TestContentFingerprint(unittest.TestCase):
@@ -476,6 +475,7 @@ class TestValueHash(StoreTestCase):
     def setUp(self):
         super().setUp()
         import os
+
         from lumen_argus.analytics.store import AnalyticsStore
 
         self._hmac_key = b"\x00" * 32  # 32-byte test key
@@ -521,6 +521,7 @@ class TestValueHash(StoreTestCase):
     def test_value_hash_empty_when_no_key(self):
         """Without HMAC key, value_hash is empty string."""
         import tempfile
+
         from lumen_argus.analytics.store import AnalyticsStore
 
         tmpdir = tempfile.mkdtemp()

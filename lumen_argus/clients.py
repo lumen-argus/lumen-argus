@@ -7,9 +7,11 @@ for setup guides, and CLI for listing supported tools.
 Pro extends via extensions.register_clients() to add enterprise clients.
 """
 
+from __future__ import annotations
+
 import logging
 from dataclasses import asdict, dataclass
-from typing import List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 
 log = logging.getLogger("argus.clients")
 
@@ -23,12 +25,12 @@ class ClientDef:
     display_name: str  # human-readable (e.g., "Claude Code")
     category: str  # "cli" | "ide"
     provider: str  # "anthropic" | "openai" | "gemini" | "multi"
-    ua_prefixes: tuple  # lowercase prefixes for User-Agent matching
+    ua_prefixes: tuple[str, ...]  # lowercase prefixes for User-Agent matching
     env_var: str  # primary env var for setup
     setup_cmd: str  # one-liner setup example
     website: str  # project URL
     # Detection hints (used by lumen_argus/detect.py)
-    detect_binary: tuple = ()  # binary names to check via shutil.which()
+    detect_binary: tuple[str, ...] = ()  # binary names to check via shutil.which()
     detect_pip: str = ""  # pip package name (importlib.metadata)
     detect_npm: str = ""  # npm global package name
     detect_brew: str = ""  # homebrew formula name
@@ -37,7 +39,7 @@ class ClientDef:
     detect_neovim_plugin: str = ""  # Neovim plugin dir name (lazy.nvim/vim-plug/native)
     detect_app_name: str = ""  # macOS /Applications/*.app
     proxy_settings_key: str = ""  # IDE settings JSON key for proxy
-    version_command: tuple = ()  # command to get version
+    version_command: tuple[str, ...] = ()  # command to get version
 
 
 # ---------------------------------------------------------------------------
@@ -252,10 +254,9 @@ CLIENT_REGISTRY: List[ClientDef] = [
 ]
 
 # Build prefix→client lookup for fast matching
-_PREFIX_INDEX: List[Tuple[str, ClientDef]] = []
-for _client in CLIENT_REGISTRY:
-    for _prefix in _client.ua_prefixes:
-        _PREFIX_INDEX.append((_prefix, _client))
+_PREFIX_INDEX: List[Tuple[str, ClientDef]] = [
+    (_prefix, _client) for _client in CLIENT_REGISTRY for _prefix in _client.ua_prefixes
+]
 
 
 # ---------------------------------------------------------------------------
@@ -270,7 +271,7 @@ def _parse_version(raw_token: str) -> str:
     return ""
 
 
-def identify_client(user_agent: str, headers: dict = None) -> Tuple[str, str, str, str]:
+def identify_client(user_agent: str, headers: Optional[dict[str, str]] = None) -> Tuple[str, str, str, str]:
     """Identify the AI CLI agent from request headers.
 
     Returns (client_id, display_name, version, raw_ua_token):
@@ -301,7 +302,7 @@ def get_client_by_id(client_id: str) -> Optional[ClientDef]:
     return None
 
 
-def get_all_clients(extra_clients: list = None) -> List[dict]:
+def get_all_clients(extra_clients: Optional[list[Any]] = None) -> List[dict[str, Any]]:
     """Return all clients as dicts for API responses.
 
     Merges built-in registry with Pro-registered extra clients.

@@ -1,5 +1,7 @@
 """Built-in PII detection patterns with validation."""
 
+from __future__ import annotations
+
 import re
 from typing import Callable, NamedTuple, Optional
 

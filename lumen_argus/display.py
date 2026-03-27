@@ -1,8 +1,11 @@
 """Terminal display: CLI output with ANSI colors or JSON lines."""
 
+from __future__ import annotations
+
 import json
 import sys
 import threading
+from typing import Any, Optional
 
 from lumen_argus.models import ScanResult
 
@@ -122,7 +125,7 @@ class TerminalDisplay:
                 )
             )
 
-    def show_shutdown(self, stats: dict = None) -> None:
+    def show_shutdown(self, stats: Optional[dict[str, Any]] = None) -> None:
         """Display shutdown summary with optional session statistics."""
         with self._lock:
             print()
@@ -204,7 +207,7 @@ class TerminalDisplay:
 class JsonDisplay:
     """JSON lines output for machine-readable / CI use."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._lock = threading.Lock()
 
     def show_banner(self, port: int, bind: str = "127.0.0.1") -> None:
@@ -223,7 +226,7 @@ class JsonDisplay:
     ) -> None:
         findings = []
         for f in result.findings:
-            entry = {
+            entry: dict[str, Any] = {
                 "detector": f.detector,
                 "type": f.type,
                 "severity": f.severity,
@@ -253,10 +256,10 @@ class JsonDisplay:
     def show_error(self, request_id: int, error: str) -> None:
         self._emit({"event": "error", "request_id": request_id, "error": error})
 
-    def show_shutdown(self, stats: dict = None) -> None:
+    def show_shutdown(self, stats: Optional[dict[str, Any]] = None) -> None:
         self._emit({"event": "shutdown", "stats": stats or {}})
 
-    def _emit(self, data: dict) -> None:
+    def _emit(self, data: dict[str, Any]) -> None:
         line = json.dumps(data, separators=(",", ":"))
         with self._lock:
             sys.stdout.write(line + "\n")

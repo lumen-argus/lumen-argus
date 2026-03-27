@@ -3,7 +3,6 @@
 import json
 import unittest
 
-from tests.helpers import StoreTestCase
 from lumen_argus.config import (
     Config,
     PipelineConfig,
@@ -13,6 +12,7 @@ from lumen_argus.config import (
 )
 from lumen_argus.dashboard.api import handle_community_api
 from lumen_argus.pipeline import ScannerPipeline
+from tests.helpers import StoreTestCase
 
 
 class TestPipelineConfigDataclasses(unittest.TestCase):

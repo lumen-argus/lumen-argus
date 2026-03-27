@@ -8,9 +8,14 @@ Used by:
 - async_proxy.py — MCP-aware scanning of HTTP API traffic
 """
 
+from __future__ import annotations
+
 import json
 import logging
-from typing import List, Optional, Set
+from typing import TYPE_CHECKING, Any, List, Optional, Set
+
+if TYPE_CHECKING:
+    from lumen_argus.analytics.store import AnalyticsStore
 
 from lumen_argus.models import Finding, ScanField
 from lumen_argus.text_utils import sanitize_text
@@ -18,7 +23,7 @@ from lumen_argus.text_utils import sanitize_text
 log = logging.getLogger("argus.mcp")
 
 
-def extract_text_from_content(content: list) -> str:
+def extract_text_from_content(content: list[Any]) -> str:
     """Extract scannable text from MCP result content array."""
     parts = []
     for item in content:
@@ -29,7 +34,7 @@ def extract_text_from_content(content: list) -> str:
     return "\n".join(parts)
 
 
-def detect_mcp_request(body: bytes) -> Optional[dict]:
+def detect_mcp_request(body: bytes) -> Optional[dict[str, Any]]:
     """Detect MCP tools/call in an HTTP request body.
 
     Returns dict with tool_name, arguments, request_id if MCP detected.
@@ -60,7 +65,7 @@ def detect_mcp_method(body: bytes) -> Optional[str]:
     return None
 
 
-def detect_mcp_tools_list_response(body: bytes) -> Optional[list]:
+def detect_mcp_tools_list_response(body: bytes) -> Optional[list[dict[str, Any]]]:
     """Detect tools/list response and extract tool metadata.
 
     Returns list of {name, description, inputSchema} dicts, or None.
@@ -86,7 +91,7 @@ def detect_mcp_tools_list_response(body: bytes) -> Optional[list]:
     return None
 
 
-def detect_mcp_response(body: bytes) -> Optional[dict]:
+def detect_mcp_response(body: bytes) -> Optional[dict[str, Any]]:
     """Detect MCP tool response in an HTTP response body.
 
     Returns dict with request_id, content if MCP response detected.
@@ -115,20 +120,20 @@ class MCPScanner:
 
     def __init__(
         self,
-        detectors: list = None,
-        allowlist=None,
-        response_scanner=None,
+        detectors: Optional[list[Any]] = None,
+        allowlist: Any = None,
+        response_scanner: Any = None,
         scan_arguments: bool = True,
         scan_responses: bool = True,
         allowed_tools: Optional[Set[str]] = None,
         blocked_tools: Optional[Set[str]] = None,
         action: str = "alert",
-        request_tracker=None,
-        session_binding=None,
+        request_tracker: Any = None,
+        session_binding: Any = None,
         scan_tool_descriptions: bool = True,
         detect_drift: bool = True,
         drift_action: str = "alert",
-        store=None,
+        store: AnalyticsStore | None = None,
     ):
         self._detectors = detectors or []
         self._allowlist = allowlist
@@ -154,7 +159,7 @@ class MCPScanner:
             return False
         return True
 
-    def scan_request(self, msg: dict) -> List[Finding]:
+    def scan_request(self, msg: dict[str, Any]) -> List[Finding]:
         """Scan a tools/call request for secrets in arguments."""
         if not self._scan_arguments:
             return []
@@ -203,7 +208,7 @@ class MCPScanner:
 
         return findings
 
-    def scan_arguments(self, tool_name: str, arguments: dict) -> List[Finding]:
+    def scan_arguments(self, tool_name: str, arguments: dict[str, Any]) -> List[Finding]:
         """Scan tool call arguments directly (for proxy integration)."""
         if not self._scan_arguments or not arguments:
             return []
@@ -227,7 +232,7 @@ class MCPScanner:
 
         return findings
 
-    def scan_response(self, msg: dict, request_method: str = "") -> List[Finding]:
+    def scan_response(self, msg: dict[str, Any], request_method: str = "") -> List[Finding]:
         """Scan a tool response for secrets and injection in content."""
         if not self._scan_responses:
             return []
@@ -242,7 +247,7 @@ class MCPScanner:
 
         return self.scan_response_content(content)
 
-    def scan_response_content(self, content: list) -> List[Finding]:
+    def scan_response_content(self, content: list[Any]) -> List[Finding]:
         """Scan MCP response content array (for proxy integration)."""
         if not self._scan_responses:
             return []
@@ -278,7 +283,7 @@ class MCPScanner:
 
         return findings
 
-    def process_tools_list(self, tools: list) -> List[Finding]:
+    def process_tools_list(self, tools: list[dict[str, Any]]) -> List[Finding]:
         """Process a tools/list response: poisoning scan, drift check, session binding.
 
         Args:

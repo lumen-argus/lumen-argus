@@ -7,20 +7,29 @@ in the analytics DB for the dashboard Rule Analysis page.
 Install: pip install lumen-argus[rules-analysis]
 """
 
+from __future__ import annotations
+
 import json
 import logging
 import threading
 import time
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from lumen_argus.analytics.store import AnalyticsStore
+    from lumen_argus.config import Config
+    from lumen_argus.extensions import ExtensionRegistry
 
 from lumen_argus.time_utils import now_iso
 
 log = logging.getLogger("argus.rule_analysis")
 
 try:
-    from crossfire.generator import CorpusGenerator
-    from crossfire.evaluator import Evaluator
     from crossfire.classifier import Classifier
-    from crossfire.models import Rule as CrossfireRule, Relationship
+    from crossfire.evaluator import Evaluator
+    from crossfire.generator import CorpusGenerator
+    from crossfire.models import Relationship
+    from crossfire.models import Rule as CrossfireRule
     from crossfire.quality import assess_quality
 
     HAS_CROSSFIRE = True
@@ -30,7 +39,7 @@ except ImportError:
     log.info("crossfire not installed — rule overlap analysis disabled. Install with: pip install crossfire")
 
 
-def _rules_to_crossfire(db_rules):
+def _rules_to_crossfire(db_rules: list[dict[str, Any]]) -> tuple[list[Any], dict[str, dict[str, Any]]]:
     """Convert DB rule dicts to Crossfire Rule objects.
 
     Skips rules with invalid or empty patterns.
@@ -38,8 +47,8 @@ def _rules_to_crossfire(db_rules):
     """
     import re as re_mod
 
-    cf_rules = []
-    lookup = {}
+    cf_rules: list[Any] = []
+    lookup: dict[str, dict[str, Any]] = {}
     for r in db_rules:
         name = r.get("name", "")
         pattern = r.get("pattern", "")
@@ -66,12 +75,12 @@ def _rules_to_crossfire(db_rules):
     return cf_rules, lookup
 
 
-def _tier_priority(tier):
+def _tier_priority(tier: str) -> int:
     """Map rule tier to priority (higher = keep in conflicts)."""
     return {"community": 100, "custom": 90, "pro": 80}.get(tier, 50)
 
 
-def _overlap_to_dict(result, lookup):
+def _overlap_to_dict(result: Any, lookup: dict[str, dict[str, Any]]) -> dict[str, Any]:
     """Convert a crossfire OverlapResult to a JSON-serializable dict."""
     rule_a_info = lookup.get(result.rule_a, {})
     rule_b_info = lookup.get(result.rule_b, {})
@@ -95,7 +104,7 @@ def _overlap_to_dict(result, lookup):
     }
 
 
-def _cluster_to_dict(cluster):
+def _cluster_to_dict(cluster: Any) -> dict[str, Any]:
     """Convert a crossfire ClusterInfo to a JSON-serializable dict."""
     return {
         "id": cluster.id,
@@ -105,7 +114,7 @@ def _cluster_to_dict(cluster):
     }
 
 
-def _rule_quality_to_dict(rq):
+def _rule_quality_to_dict(rq: Any) -> dict[str, Any]:
     """Convert a crossfire RuleQuality to a JSON-serializable dict."""
     return {
         "name": rq.name,
@@ -120,7 +129,7 @@ def _rule_quality_to_dict(rq):
     }
 
 
-def _quality_to_dict(report):
+def _quality_to_dict(report: Any) -> dict[str, Any]:
     """Convert a crossfire QualityReport to a JSON-serializable dict."""
     return {
         "broad_patterns": [_rule_quality_to_dict(r) for r in report.broad_patterns],
@@ -130,7 +139,9 @@ def _quality_to_dict(report):
     }
 
 
-def run_analysis(store, *, samples=50, threshold=0.8, seed=42):
+def run_analysis(
+    store: AnalyticsStore, *, samples: int = 50, threshold: float = 0.8, seed: int = 42
+) -> dict[str, Any] | None:
     """Run overlap analysis on all active rules (synchronous).
 
     Returns results dict, or None if crossfire is not installed or analysis fails.
@@ -141,7 +152,7 @@ def run_analysis(store, *, samples=50, threshold=0.8, seed=42):
     return _run_analysis_with_status(store, samples=samples, threshold=threshold, seed=seed)
 
 
-def save_and_return(store, result):
+def save_and_return(store: AnalyticsStore, result: dict[str, Any] | None) -> dict[str, Any] | None:
     """Save analysis result to DB and return it.
 
     Filters out dismissed findings before returning.
@@ -178,11 +189,11 @@ def save_and_return(store, result):
     return result
 
 
-def filter_dismissed(result, dismissed_pairs):
+def filter_dismissed(result: dict[str, Any], dismissed_pairs: list[list[str]]) -> dict[str, Any]:
     """Remove dismissed pairs from analysis results."""
     dismissed_set = {(a, b) for a, b in dismissed_pairs}
 
-    def _keep(item):
+    def _keep(item: dict[str, Any]) -> bool:
         pair = (item["rule_a"], item["rule_b"])
         reverse = (item["rule_b"], item["rule_a"])
         return pair not in dismissed_set and reverse not in dismissed_set
@@ -195,7 +206,7 @@ def filter_dismissed(result, dismissed_pairs):
 
 
 _analysis_lock = threading.Lock()
-_analysis_log_lines = []  # log lines for UI streaming
+_analysis_log_lines: list[str] = []  # log lines for UI streaming
 _MAX_LOG_LINES = 5000
 _analysis_status = {
     "running": False,
@@ -205,7 +216,7 @@ _analysis_status = {
 }
 
 
-def get_analysis_status(since=0):
+def get_analysis_status(since: int = 0) -> dict[str, Any]:
     """Return current analysis status with log lines since offset (thread-safe).
 
     Args:
@@ -218,7 +229,7 @@ def get_analysis_status(since=0):
     return result
 
 
-def _set_status(running, phase="", progress=""):
+def _set_status(running: bool, phase: str = "", progress: str = "") -> None:
     with _analysis_lock:
         _analysis_status["running"] = running
         _analysis_status["phase"] = phase
@@ -230,7 +241,7 @@ def _set_status(running, phase="", progress=""):
             _analysis_status["started_at"] = ""
 
 
-def _append_log(line):
+def _append_log(line: str) -> None:
     """Append a log line to the buffer (thread-safe, bounded to _MAX_LOG_LINES)."""
     with _analysis_lock:
         _analysis_log_lines.append(line)
@@ -245,17 +256,17 @@ class _AnalysisLogHandler(logging.Handler):
     to update the status bar dynamically (e.g., "Generating corpus: 10 of 1736 rules").
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         self._gen_count = 0
         self._gen_total = 0
         self._eval_chunks_done = 0
 
-    def set_total_rules(self, total):
+    def set_total_rules(self, total: int) -> None:
         self._gen_count = 0
         self._gen_total = total
 
-    def emit(self, record):
+    def emit(self, record: logging.LogRecord) -> None:
         try:
             msg = self.format(record)
             _append_log(msg)
@@ -279,15 +290,22 @@ class _AnalysisLogHandler(logging.Handler):
             self.handleError(record)
 
 
-def is_analysis_running():
+def is_analysis_running() -> bool:
     """Check if analysis is currently running (thread-safe)."""
     with _analysis_lock:
-        return _analysis_status["running"]
+        return bool(_analysis_status["running"])
 
 
 def run_analysis_in_background(
-    store, extensions=None, *, thread_name="rule-analysis", samples=50, threshold=0.8, seed=42, config=None
-):
+    store: AnalyticsStore,
+    extensions: ExtensionRegistry | None = None,
+    *,
+    thread_name: str = "rule-analysis",
+    samples: int = 50,
+    threshold: float = 0.8,
+    seed: int = 42,
+    config: Config | None = None,
+) -> bool:
     """Run overlap analysis in a background thread with SSE broadcast on completion.
 
     Shared by both the API trigger endpoint and CLI auto-analysis after import.
@@ -313,7 +331,7 @@ def run_analysis_in_background(
 
     _set_status(True, "starting", "Loading rules...")
 
-    def _run():
+    def _run() -> None:
         try:
             result = _run_analysis_with_status(store, samples=samples, threshold=threshold, seed=seed)
             if result:
@@ -343,7 +361,9 @@ def run_analysis_in_background(
     return True
 
 
-def _run_analysis_with_status(store, *, samples=50, threshold=0.8, seed=42):
+def _run_analysis_with_status(
+    store: AnalyticsStore, *, samples: int = 50, threshold: float = 0.8, seed: int = 42
+) -> dict[str, Any] | None:
     """Run analysis with status updates and log capture for UI streaming."""
     handler = _AnalysisLogHandler()
     handler.setFormatter(logging.Formatter("%(message)s"))
@@ -352,7 +372,7 @@ def _run_analysis_with_status(store, *, samples=50, threshold=0.8, seed=42):
         logging.getLogger("argus.rule_analysis"),
         logging.getLogger("crossfire"),  # catches all crossfire.* sub-loggers
     ]
-    saved_levels = {}
+    saved_levels: dict[str, int] = {}
     for lg in captured_loggers:
         lg.addHandler(handler)
         # Ensure DEBUG messages reach our handler regardless of root logger level
@@ -369,7 +389,14 @@ def _run_analysis_with_status(store, *, samples=50, threshold=0.8, seed=42):
                 lg.setLevel(saved_levels[lg.name])
 
 
-def _do_analysis(store, *, handler=None, samples=50, threshold=0.8, seed=42):
+def _do_analysis(
+    store: AnalyticsStore,
+    *,
+    handler: _AnalysisLogHandler | None = None,
+    samples: int = 50,
+    threshold: float = 0.8,
+    seed: int = 42,
+) -> dict[str, Any] | None:
     """Core analysis logic with status updates."""
     log.info("starting rule overlap analysis (samples=%d, threshold=%.2f, seed=%d)", samples, threshold, seed)
     start = time.monotonic()

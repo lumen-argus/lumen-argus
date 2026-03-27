@@ -8,6 +8,8 @@ The baseline never stores actual secret values — only detector type,
 finding type, file path, and a hash of the matched line content.
 """
 
+from __future__ import annotations
+
 import hashlib
 import json
 import os
@@ -79,15 +81,15 @@ def save_baseline(path: str, findings_by_file: Dict[str, List[Finding]]) -> None
         parent = os.path.dirname(path)
         if parent:
             os.makedirs(parent, exist_ok=True)
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
-            f.write("\n")
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, indent=2)
+            fh.write("\n")
         print("lumen-argus: baseline saved to %s (%d findings)" % (path, len(entries)), file=sys.stderr)
     except OSError as e:
         print("lumen-argus: failed to save baseline: %s" % e, file=sys.stderr)
 
 
-def filter_baseline(findings: List[Finding], filepath: str, baseline: Set) -> List[Finding]:
+def filter_baseline(findings: List[Finding], filepath: str, baseline: Set[Tuple[str, str, str, str]]) -> List[Finding]:
     """Remove findings that are in the baseline."""
     if not baseline:
         return findings

@@ -17,18 +17,20 @@ import hashlib
 import unittest
 from unittest.mock import MagicMock
 
-from lumen_argus.models import AuditEntry, Finding, SessionContext
-from tests.helpers import StoreTestCase
 from lumen_argus.clients import identify_client
+from lumen_argus.models import AuditEntry, Finding, SessionContext
 from lumen_argus.session import (
+    _GIT_BRANCH_PATTERNS,
+    _OS_PLATFORM_PATTERNS,
     _derive_session_fingerprint,
-    extract_session as _extract_session,
     _extract_system_field,
     _extract_working_directory,
     _get_system_text,
-    _GIT_BRANCH_PATTERNS,
-    _OS_PLATFORM_PATTERNS,
 )
+from lumen_argus.session import (
+    extract_session as _extract_session,
+)
+from tests.helpers import StoreTestCase
 
 
 class _HandlerShim:

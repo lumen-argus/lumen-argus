@@ -1,6 +1,32 @@
 repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+        args: ['--unsafe']
+      - id: check-json
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: debug-statements
+      - id: detect-private-key
+        exclude: ^(tests/|benchmark\.py|docs/|lumen_argus/patterns/|lumen_argus/rules/)
+      - id: check-added-large-files
+        args: ['--maxkb=500']
+
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.15.6
     hooks:
       - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
       - id: ruff-format
+
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy
+        entry: .venv/bin/mypy --strict
+        language: system
+        types: [python]
+        exclude: ^(tests/|benchmark\.py)

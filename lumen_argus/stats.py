@@ -1,6 +1,9 @@
 """Session statistics: thread-safe counters for requests, findings, and timing."""
 
+from __future__ import annotations
+
 import threading
+from typing import Any
 
 from lumen_argus.models import ScanResult
 
@@ -8,14 +11,14 @@ from lumen_argus.models import ScanResult
 class SessionStats:
     """Thread-safe session statistics collector."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._lock = threading.Lock()
         self.total_requests = 0
         self.total_bytes_scanned = 0
-        self.actions = {"pass": 0, "log": 0, "alert": 0, "block": 0}  # type: Dict[str, int]
-        self.providers = {}  # type: Dict[str, int]
-        self.finding_types = {}  # type: Dict[str, int]
-        self.scan_times_ms = []  # type: List[float]
+        self.actions: dict[str, int] = {"pass": 0, "log": 0, "alert": 0, "block": 0}
+        self.providers: dict[str, int] = {}
+        self.finding_types: dict[str, int] = {}
+        self.scan_times_ms: list[float] = []
 
     def record(
         self,
@@ -42,7 +45,7 @@ class SessionStats:
             if result.scan_duration_ms > 0:
                 self.scan_times_ms.append(result.scan_duration_ms)
 
-    def summary(self) -> dict:
+    def summary(self) -> dict[str, Any]:
         """Return a snapshot of current stats."""
         with self._lock:
             avg_scan = 0.0

@@ -6,7 +6,6 @@ import unittest
 from lumen_argus.actions import try_strip_blocked_history
 from lumen_argus.models import Finding
 
-
 _FAKE_SECRET = "FAKE_SECRET_VALUE_FOR_TESTING"
 
 

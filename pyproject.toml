@@ -35,6 +35,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+dev = ["mypy>=1.10", "types-PyYAML>=6.0", "pre-commit>=3.7"]
 docs = ["mkdocs>=1.5", "mkdocs-material>=9.0"]
 rules-analysis = ["crossfire>=0.1.0"]
 
@@ -50,6 +51,36 @@ include = ["lumen_argus*"]
 [tool.setuptools.package-data]
 "lumen_argus.dashboard" = ["static/**/*"]
 "lumen_argus.rules" = ["*.json"]
+
+[tool.ruff]
+target-version = "py39"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "C4", "PIE", "PT", "RUF", "PERF", "I"]
+ignore = ["PERF203"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["PT", "RUF059", "PERF401", "RUF003", "RUF005", "RUF015", "C401"]
+"__init__.py" = ["F401"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["lumen_argus"]
+
+[tool.mypy]
+strict = true
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+
+[[tool.mypy.overrides]]
+module = [
+    "ahocorasick",
+    "ahocorasick.*",
+    "crossfire",
+    "crossfire.*",
+]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -7,7 +7,6 @@ from lumen_argus.dashboard.api import handle_community_api
 from lumen_argus.models import Finding, SessionContext
 from tests.helpers import StoreTestCase
 
-
 _finding_counter = 0
 
 

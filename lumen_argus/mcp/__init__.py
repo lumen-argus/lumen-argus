@@ -7,6 +7,8 @@ Provides:
 - Helper functions: detect_mcp_request, detect_mcp_response, etc.
 """
 
+from __future__ import annotations
+
 from lumen_argus.mcp.scanner import (
     MCPScanner,
     detect_mcp_method,

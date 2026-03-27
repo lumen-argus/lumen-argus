@@ -5,6 +5,8 @@ the DB-backed RulesDetector (detectors/rules.py). Centralizing prevents
 drift between the two detection paths.
 """
 
+from __future__ import annotations
+
 
 def validate_ssn(value: str) -> bool:
     """Validate US SSN: not 000/666/900+ area, not 00 group, not 0000 serial."""

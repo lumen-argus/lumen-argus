@@ -1,7 +1,13 @@
 """Rule analysis repository — caches overlap analysis results."""
 
+from __future__ import annotations
+
 import json
 import logging
+from typing import TYPE_CHECKING, Any, Optional
+
+if TYPE_CHECKING:
+    from lumen_argus.analytics.store import AnalyticsStore
 
 log = logging.getLogger("argus.analytics")
 
@@ -23,10 +29,19 @@ CREATE TABLE IF NOT EXISTS rule_analysis (
 class RuleAnalysisRepository:
     """Repository for rule overlap analysis results."""
 
-    def __init__(self, store):
+    def __init__(self, store: AnalyticsStore) -> None:
         self._store = store
 
-    def save_analysis(self, timestamp, duration_s, total_rules, duplicates, subsets, overlaps, results_json):
+    def save_analysis(
+        self,
+        timestamp: str,
+        duration_s: float,
+        total_rules: int,
+        duplicates: int,
+        subsets: int,
+        overlaps: int,
+        results_json: str,
+    ) -> None:
         """Insert a new analysis result. Keeps only the latest row."""
         with self._store._connect() as conn:
             prev_dismissed = "[]"
@@ -43,7 +58,7 @@ class RuleAnalysisRepository:
             )
         log.debug("saved rule analysis: %d rules, %d dup, %d sub, %d ovr", total_rules, duplicates, subsets, overlaps)
 
-    def get_latest_analysis(self):
+    def get_latest_analysis(self) -> Optional[dict[str, Any]]:
         """Get the most recent analysis result, or None."""
         with self._store._connect() as conn:
             row = conn.execute(
@@ -52,12 +67,12 @@ class RuleAnalysisRepository:
             ).fetchone()
         if not row:
             return None
-        results = {}
+        results: dict[str, Any] = {}
         try:
             results = json.loads(row[6])
         except (json.JSONDecodeError, TypeError) as exc:
             log.warning("could not parse results_json: %s", exc)
-        dismissed = []
+        dismissed: list[Any] = []
         try:
             dismissed = json.loads(row[7])
         except (json.JSONDecodeError, TypeError) as exc:
@@ -79,7 +94,7 @@ class RuleAnalysisRepository:
             "dismissed": dismissed,
         }
 
-    def get_latest_analysis_filtered(self):
+    def get_latest_analysis_filtered(self) -> Optional[dict[str, Any]]:
         """Get the most recent analysis with dismissed findings removed.
 
         Returns the result dict without the 'dismissed' key — ready for API response.
@@ -92,7 +107,7 @@ class RuleAnalysisRepository:
         if dismissed:
             dismissed_set = {(a, b) for a, b in dismissed}
 
-            def _keep(item):
+            def _keep(item: dict[str, Any]) -> bool:
                 pair = (item["rule_a"], item["rule_b"])
                 reverse = (item["rule_b"], item["rule_a"])
                 return pair not in dismissed_set and reverse not in dismissed_set
@@ -102,7 +117,7 @@ class RuleAnalysisRepository:
             raw["overlaps"] = [o for o in raw["overlaps"] if _keep(o)]
         return raw
 
-    def dismiss_finding(self, rule_a, rule_b):
+    def dismiss_finding(self, rule_a: str, rule_b: str) -> bool:
         """Add a pair to the dismissed list. Returns True if added, False if already dismissed."""
         with self._store._connect() as conn:
             row = conn.execute("SELECT id, dismissed_json FROM rule_analysis ORDER BY id DESC LIMIT 1").fetchone()
@@ -110,7 +125,7 @@ class RuleAnalysisRepository:
                 log.warning("dismiss_finding called but no analysis exists")
                 return False
 
-            dismissed = []
+            dismissed: list[Any] = []
             try:
                 dismissed = json.loads(row[1])
             except (json.JSONDecodeError, TypeError) as exc:
@@ -129,19 +144,19 @@ class RuleAnalysisRepository:
         log.info("dismissed finding: %s ↔ %s", rule_a, rule_b)
         return True
 
-    def get_dismissed_findings(self):
+    def get_dismissed_findings(self) -> list[Any]:
         """Return list of dismissed [rule_a, rule_b] pairs."""
         with self._store._connect() as conn:
             row = conn.execute("SELECT dismissed_json FROM rule_analysis ORDER BY id DESC LIMIT 1").fetchone()
         if not row:
             return []
         try:
-            return json.loads(row[0])
+            return json.loads(row[0])  # type: ignore[no-any-return]
         except (json.JSONDecodeError, TypeError) as exc:
             log.warning("could not parse dismissed_json in get_dismissed: %s", exc)
             return []
 
-    def clear_analysis(self):
+    def clear_analysis(self) -> None:
         """Delete all analysis data."""
         with self._store._connect() as conn:
             conn.execute("DELETE FROM rule_analysis")

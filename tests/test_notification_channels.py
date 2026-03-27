@@ -470,8 +470,9 @@ class TestNotificationConfigParsing(unittest.TestCase):
     """Test config.py notification section parsing and validation."""
 
     def test_parse_notifications(self):
-        from lumen_argus.config import load_config
         import tempfile
+
+        from lumen_argus.config import load_config
 
         tmpdir = tempfile.mkdtemp()
         config_path = os.path.join(tmpdir, "config.yaml")

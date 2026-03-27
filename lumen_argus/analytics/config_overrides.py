@@ -1,6 +1,12 @@
 """Config overrides repository — extracted from AnalyticsStore."""
 
+from __future__ import annotations
+
 import logging
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from lumen_argus.analytics.store import AnalyticsStore
 
 log = logging.getLogger("argus.analytics")
 
@@ -47,10 +53,10 @@ _VALID_ACTIONS = {"log", "alert", "block"}
 class ConfigOverridesRepository:
     """Repository for config override CRUD operations."""
 
-    def __init__(self, store):
+    def __init__(self, store: AnalyticsStore) -> None:
         self._store = store
 
-    def get_all(self):
+    def get_all(self) -> dict[str, Any]:
         """Return all config overrides as a dict."""
         with self._store._connect() as conn:
             rows = conn.execute("SELECT key, value FROM config_overrides").fetchall()
@@ -58,7 +64,7 @@ class ConfigOverridesRepository:
         log.debug("loaded %d config override(s) from DB", len(overrides))
         return overrides
 
-    def set(self, key, value):
+    def set(self, key: str, value: Any) -> None:
         """Set a config override. Validates key and value."""
         if key not in _VALID_CONFIG_KEYS:
             raise ValueError("Invalid config key: %s" % key)
@@ -90,7 +96,7 @@ class ConfigOverridesRepository:
             if value.lower() not in ("true", "false"):
                 raise ValueError("parallel_batching must be true or false")
             value = value.lower()
-        elif key.endswith(".enabled") or key.endswith((".base64", ".hex", ".url", ".unicode")):
+        elif key.endswith((".enabled", ".base64", ".hex", ".url", ".unicode")):
             if value.lower() not in ("true", "false"):
                 raise ValueError("%s must be true or false" % key)
             value = value.lower()  # normalize
@@ -125,7 +131,7 @@ class ConfigOverridesRepository:
                 )
         log.debug("config override stored: %s = %s", key, value)
 
-    def delete(self, key):
+    def delete(self, key: str) -> bool:
         """Delete a config override (revert to YAML default)."""
         with self._store._lock:
             with self._store._connect() as conn:

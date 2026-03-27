@@ -1,10 +1,10 @@
 """Integration tests for the async (aiohttp) proxy server."""
 
 import asyncio
+import http.server
 import json
 import threading
 import unittest
-import http.server
 
 import aiohttp
 
@@ -495,9 +495,9 @@ class TestAsyncProxyWebSocket(unittest.TestCase):
 
     def _create_proxy_with_ws(self):
         """Create an async proxy with WebSocket scanning enabled."""
-        from lumen_argus.ws_proxy import WebSocketScanner
-        from lumen_argus.detectors.secrets import SecretsDetector
         from lumen_argus.allowlist import AllowlistMatcher
+        from lumen_argus.detectors.secrets import SecretsDetector
+        from lumen_argus.ws_proxy import WebSocketScanner
 
         pipeline = ScannerPipeline(default_action="alert", action_overrides={"secrets": "block"})
         router = ProviderRouter()
@@ -603,10 +603,10 @@ class TestAsyncProxyWebSocketHooks(unittest.TestCase):
 
     def test_ws_hook_called_on_validation_failure(self):
         """Hook should fire open+close even when upstream fails."""
+        from lumen_argus.allowlist import AllowlistMatcher
+        from lumen_argus.detectors.secrets import SecretsDetector
         from lumen_argus.extensions import ExtensionRegistry
         from lumen_argus.ws_proxy import WebSocketScanner
-        from lumen_argus.detectors.secrets import SecretsDetector
-        from lumen_argus.allowlist import AllowlistMatcher
 
         hook_events = []
 
@@ -714,10 +714,10 @@ class TestAsyncProxyWebSocketRelay(unittest.TestCase):
         cls.tmpdir = tempfile.mkdtemp()
 
     def _create_proxy(self, default_action="alert", action_overrides=None):
-        from lumen_argus.ws_proxy import WebSocketScanner
-        from lumen_argus.detectors.secrets import SecretsDetector
         from lumen_argus.allowlist import AllowlistMatcher
+        from lumen_argus.detectors.secrets import SecretsDetector
         from lumen_argus.extensions import ExtensionRegistry
+        from lumen_argus.ws_proxy import WebSocketScanner
 
         pipeline = ScannerPipeline(
             default_action=default_action,
@@ -863,8 +863,8 @@ class TestWebSocketPolicyEnforcement(unittest.TestCase):
 
     def test_block_action_evaluated(self):
         """PolicyEngine returns block for secrets when action_overrides={'secrets': 'block'}."""
-        from lumen_argus.policy import PolicyEngine
         from lumen_argus.models import Finding
+        from lumen_argus.policy import PolicyEngine
 
         policy = PolicyEngine(default_action="alert", action_overrides={"secrets": "block"})
         findings = [
@@ -882,8 +882,8 @@ class TestWebSocketPolicyEnforcement(unittest.TestCase):
 
     def test_alert_action_evaluated(self):
         """PolicyEngine returns alert for secrets when action_overrides={'secrets': 'alert'}."""
-        from lumen_argus.policy import PolicyEngine
         from lumen_argus.models import Finding
+        from lumen_argus.policy import PolicyEngine
 
         policy = PolicyEngine(default_action="alert", action_overrides={"secrets": "alert"})
         findings = [
@@ -901,9 +901,9 @@ class TestWebSocketPolicyEnforcement(unittest.TestCase):
 
     def test_ws_scanner_detects_outbound_secret(self):
         """WebSocketScanner detects secrets in outbound frames."""
-        from lumen_argus.ws_proxy import WebSocketScanner
-        from lumen_argus.detectors.secrets import SecretsDetector
         from lumen_argus.allowlist import AllowlistMatcher
+        from lumen_argus.detectors.secrets import SecretsDetector
+        from lumen_argus.ws_proxy import WebSocketScanner
 
         scanner = WebSocketScanner(
             detectors=[SecretsDetector()],
@@ -917,9 +917,9 @@ class TestWebSocketPolicyEnforcement(unittest.TestCase):
 
     def test_ws_scanner_clean_frame(self):
         """WebSocketScanner returns empty findings for clean text."""
-        from lumen_argus.ws_proxy import WebSocketScanner
-        from lumen_argus.detectors.secrets import SecretsDetector
         from lumen_argus.allowlist import AllowlistMatcher
+        from lumen_argus.detectors.secrets import SecretsDetector
+        from lumen_argus.ws_proxy import WebSocketScanner
 
         scanner = WebSocketScanner(
             detectors=[SecretsDetector()],

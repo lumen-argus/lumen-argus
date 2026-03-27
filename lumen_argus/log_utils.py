@@ -1,14 +1,17 @@
 """Log utilities: file handler setup, sanitization, export, and config diffing."""
 
+from __future__ import annotations
+
+import io
 import logging
 import logging.handlers
 import os
 import re
 import sys
+from typing import Any
 from urllib.parse import urlparse
 
 from lumen_argus.provider import DEFAULT_UPSTREAMS
-
 
 # ---------------------------------------------------------------------------
 # Input sanitization — log injection prevention (OWASP / Sonar S5145)
@@ -22,7 +25,7 @@ def _strip_control_chars(value: str) -> str:
     return _CONTROL_CHAR_RE.sub("", value)
 
 
-def sanitize_user_input(data):
+def sanitize_user_input(data: Any) -> Any:
     """Recursively sanitize user-controlled data at the API boundary.
 
     Strips control characters from all string keys and values in dicts,
@@ -52,17 +55,17 @@ class SecureRotatingFileHandler(logging.handlers.RotatingFileHandler):
     same pattern as AuditLogger.
     """
 
-    def _open(self):
+    def _open(self) -> io.TextIOWrapper:
         """Open the log file with 0o600 permissions atomically."""
         fd = os.open(
             self.baseFilename,
             os.O_WRONLY | os.O_CREAT | os.O_APPEND,
             0o600,
         )
-        return os.fdopen(fd, self.mode, encoding=self.encoding)
+        return io.TextIOWrapper(io.FileIO(fd, self.mode), encoding=self.encoding)
 
 
-def setup_file_logging(logging_config):
+def setup_file_logging(logging_config: Any) -> tuple[SecureRotatingFileHandler, str, int]:
     """Create and configure a secure rotating file handler.
 
     Args:
@@ -99,9 +102,9 @@ def setup_file_logging(logging_config):
 # ---------------------------------------------------------------------------
 
 
-def _build_provider_hosts():
+def _build_provider_hosts() -> frozenset[str]:
     """Derive known provider hostnames from DEFAULT_UPSTREAMS."""
-    hosts = set()
+    hosts: set[str] = set()
     for url in DEFAULT_UPSTREAMS.values():
         try:
             parsed = urlparse(url)
@@ -121,7 +124,7 @@ _HOST_RE = re.compile(r"\b([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-
 _PATH_RE = re.compile(r"(?<!\w)(~?/[\w./-]+)")
 
 
-def sanitize_log_line(line, extra_hosts=None):
+def sanitize_log_line(line: str, extra_hosts: set[str] | None = None) -> str:
     """Strip IPs, non-provider hostnames, and file paths from a log line.
 
     Args:
@@ -129,15 +132,15 @@ def sanitize_log_line(line, extra_hosts=None):
         extra_hosts: Optional set of additional hostnames to preserve
                      (e.g. from user-configured upstreams).
     """
-    safe_hosts = _PROVIDER_HOSTS
+    safe_hosts: frozenset[str] | set[str] = _PROVIDER_HOSTS
     if extra_hosts:
-        safe_hosts = safe_hosts | set(extra_hosts)
+        safe_hosts = _PROVIDER_HOSTS | set(extra_hosts)
 
     # Replace IP addresses
     line = _IP_RE.sub("[IP]", line)
 
     # Replace hostnames except known providers
-    def replace_host(m):
+    def replace_host(m: re.Match[str]) -> str:
         host = m.group(0)
         if host in safe_hosts:
             return host
@@ -150,7 +153,7 @@ def sanitize_log_line(line, extra_hosts=None):
     return line
 
 
-def config_diff(old, new):
+def config_diff(old: Any, new: Any) -> list[str]:
     """Compare two Config objects and return list of change descriptions."""
     changes = []
     if old.default_action != new.default_action:
@@ -216,7 +219,7 @@ def config_diff(old, new):
     return changes
 
 
-def export_logs(config, sanitize=False):
+def export_logs(config: Any, sanitize: bool = False) -> int:
     """Export log files to stdout, optionally sanitized.
 
     Reads rotated files in chronological order (oldest first), then current.

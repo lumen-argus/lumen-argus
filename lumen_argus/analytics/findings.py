@@ -1,12 +1,17 @@
 """Findings repository — extracted from AnalyticsStore."""
 
+from __future__ import annotations
+
 import hashlib
 import hmac as hmac_mod
 import logging
-from typing import List, Optional
+from typing import TYPE_CHECKING, Any, List, Optional
 
 from lumen_argus.models import Finding, SessionContext
 from lumen_argus.time_utils import now_iso_ms
+
+if TYPE_CHECKING:
+    from lumen_argus.analytics.store import AnalyticsStore
 
 log = logging.getLogger("argus.analytics")
 
@@ -57,7 +62,7 @@ _FINDINGS_COLUMNS = (
 class FindingsRepository:
     """Repository for findings CRUD operations."""
 
-    def __init__(self, store):
+    def __init__(self, store: AnalyticsStore) -> None:
         self._store = store
 
     def record(
@@ -65,7 +70,7 @@ class FindingsRepository:
         findings: List[Finding],
         provider: str = "",
         model: str = "",
-        session: "SessionContext" = None,
+        session: Optional[SessionContext] = None,
     ) -> None:
         """Insert findings into the store. Thread-safe.
 
@@ -165,11 +170,11 @@ class FindingsRepository:
         finding_type: Optional[str] = None,
         client_name: Optional[str] = None,
         days: Optional[int] = None,
-    ) -> tuple:
+    ) -> tuple[list[dict[str, Any]], Any]:
         """Return (findings_list, total_count) with optional filters."""
         where = ""
-        conditions = []
-        params = []  # type: list
+        conditions: list[str] = []
+        params: list[Any] = []
         if severity:
             conditions.append("severity = ?")
             params.append(severity)
@@ -206,11 +211,11 @@ class FindingsRepository:
             ).fetchone()[0]
             rows = conn.execute(
                 "SELECT " + _FINDINGS_COLUMNS + " FROM findings" + where + " ORDER BY id DESC LIMIT ? OFFSET ?",
-                params + [limit, offset],
+                [*params, limit, offset],
             ).fetchall()
         return [dict(r) for r in rows], total
 
-    def get_by_id(self, finding_id: int) -> Optional[dict]:
+    def get_by_id(self, finding_id: int) -> Optional[dict[str, Any]]:
         """Return a single finding by ID."""
         with self._store._connect() as conn:
             row = conn.execute(
@@ -219,7 +224,7 @@ class FindingsRepository:
             ).fetchone()
         return dict(row) if row else None
 
-    def get_account_stats(self, limit: int = 10) -> list:
+    def get_account_stats(self, limit: int = 10) -> list[dict[str, Any]]:
         """Return top accounts by finding count.
 
         Returns list of dicts with account_id, finding_count, session_count.
@@ -238,7 +243,7 @@ class FindingsRepository:
             ).fetchall()
         return [dict(r) for r in rows]
 
-    def get_stats(self, days: int = 30) -> dict:
+    def get_stats(self, days: int = 30) -> dict[str, Any]:
         """Return aggregate statistics for the dashboard.
 
         Args:
@@ -292,15 +297,16 @@ class FindingsRepository:
             ):
                 by_client[row["client_name"]] = row["cnt"]
 
-            daily = []
-            for row in conn.execute(
-                "SELECT DATE(timestamp) as day, COUNT(*) as cnt "
-                "FROM findings "
-                "WHERE timestamp >= DATE('now', '-' || ? || ' days') "
-                "GROUP BY day ORDER BY day",
-                (days,),
-            ):
-                daily.append({"date": row["day"], "count": row["cnt"]})
+            daily = [
+                {"date": row["day"], "count": row["cnt"]}
+                for row in conn.execute(
+                    "SELECT DATE(timestamp) as day, COUNT(*) as cnt "
+                    "FROM findings "
+                    "WHERE timestamp >= DATE('now', '-' || ? || ' days') "
+                    "GROUP BY day ORDER BY day",
+                    (days,),
+                )
+            ]
 
         return {
             "total_findings": total,
@@ -316,7 +322,7 @@ class FindingsRepository:
             "daily_trend": daily,
         }
 
-    def get_action_trend(self, days: int = 30) -> list:
+    def get_action_trend(self, days: int = 30) -> list[dict[str, Any]]:
         """Daily findings grouped by action_taken for stacked area chart."""
         days = max(1, min(days, 365))
         with self._store._connect() as conn:
@@ -328,7 +334,7 @@ class FindingsRepository:
                 (days,),
             ).fetchall()
         # Pivot into {date, block, redact, alert, log} per day
-        by_day = {}  # type: dict
+        by_day: dict[str, dict[str, Any]] = {}
         for row in rows:
             day = row["day"]
             if day not in by_day:
@@ -338,10 +344,10 @@ class FindingsRepository:
                 by_day[day][action] = row["cnt"]
         return sorted(by_day.values(), key=lambda d: d["date"])
 
-    def get_activity_matrix(self, days: int = 30) -> list:
+    def get_activity_matrix(self, days: int = 30) -> list[dict[str, Any]]:
         """Pre-shaped 7x24 activity matrix for heatmap chart.
 
-        Returns list of 7 objects (Mon–Sun), each with a 24-element hours array.
+        Returns list of 7 objects (Mon-Sun), each with a 24-element hours array.
         SQLite strftime('%w') returns 0=Sunday, so we remap to Mon-first order.
         """
         days = max(1, min(days, 365))
@@ -364,7 +370,7 @@ class FindingsRepository:
         day_order = [1, 2, 3, 4, 5, 6, 0]  # strftime %w indices
         return [{"weekday": day_names[i], "hours": grid[day_order[i]]} for i in range(7)]
 
-    def get_top_accounts(self, days: int = 30, limit: int = 8) -> list:
+    def get_top_accounts(self, days: int = 30, limit: int = 8) -> list[dict[str, Any]]:
         """Top accounts by finding count."""
         days = max(1, min(days, 365))
         with self._store._connect() as conn:
@@ -378,7 +384,7 @@ class FindingsRepository:
             ).fetchall()
         return [{"account_id": r["account_id"], "count": r["cnt"]} for r in rows]
 
-    def get_top_projects(self, days: int = 30, limit: int = 8) -> list:
+    def get_top_projects(self, days: int = 30, limit: int = 8) -> list[dict[str, Any]]:
         """Top working directories by finding count."""
         days = max(1, min(days, 365))
         with self._store._connect() as conn:
@@ -400,8 +406,8 @@ class FindingsRepository:
     ) -> int:
         """Return total number of findings, optionally filtered."""
         query = "SELECT COUNT(*) FROM findings"
-        conditions = []
-        params = []  # type: list
+        conditions: list[str] = []
+        params: list[Any] = []
         if severity:
             conditions.append("severity = ?")
             params.append(severity)
@@ -414,9 +420,10 @@ class FindingsRepository:
         if conditions:
             query += " WHERE " + " AND ".join(conditions)
         with self._store._connect() as conn:
-            return conn.execute(query, params).fetchone()[0]
+            row = conn.execute(query, params).fetchone()
+            return row[0] if row else 0
 
-    def get_sessions(self, limit: int = 50) -> list:
+    def get_sessions(self, limit: int = 50) -> list[dict[str, Any]]:
         """Return recent sessions with finding counts and metadata.
 
         Groups findings by session_id, returns aggregate info per session.
@@ -443,14 +450,14 @@ class FindingsRepository:
             ).fetchall()
         return [dict(r) for r in rows]
 
-    def get_dashboard_sessions(self, limit: int = 5, hours: int = 24) -> dict:
+    def get_dashboard_sessions(self, limit: int = 5, hours: int = 24) -> dict[str, Any]:
         """Return active sessions with severity breakdown for dashboard.
 
         Only includes sessions with findings in the last ``hours`` hours.
         Returns both the session list and total count (uncapped by limit)
         so the quick-stat card can show the real active session count.
         """
-        hours = max(1, min(hours, 168))  # 1h–7d
+        hours = max(1, min(hours, 168))  # 1h-7d
         time_filter = "AND timestamp >= DATETIME('now', '-%d hours')" % hours
         with self._store._connect() as conn:
             # Fetch limit+1 to detect if there are more sessions than limit

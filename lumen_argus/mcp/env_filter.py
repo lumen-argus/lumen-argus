@@ -6,6 +6,8 @@ through; sensitive variables (API keys, tokens, credentials, proxy settings)
 are stripped.
 """
 
+from __future__ import annotations
+
 import logging
 import os
 from typing import Dict, List, Optional
@@ -45,7 +47,7 @@ _SAFE_PREFIXES = ("LC_", "XDG_")
 def filter_env(
     extra_vars: Optional[Dict[str, str]] = None,
     config_allowlist: Optional[List[str]] = None,
-) -> dict:
+) -> dict[str, str]:
     """Build a filtered environment for MCP subprocess.
 
     Returns a new dict containing only safe variables from os.environ,
@@ -82,8 +84,7 @@ def filter_env(
 
     # Add explicit --env overrides (user takes responsibility)
     if extra_vars:
-        for key, value in extra_vars.items():
-            env[key] = value
+        env.update(extra_vars)
 
     if filtered_count > 0:
         log.info("mcp: filtered %d environment variable(s) from subprocess", filtered_count)

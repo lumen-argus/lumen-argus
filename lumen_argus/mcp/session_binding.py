@@ -5,7 +5,10 @@ baseline. Subsequent tools/call requests must reference a tool in this
 baseline. Unknown tools trigger a configurable action (warn or block).
 """
 
+from __future__ import annotations
+
 import logging
+from typing import Optional, Set
 
 log = logging.getLogger("argus.mcp")
 
@@ -19,8 +22,8 @@ class SessionBinding:
         action: What to do for unknown tools — "warn" or "block".
     """
 
-    def __init__(self, action: str = "warn"):
-        self._known_tools = None  # type: Optional[Set[str]]
+    def __init__(self, action: str = "warn") -> None:
+        self._known_tools: Optional[Set[str]] = None
         self._action = action
 
     @property
@@ -28,7 +31,7 @@ class SessionBinding:
         """Whether a baseline has been established."""
         return self._known_tools is not None
 
-    def set_baseline(self, tool_names: list) -> None:
+    def set_baseline(self, tool_names: list[str]) -> None:
         """Lock the session's tool inventory from first tools/list response.
 
         Only the first call takes effect — subsequent calls are ignored

@@ -1,20 +1,27 @@
 """Basic notification dispatcher — fire-and-forget."""
 
+from __future__ import annotations
+
 import json
 import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from typing import TYPE_CHECKING, Any, Callable
+
+if TYPE_CHECKING:
+    from lumen_argus.analytics.store import AnalyticsStore
 
 from lumen_argus.time_utils import now_iso
 
 log = logging.getLogger("argus.notifiers.dispatcher")
 
 
-def _parse_events(events):
+def _parse_events(events: Any) -> list[str]:
     """Ensure events is a list (may be JSON string from DB)."""
     if isinstance(events, str):
         try:
-            return json.loads(events)
+            result: list[str] = json.loads(events)
+            return result
         except Exception:
             return []
     return events or []
@@ -27,15 +34,17 @@ class BasicDispatcher:
     Pro replaces this with NotificationDispatcher (retry, circuit breaker, dedup).
     """
 
-    def __init__(self, store=None, builder=None, max_workers=4):
+    def __init__(
+        self, store: AnalyticsStore | None = None, builder: Callable[..., Any] | None = None, max_workers: int = 4
+    ) -> None:
         self._store = store
         self._builder = builder
         self._lock = threading.Lock()
-        self._notifiers = {}  # channel_id -> (channel_dict, notifier, events_list)
-        self._last_status = {}  # channel_id -> {"status", "error", "timestamp"}
+        self._notifiers: dict[int, tuple[dict[str, Any], Any, list[str]]] = {}
+        self._last_status: dict[int, dict[str, str]] = {}
         self._pool = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="argus-notify")
 
-    def rebuild(self):
+    def rebuild(self) -> None:
         """Rebuild notifier instances from DB channels."""
         if not self._store or not self._builder:
             log.debug("dispatcher rebuild skipped: store=%s, builder=%s", bool(self._store), bool(self._builder))
@@ -57,7 +66,7 @@ class BasicDispatcher:
         except Exception:
             log.warning("failed to rebuild dispatcher", exc_info=True)
 
-    def dispatch(self, findings, provider="", model="", **kwargs):
+    def dispatch(self, findings: list[Any], provider: str = "", model: str = "", **kwargs: Any) -> None:
         """Send findings to all matching channels via thread pool.
 
         Args:
@@ -81,7 +90,9 @@ class BasicDispatcher:
                 continue
             self._pool.submit(self._safe_notify, channel_id, channel, notifier, matching, provider, model)
 
-    def _safe_notify(self, channel_id, channel, notifier, findings, provider, model):
+    def _safe_notify(
+        self, channel_id: int, channel: dict[str, Any], notifier: Any, findings: list[Any], provider: str, model: str
+    ) -> None:
         try:
             notifier.notify(findings, provider=provider, model=model)
             with self._lock:
@@ -111,7 +122,7 @@ class BasicDispatcher:
                 exc_info=True,
             )
 
-    def get_last_status(self):
+    def get_last_status(self) -> dict[int, dict[str, str]]:
         """Return snapshot of last dispatch status per channel.
 
         Returns dict: {channel_id: {"status", "error", "timestamp"}}

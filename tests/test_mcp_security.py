@@ -315,8 +315,8 @@ class TestProxyHelpers(unittest.TestCase):
         self.assertEqual(_run_policy_engine(None, "bash", {}), [])
 
     def test_run_policy_engine_returns_findings(self):
-        from lumen_argus.models import Finding
         from lumen_argus.mcp.proxy import _run_policy_engine
+        from lumen_argus.models import Finding
 
         finding = Finding(
             detector="mcp_policy",

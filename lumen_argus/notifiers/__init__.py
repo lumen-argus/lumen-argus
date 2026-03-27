@@ -1,6 +1,8 @@
 """Community notification infrastructure — webhook notifier + basic dispatcher."""
 
-from lumen_argus.notifiers.webhook import WEBHOOK_CHANNEL_TYPE, WebhookNotifier, build_notifier
-from lumen_argus.notifiers.dispatcher import BasicDispatcher
+from __future__ import annotations
 
-__all__ = ["BasicDispatcher", "WEBHOOK_CHANNEL_TYPE", "WebhookNotifier", "build_notifier"]
+from lumen_argus.notifiers.dispatcher import BasicDispatcher
+from lumen_argus.notifiers.webhook import WEBHOOK_CHANNEL_TYPE, WebhookNotifier, build_notifier
+
+__all__ = ["WEBHOOK_CHANNEL_TYPE", "BasicDispatcher", "WebhookNotifier", "build_notifier"]

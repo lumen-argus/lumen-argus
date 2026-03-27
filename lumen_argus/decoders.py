@@ -5,6 +5,8 @@ Each field is expanded into the original text plus any decoded variants.
 Detectors then run on all variants, catching encoded secrets.
 """
 
+from __future__ import annotations
+
 import base64
 import logging
 import re

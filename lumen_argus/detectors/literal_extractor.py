@@ -13,9 +13,11 @@ Handles:
 - Character classes / quantifiers: [A-Z]{16} -> no literal (empty)
 """
 
+from __future__ import annotations
+
 import logging
 import sre_parse
-from typing import List, Tuple
+from typing import Any, List, Tuple
 
 log = logging.getLogger("argus.detectors.literal_extractor")
 
@@ -46,7 +48,7 @@ def extract_literals(pattern: str, flags: int = 0) -> List[Tuple[str, bool]]:
     effective_flags = flags | getattr(getattr(parsed, "state", None), "flags", 0)
     case_insensitive = bool(effective_flags & sre_parse.SRE_FLAG_IGNORECASE)
 
-    literals = _extract_from_items(list(parsed), case_insensitive)
+    literals = _extract_from_items(list(parsed), case_insensitive)  # type: ignore[call-overload]
 
     # Filter by minimum length
     result = [(lit, ci) for lit, ci in literals if len(lit) >= MIN_LITERAL_LENGTH]
@@ -57,7 +59,7 @@ def extract_literals(pattern: str, flags: int = 0) -> List[Tuple[str, bool]]:
     return result
 
 
-def _extract_from_items(items, case_insensitive: bool) -> List[Tuple[str, bool]]:
+def _extract_from_items(items: list[Any], case_insensitive: bool) -> List[Tuple[str, bool]]:
     """Extract literals from a sequence of sre_parse nodes.
 
     Walks the sequence collecting contiguous LITERAL runs. When a BRANCH
@@ -133,7 +135,7 @@ def _extract_from_items(items, case_insensitive: bool) -> List[Tuple[str, bool]]
     return all_literals
 
 
-def _collect_longest_literal(items, case_insensitive: bool) -> List[Tuple[str, bool]]:
+def _collect_longest_literal(items: list[Any], case_insensitive: bool) -> List[Tuple[str, bool]]:
     """Walk a flat sequence of sre_parse nodes, return the single longest literal run."""
     best = ""
     current = ""

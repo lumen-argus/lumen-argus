@@ -9,6 +9,8 @@ Interactive (or non-interactive) tool configuration:
 All modifications are tagged with '# lumen-argus:managed' for easy identification.
 """
 
+from __future__ import annotations
+
 import json
 import logging
 import os
@@ -17,7 +19,7 @@ import shutil
 from dataclasses import asdict, dataclass
 from typing import List, Optional
 
-from lumen_argus.detect import InstallMethod, _SHELL_PROFILES, detect_installed_clients, load_jsonc
+from lumen_argus.detect import _SHELL_PROFILES, InstallMethod, detect_installed_clients, load_jsonc
 from lumen_argus.time_utils import now_iso
 
 log = logging.getLogger("argus.setup")
@@ -363,8 +365,8 @@ def run_setup(
 
         client_def = get_client_by_id(target.client_id)
 
-        def _try_add_env_var():
-            """Prompt and add env var to shell profile. Returns change or None."""
+        def _try_add_env_var() -> None:
+            """Prompt and add env var to shell profile."""
             if non_interactive or _prompt_yes(
                 "  Add 'export %s=%s' to %s?" % (target.env_var, proxy_url, profile_path)
             ):
@@ -435,16 +437,20 @@ def _find_ide_settings(extension_path: str) -> Optional[str]:
     from lumen_argus.detect import _VSCODE_VARIANTS
 
     # Determine which variant owns this extension path
-    for variant_name, paths in _VSCODE_VARIANTS.items():
-        for ext_dir in paths["extensions"]:
+    for paths in _VSCODE_VARIANTS.values():
+        variant: dict[str, tuple[str, ...]] = paths
+        ext_dirs = variant["extensions"]
+        for ext_dir in ext_dirs:
             expanded = os.path.expanduser(ext_dir)
             if extension_path.startswith(expanded):
                 # Found the variant — return first existing settings file
-                for settings_path in paths["settings"]:
+                settings_list = variant["settings"]
+                for settings_path in settings_list:
                     settings_expanded = os.path.expanduser(settings_path)
                     if os.path.isfile(settings_expanded):
                         return settings_expanded
                 # Settings dir might not exist yet
-                if paths["settings"]:
-                    return os.path.expanduser(paths["settings"][0])
+                if settings_list:
+                    result: str = os.path.expanduser(settings_list[0])
+                    return result
     return None

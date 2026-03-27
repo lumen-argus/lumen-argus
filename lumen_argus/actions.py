@@ -1,8 +1,11 @@
 """Action execution: dispatch block/alert/log actions."""
 
+from __future__ import annotations
+
 import json
 import logging
 import re
+from typing import Any
 
 from lumen_argus.models import ScanResult
 
@@ -44,7 +47,7 @@ def should_forward(result: ScanResult) -> bool:
     return result.action != "block"
 
 
-def try_strip_blocked_history(req_data: dict, findings: list) -> "bytes | None":
+def try_strip_blocked_history(req_data: dict[str, Any], findings: list[Any]) -> bytes | None:
     """Strip content containing blocked findings from conversation history.
 
     AI tools like Claude Code pack the entire conversation into a single
@@ -75,7 +78,7 @@ def try_strip_blocked_history(req_data: dict, findings: list) -> "bytes | None":
             continue
         m = _MSG_CONTENT_RE.match(f.location)
         if m:
-            finding_locations.append((int(m.group(1)), None))
+            finding_locations.append((int(m.group(1)), -1))
 
     if not finding_locations:
         log.debug("strip: no parseable finding locations, cannot strip")
@@ -140,7 +143,7 @@ def try_strip_blocked_history(req_data: dict, findings: list) -> "bytes | None":
     # Find which content blocks have findings
     finding_block_indices = set()
     for msg_idx, block_idx in finding_locations:
-        if msg_idx == last_user_idx and block_idx is not None:
+        if msg_idx == last_user_idx and block_idx >= 0:
             if block_idx >= len(content):
                 log.debug("strip: block_idx %d out of range (content len=%d), must block", block_idx, len(content))
                 return None

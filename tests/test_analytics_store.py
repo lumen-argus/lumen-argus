@@ -9,7 +9,8 @@ import unittest
 from datetime import datetime, timezone
 
 from lumen_argus.analytics.store import AnalyticsStore
-from tests.helpers import StoreTestCase, make_finding as _make_finding
+from tests.helpers import StoreTestCase
+from tests.helpers import make_finding as _make_finding
 
 
 class TestAnalyticsStore(unittest.TestCase):

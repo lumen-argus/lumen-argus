@@ -1,11 +1,13 @@
 """Configuration loading using PyYAML."""
 
+from __future__ import annotations
+
 import logging
 import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import yaml
 
@@ -17,7 +19,7 @@ log = logging.getLogger("argus.config")
 # ---------------------------------------------------------------------------
 
 
-def _parse_yaml(text: str) -> dict:
+def _parse_yaml(text: str) -> dict[str, Any]:
     """Parse YAML text into a dict using PyYAML safe_load."""
     result = yaml.safe_load(text)
     return result if isinstance(result, dict) else {}
@@ -128,11 +130,11 @@ class MCPConfig:
     session_binding: bool = False  # tool inventory validation (opt-in)
     unknown_tool_action: str = "warn"  # warn|block
     # Pro: policy rules for tool call validation
-    tool_policies: List[dict] = field(default_factory=list)
+    tool_policies: List[dict[str, Any]] = field(default_factory=list)
     # Pro: adaptive enforcement config
     adaptive_enforcement: AdaptiveEnforcementConfig = field(default_factory=AdaptiveEnforcementConfig)
     # Pro: custom chain detection patterns
-    chain_signatures: List[dict] = field(default_factory=list)
+    chain_signatures: List[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -230,7 +232,7 @@ class Config:
     pipeline: PipelineConfig = field(default_factory=PipelineConfig)
     mcp: MCPConfig = field(default_factory=MCPConfig)
     websocket: WebSocketConfig = field(default_factory=WebSocketConfig)
-    notifications: List[dict] = field(default_factory=list)
+    notifications: List[dict[str, Any]] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -305,7 +307,7 @@ def _warn(msg: str) -> None:
     log.warning("%s", msg)
 
 
-def _validate_config(data: dict, source: str) -> List[str]:
+def _validate_config(data: dict[str, Any], source: str) -> List[str]:
     """Validate parsed config data. Returns list of warnings."""
     warnings = []  # type: List[str]
 
@@ -314,9 +316,7 @@ def _validate_config(data: dict, source: str) -> List[str]:
         return warnings
 
     # Check for unknown top-level keys
-    for key in data:
-        if key not in _KNOWN_TOP_KEYS:
-            warnings.append("%s: unknown key '%s'" % (source, key))
+    warnings.extend("%s: unknown key '%s'" % (source, key) for key in data if key not in _KNOWN_TOP_KEYS)
 
     # Validate default_action
     if "default_action" in data:
@@ -330,9 +330,7 @@ def _validate_config(data: dict, source: str) -> List[str]:
     # Validate proxy section
     proxy = data.get("proxy", {})
     if isinstance(proxy, dict):
-        for key in proxy:
-            if key not in _KNOWN_PROXY_KEYS:
-                warnings.append("%s: unknown key 'proxy.%s'" % (source, key))
+        warnings.extend("%s: unknown key 'proxy.%s'" % (source, key) for key in proxy if key not in _KNOWN_PROXY_KEYS)
         if "port" in proxy:
             try:
                 port = int(proxy["port"])
@@ -391,9 +389,11 @@ def _validate_config(data: dict, source: str) -> List[str]:
         for det_name in ("secrets", "pii", "proprietary"):
             det = detectors.get(det_name, {})
             if isinstance(det, dict):
-                for key in det:
-                    if key not in _KNOWN_DETECTOR_KEYS:
-                        warnings.append("%s: unknown key 'detectors.%s.%s'" % (source, det_name, key))
+                warnings.extend(
+                    "%s: unknown key 'detectors.%s.%s'" % (source, det_name, key)
+                    for key in det
+                    if key not in _KNOWN_DETECTOR_KEYS
+                )
                 if "action" in det:
                     action = str(det["action"])
                     if action not in _VALID_ACTIONS:
@@ -415,9 +415,7 @@ def _validate_config(data: dict, source: str) -> List[str]:
     # Validate audit section
     audit = data.get("audit", {})
     if isinstance(audit, dict):
-        for key in audit:
-            if key not in _KNOWN_AUDIT_KEYS:
-                warnings.append("%s: unknown key 'audit.%s'" % (source, key))
+        warnings.extend("%s: unknown key 'audit.%s'" % (source, key) for key in audit if key not in _KNOWN_AUDIT_KEYS)
         if "retention_days" in audit:
             try:
                 days = int(audit["retention_days"])
@@ -429,9 +427,9 @@ def _validate_config(data: dict, source: str) -> List[str]:
     # Validate logging section
     logging_sec = data.get("logging", {})
     if isinstance(logging_sec, dict):
-        for key in logging_sec:
-            if key not in _KNOWN_LOGGING_KEYS:
-                warnings.append("%s: unknown key 'logging.%s'" % (source, key))
+        warnings.extend(
+            "%s: unknown key 'logging.%s'" % (source, key) for key in logging_sec if key not in _KNOWN_LOGGING_KEYS
+        )
         if "file_level" in logging_sec:
             lvl = str(logging_sec["file_level"]).lower()
             if lvl not in ("debug", "info", "warning", "error"):
@@ -474,9 +472,11 @@ def _validate_config(data: dict, source: str) -> List[str]:
             if not isinstance(rule, dict):
                 warnings.append("%s: custom_rules[%d] must be a mapping" % (source, i))
                 continue
-            for key in rule:
-                if key not in _KNOWN_CUSTOM_RULE_KEYS:
-                    warnings.append("%s: unknown key 'custom_rules[%d].%s'" % (source, i, key))
+            warnings.extend(
+                "%s: unknown key 'custom_rules[%d].%s'" % (source, i, key)
+                for key in rule
+                if key not in _KNOWN_CUSTOM_RULE_KEYS
+            )
             if "name" not in rule or not rule["name"]:
                 warnings.append("%s: custom_rules[%d] missing required 'name'" % (source, i))
             if "pattern" not in rule or not rule["pattern"]:
@@ -537,16 +537,18 @@ def _validate_config(data: dict, source: str) -> List[str]:
                 warnings.append("%s: notifications[%d] missing required 'name'" % (source, i))
             if "type" not in notif or not notif["type"]:
                 warnings.append("%s: notifications[%d] missing required 'type'" % (source, i))
-            for key in notif:
-                if key not in _known_notif_keys:
-                    warnings.append("%s: unknown key 'notifications[%d].%s'" % (source, i, key))
+            warnings.extend(
+                "%s: unknown key 'notifications[%d].%s'" % (source, i, key)
+                for key in notif
+                if key not in _known_notif_keys
+            )
 
     # Validate dashboard section
     dashboard = data.get("dashboard", {})
     if isinstance(dashboard, dict):
-        for key in dashboard:
-            if key not in _KNOWN_DASHBOARD_KEYS:
-                warnings.append("%s: unknown key 'dashboard.%s'" % (source, key))
+        warnings.extend(
+            "%s: unknown key 'dashboard.%s'" % (source, key) for key in dashboard if key not in _KNOWN_DASHBOARD_KEYS
+        )
         if "port" in dashboard:
             try:
                 port = int(dashboard["port"])
@@ -565,9 +567,9 @@ def _validate_config(data: dict, source: str) -> List[str]:
     # Validate analytics section
     analytics = data.get("analytics", {})
     if isinstance(analytics, dict):
-        for key in analytics:
-            if key not in _KNOWN_ANALYTICS_KEYS:
-                warnings.append("%s: unknown key 'analytics.%s'" % (source, key))
+        warnings.extend(
+            "%s: unknown key 'analytics.%s'" % (source, key) for key in analytics if key not in _KNOWN_ANALYTICS_KEYS
+        )
         if "retention_days" in analytics:
             try:
                 days = int(analytics["retention_days"])
@@ -579,9 +581,7 @@ def _validate_config(data: dict, source: str) -> List[str]:
     # Validate dedup section
     dedup = data.get("dedup", {})
     if isinstance(dedup, dict):
-        for key in dedup:
-            if key not in _KNOWN_DEDUP_KEYS:
-                warnings.append("%s: unknown key 'dedup.%s'" % (source, key))
+        warnings.extend("%s: unknown key 'dedup.%s'" % (source, key) for key in dedup if key not in _KNOWN_DEDUP_KEYS)
         for int_key in (
             "conversation_ttl_minutes",
             "finding_ttl_minutes",
@@ -599,9 +599,7 @@ def _validate_config(data: dict, source: str) -> List[str]:
     # Validate pipeline section
     pipeline = data.get("pipeline", {})
     if isinstance(pipeline, dict):
-        for key in pipeline:
-            if key not in ("stages",):
-                warnings.append("%s: unknown key 'pipeline.%s'" % (source, key))
+        warnings.extend("%s: unknown key 'pipeline.%s'" % (source, key) for key in pipeline if key not in ("stages",))
         stages = pipeline.get("stages", {})
         if isinstance(stages, dict):
             for stage_name, stage_data in stages.items():
@@ -618,9 +616,11 @@ def _validate_config(data: dict, source: str) -> List[str]:
                             "min_decoded_length",
                             "max_decoded_length",
                         }
-                    for key in stage_data:
-                        if key not in _allowed_stage_keys:
-                            warnings.append("%s: unknown key 'pipeline.stages.%s.%s'" % (source, stage_name, key))
+                    warnings.extend(
+                        "%s: unknown key 'pipeline.stages.%s.%s'" % (source, stage_name, key)
+                        for key in stage_data
+                        if key not in _allowed_stage_keys
+                    )
                     if "action" in stage_data:
                         action = str(stage_data["action"])
                         if action not in _VALID_ACTIONS:
@@ -643,9 +643,9 @@ def _validate_config(data: dict, source: str) -> List[str]:
     # Validate allowlists section
     al = data.get("allowlists", {})
     if isinstance(al, dict):
-        for key in al:
-            if key not in ("secrets", "pii", "paths"):
-                warnings.append("%s: unknown key 'allowlists.%s'" % (source, key))
+        warnings.extend(
+            "%s: unknown key 'allowlists.%s'" % (source, key) for key in al if key not in ("secrets", "pii", "paths")
+        )
         for list_key in ("secrets", "pii", "paths"):
             val = al.get(list_key)
             if val is not None and not isinstance(val, list):
@@ -670,9 +670,7 @@ def _validate_config(data: dict, source: str) -> List[str]:
             "adaptive_enforcement",
             "chain_signatures",
         }
-        for key in mcp:
-            if key not in _known_mcp_keys:
-                warnings.append("%s: unknown key 'mcp.%s'" % (source, key))
+        warnings.extend("%s: unknown key 'mcp.%s'" % (source, key) for key in mcp if key not in _known_mcp_keys)
         # Validate action fields — each has different valid values
         _mcp_action_values = {
             "unsolicited_response_action": {"warn", "block"},
@@ -690,25 +688,23 @@ def _validate_config(data: dict, source: str) -> List[str]:
         ae = mcp.get("adaptive_enforcement", {})
         if isinstance(ae, dict):
             _known_ae_keys = {"enabled", "escalation_threshold", "decay_per_clean"}
-            for key in ae:
-                if key not in _known_ae_keys:
-                    warnings.append("%s: unknown key 'mcp.adaptive_enforcement.%s'" % (source, key))
+            warnings.extend(
+                "%s: unknown key 'mcp.adaptive_enforcement.%s'" % (source, key)
+                for key in ae
+                if key not in _known_ae_keys
+            )
 
     # Validate WebSocket section
     ws = data.get("websocket", {})
     if isinstance(ws, dict):
         _known_ws_keys = {"max_frame_size", "allowed_origins"}
-        for key in ws:
-            if key not in _known_ws_keys:
-                warnings.append("%s: unknown key 'websocket.%s'" % (source, key))
+        warnings.extend("%s: unknown key 'websocket.%s'" % (source, key) for key in ws if key not in _known_ws_keys)
 
     # Validate rules section
     rules = data.get("rules", {})
     if isinstance(rules, dict):
         _known_rules_keys = {"auto_import", "rebuild_delay_seconds"}
-        for key in rules:
-            if key not in _known_rules_keys:
-                warnings.append("%s: unknown key 'rules.%s'" % (source, key))
+        warnings.extend("%s: unknown key 'rules.%s'" % (source, key) for key in rules if key not in _known_rules_keys)
 
     return warnings
 
@@ -840,7 +836,7 @@ def load_config(
     return config
 
 
-def _apply_config(config: Config, data: dict) -> None:
+def _apply_config(config: Config, data: dict[str, Any]) -> None:
     """Apply parsed YAML data to config object."""
     if not isinstance(data, dict):
         return
@@ -1091,7 +1087,7 @@ def _apply_config(config: Config, data: dict) -> None:
         config.notifications = [n for n in notifications if isinstance(n, dict)]
 
 
-def _apply_project_config(config: Config, data: dict) -> None:
+def _apply_project_config(config: Config, data: dict[str, Any]) -> None:
     """Apply project-level overrides. Can only be MORE restrictive."""
     if not isinstance(data, dict):
         return

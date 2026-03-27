@@ -3,8 +3,6 @@
 import json
 import unittest
 
-from tests.helpers import StoreTestCase
-
 from lumen_argus.allowlist import AllowlistMatcher
 from lumen_argus.detectors.secrets import SecretsDetector
 from lumen_argus.mcp.scanner import (
@@ -12,6 +10,7 @@ from lumen_argus.mcp.scanner import (
     detect_mcp_request,
     detect_mcp_response,
 )
+from tests.helpers import StoreTestCase
 
 
 class TestDetectMCPRequest(unittest.TestCase):

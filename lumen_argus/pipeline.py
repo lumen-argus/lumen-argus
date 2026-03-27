@@ -1,14 +1,19 @@
 """Scanner pipeline: orchestrates extraction, detection, and policy evaluation."""
 
+from __future__ import annotations
+
 import hashlib
 import logging
 import threading
 import time
-from typing import List
+from typing import TYPE_CHECKING, Any, List, Optional
+
+if TYPE_CHECKING:
+    from lumen_argus.analytics.store import AnalyticsStore
 
 from lumen_argus.allowlist import AllowlistMatcher
 from lumen_argus.decoders import ContentDecoder
-from lumen_argus.text_utils import sanitize_text
+from lumen_argus.detectors import BaseDetector
 from lumen_argus.detectors.custom import CustomDetector
 from lumen_argus.detectors.pii import PIIDetector
 from lumen_argus.detectors.proprietary import ProprietaryDetector
@@ -18,6 +23,7 @@ from lumen_argus.extensions import ExtensionRegistry
 from lumen_argus.extractor import RequestExtractor
 from lumen_argus.models import Finding, ScanField, ScanResult, SessionContext
 from lumen_argus.policy import PolicyEngine
+from lumen_argus.text_utils import sanitize_text
 
 log = logging.getLogger("argus.pipeline")
 
@@ -30,10 +36,10 @@ log = logging.getLogger("argus.pipeline")
 class _ConversationCache:
     """Per-conversation set of seen content hashes."""
 
-    __slots__ = ("seen_hashes", "last_access", "hash_count")
+    __slots__ = ("hash_count", "last_access", "seen_hashes")
 
-    def __init__(self):
-        self.seen_hashes = set()  # set of str (SHA-256 prefix)
+    def __init__(self) -> None:
+        self.seen_hashes: set[str] = set()  # set of str (SHA-256 prefix)
         self.last_access = time.monotonic()
         self.hash_count = 0
 
@@ -57,9 +63,9 @@ class ContentFingerprint:
         self._ttl = conversation_ttl
         self._max_conversations = max_conversations
         self._max_hashes = max_hashes_per_conversation
-        self._shards = [{} for _ in range(self._NUM_SHARDS)]
+        self._shards: list[dict[str, _ConversationCache]] = [{} for _ in range(self._NUM_SHARDS)]
         self._locks = [threading.Lock() for _ in range(self._NUM_SHARDS)]
-        self._cleanup_timer = None
+        self._cleanup_timer: threading.Timer | None = None
 
     @staticmethod
     def _hash_text(text: str) -> str:
@@ -69,7 +75,9 @@ class ContentFingerprint:
     def _shard_for(self, key: str) -> int:
         return hash(key) & (self._NUM_SHARDS - 1)
 
-    def filter_new_fields(self, conversation_key: str, fields: list) -> tuple:
+    def filter_new_fields(
+        self, conversation_key: str, fields: list[ScanField]
+    ) -> tuple[list[ScanField], tuple[str, list[str]]]:
         """Return only fields whose content hasn't been seen before.
 
         Does NOT commit hashes yet — call commit_hashes() after confirming
@@ -88,17 +96,19 @@ class ContentFingerprint:
 
         with self._locks[idx]:
             shard = self._shards[idx]
-            cache = shard.get(conversation_key)
-            is_new_conv = cache is None
-            if is_new_conv:
-                cache = _ConversationCache()
-                shard[conversation_key] = cache
-            cache.last_access = now
+            existing = shard.get(conversation_key)
+            is_new_conv = existing is None
+            if existing is not None:
+                conv_cache = existing
+            else:
+                conv_cache = _ConversationCache()
+                shard[conversation_key] = conv_cache
+            conv_cache.last_access = now
 
             new_fields = []
             new_hashes = []
             for f, h in zip(fields, field_hashes):
-                if h not in cache.seen_hashes:
+                if h not in conv_cache.seen_hashes:
                     new_fields.append(f)
                     new_hashes.append(h)
 
@@ -115,7 +125,7 @@ class ContentFingerprint:
         pending = (conversation_key, new_hashes)
         return new_fields, pending
 
-    def commit_hashes(self, pending) -> None:
+    def commit_hashes(self, pending: tuple[str, list[str]]) -> None:
         """Commit previously computed hashes to the seen set.
 
         Call this only when the request was NOT blocked, so that blocked
@@ -148,24 +158,26 @@ class ContentFingerprint:
                 total_removed += len(expired)
         return total_removed
 
-    def start_cleanup_scheduler(self, interval: float = 300.0):
+    def start_cleanup_scheduler(self, interval: float = 300.0) -> None:
         """Start background thread to clean expired conversations."""
         if self._cleanup_timer is not None:
             return
 
-        def _run():
+        def _run() -> None:
             removed = self.cleanup()
             if removed:
                 log.debug("content fingerprint: evicted %d idle conversations", removed)
-            self._cleanup_timer = threading.Timer(interval, _run)
-            self._cleanup_timer.daemon = True
-            self._cleanup_timer.start()
+            timer = threading.Timer(interval, _run)
+            timer.daemon = True
+            timer.start()
+            self._cleanup_timer = timer
 
-        self._cleanup_timer = threading.Timer(interval, _run)
-        self._cleanup_timer.daemon = True
-        self._cleanup_timer.start()
+        timer = threading.Timer(interval, _run)
+        timer.daemon = True
+        timer.start()
+        self._cleanup_timer = timer
 
-    def stats(self) -> dict:
+    def stats(self) -> dict[str, int]:
         """Return cache statistics."""
         conversations = 0
         total_hashes = 0
@@ -196,14 +208,14 @@ class _FindingDedup:
 
     def __init__(self, ttl_seconds: int = 1800):
         self._ttl = ttl_seconds
-        self._shards = [{} for _ in range(self._NUM_SHARDS)]
+        self._shards: list[dict[tuple[str, str, str, str], float]] = [{} for _ in range(self._NUM_SHARDS)]
         self._locks = [threading.Lock() for _ in range(self._NUM_SHARDS)]
-        self._cleanup_timer = None
+        self._cleanup_timer: threading.Timer | None = None
 
-    def _shard_for(self, key: tuple) -> int:
+    def _shard_for(self, key: tuple[str, str, str, str]) -> int:
         return hash(key) & (self._NUM_SHARDS - 1)
 
-    def is_new(self, finding, session_id: str = "") -> bool:
+    def is_new(self, finding: Finding, session_id: str = "") -> bool:
         """Return True if this finding hasn't been seen within the TTL window.
 
         Session-scoped: same finding in different sessions is always new.
@@ -220,7 +232,7 @@ class _FindingDedup:
             self._shards[idx][key] = now
             return True
 
-    def filter_new(self, findings: list, session_id: str = "") -> list:
+    def filter_new(self, findings: list[Finding], session_id: str = "") -> list[Finding]:
         """Return only findings that haven't been recorded within the TTL window."""
         return [f for f in findings if self.is_new(f, session_id=session_id)]
 
@@ -236,22 +248,24 @@ class _FindingDedup:
                 total += len(expired)
         return total
 
-    def start_cleanup_scheduler(self, interval: float = 300.0):
+    def start_cleanup_scheduler(self, interval: float = 300.0) -> None:
         """Start background thread to clean expired entries."""
         if self._cleanup_timer is not None:
             return
 
-        def _run():
+        def _run() -> None:
             removed = self.cleanup()
             if removed:
                 log.debug("finding dedup: evicted %d expired entries", removed)
-            self._cleanup_timer = threading.Timer(interval, _run)
-            self._cleanup_timer.daemon = True
-            self._cleanup_timer.start()
+            timer = threading.Timer(interval, _run)
+            timer.daemon = True
+            timer.start()
+            self._cleanup_timer = timer
 
-        self._cleanup_timer = threading.Timer(interval, _run)
-        self._cleanup_timer.daemon = True
-        self._cleanup_timer.start()
+        timer = threading.Timer(interval, _run)
+        timer.daemon = True
+        timer.start()
+        self._cleanup_timer = timer
 
 
 # Maximum total text bytes to scan per request. Fields beyond this are
@@ -267,14 +281,14 @@ class ScannerPipeline:
     def __init__(
         self,
         default_action: str = "alert",
-        action_overrides: dict = None,
-        allowlist: AllowlistMatcher = None,
+        action_overrides: Optional[dict[str, str]] = None,
+        allowlist: Optional[AllowlistMatcher] = None,
         entropy_threshold: float = 4.5,
-        extensions: ExtensionRegistry = None,
+        extensions: Optional[ExtensionRegistry] = None,
         max_scan_bytes: int = MAX_SCAN_TEXT_BYTES,
-        custom_rules: list = None,
-        dedup_config: dict = None,
-        pipeline_config: dict = None,
+        custom_rules: Optional[list[Any]] = None,
+        dedup_config: Optional[dict[str, Any]] = None,
+        pipeline_config: Optional[dict[str, Any]] = None,
         rebuild_delay: float = 2.0,
     ):
         self._extractor = RequestExtractor()
@@ -303,9 +317,9 @@ class ScannerPipeline:
         # If DB has rules, use RulesDetector (replaces Secrets/PII/Custom).
         # ProprietaryDetector always runs (file-pattern + keyword based, not regex rules).
         # Fallback to hardcoded detectors if no rules in DB.
-        self._detectors = []  # type: List[BaseDetector]
-        self._rules_detector = None
-        store = extensions.get_analytics_store() if extensions else None
+        self._detectors: List[BaseDetector] = []
+        self._rules_detector: Optional[RulesDetector] = None
+        store: AnalyticsStore | None = extensions.get_analytics_store() if extensions else None
         has_rules = False
         if store and hasattr(store, "get_rules_count"):
             try:
@@ -314,7 +328,7 @@ class ScannerPipeline:
                     has_rules = True
             except Exception:
                 pass
-        if has_rules:
+        if has_rules and store:
             self._rules_detector = RulesDetector(
                 store=store,
                 license_checker=extensions.get_license_checker() if extensions else None,
@@ -381,9 +395,9 @@ class ScannerPipeline:
         self,
         allowlist: AllowlistMatcher,
         default_action: str,
-        action_overrides: dict = None,
-        custom_rules: list = None,
-        pipeline_config: dict = None,
+        action_overrides: Optional[dict[str, str]] = None,
+        custom_rules: Optional[list[Any]] = None,
+        pipeline_config: Optional[dict[str, Any]] = None,
     ) -> None:
         """Reload policy, allowlist, custom rules, and pipeline config.
 
@@ -424,7 +438,7 @@ class ScannerPipeline:
             self._custom_detector.update_rules(custom_rules)
 
     @staticmethod
-    def _build_decoder(pc: dict) -> ContentDecoder:
+    def _build_decoder(pc: dict[str, Any]) -> ContentDecoder:
         """Build a ContentDecoder from pipeline config dict."""
         return ContentDecoder(
             enable_base64=bool(pc.get("encoding_base64", True)),
@@ -436,7 +450,7 @@ class ScannerPipeline:
             max_decoded_length=int(pc.get("encoding_max_decoded_length", 10_000)),
         )
 
-    def scan(self, body: bytes, provider: str, model: str = "", session: SessionContext = None) -> ScanResult:
+    def scan(self, body: bytes, provider: str, model: str = "", session: Optional[SessionContext] = None) -> ScanResult:
         """Run the full scan pipeline on a request body.
 
         Args:
@@ -449,7 +463,7 @@ class ScannerPipeline:
             ScanResult with findings, timing, and resolved action.
         """
         t0 = time.monotonic()
-        stage_timings = {}  # type: dict
+        stage_timings: dict[str, float] = {}
 
         # Snapshot mutable references under lock — ensures consistency
         # when reload() swaps them from another thread (free-threaded Python).
@@ -511,7 +525,7 @@ class ScannerPipeline:
         # This ensures blocked content is re-scanned on retry.
         t_stage = time.monotonic()
         conv_key = session.session_id if session else ""
-        pending_hashes = None
+        pending_hashes: tuple[str, list[str]] | None = None
         if conv_key:
             original_count = len(fields)
             fields, pending_hashes = self._fingerprint.filter_new_fields(conv_key, fields)
@@ -527,10 +541,10 @@ class ScannerPipeline:
                 # new findings from this request aren't in the DB yet and
                 # won't be double-counted (they INSERT with seen_count=1).
                 if self._extensions:
-                    store = self._extensions.get_analytics_store()
-                    if store:
+                    _store: AnalyticsStore | None = self._extensions.get_analytics_store()
+                    if _store:
                         try:
-                            store.bump_seen_counts(conv_key)
+                            _store.bump_seen_counts(conv_key)
                         except Exception:
                             pass
 
@@ -633,10 +647,10 @@ class ScannerPipeline:
 
         # Record only NEW findings in analytics store (community dashboard)
         if new_findings and self._extensions:
-            store = self._extensions.get_analytics_store()
-            if store:
+            rec_store: AnalyticsStore | None = self._extensions.get_analytics_store()
+            if rec_store:
                 try:
-                    store.record_findings(
+                    rec_store.record_findings(
                         new_findings,
                         provider=provider,
                         model=model,
@@ -647,7 +661,7 @@ class ScannerPipeline:
 
         # Dispatch notifications — pass ALL findings (dispatcher has its own dedup)
         if result.findings and self._extensions:
-            dispatcher = self._extensions.get_dispatcher()
+            dispatcher: Any = self._extensions.get_dispatcher()
             if dispatcher:
                 try:
                     dispatcher.dispatch(
@@ -679,8 +693,8 @@ class ScannerPipeline:
         """
         from dataclasses import replace
 
-        seen = {}  # type: dict[tuple, int]
-        first = {}  # type: dict[tuple, Finding]
+        seen: dict[tuple[str, str, str], int] = {}
+        first: dict[tuple[str, str, str], Finding] = {}
         for f in findings:
             key = (f.detector, f.type, f.matched_value)
             if key in seen:

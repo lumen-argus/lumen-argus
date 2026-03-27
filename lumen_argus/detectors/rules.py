@@ -12,13 +12,18 @@ License-aware: rules with tier='pro' are skipped when the license
 checker reports invalid/expired.
 """
 
+from __future__ import annotations
+
 import asyncio
 import logging
 import re
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from typing import List
+from typing import TYPE_CHECKING, Any, Callable, List, Optional, Set
+
+if TYPE_CHECKING:
+    from lumen_argus.analytics.store import AnalyticsStore
 
 from lumen_argus.allowlist import AllowlistMatcher
 from lumen_argus.detectors import BaseDetector
@@ -30,13 +35,13 @@ log = logging.getLogger("argus.detectors.rules")
 
 # Registry of named validator functions. Validators return True if
 # the match is valid. Referenced by name in the rules DB.
-_VALIDATORS = {}
+_VALIDATORS: dict[str, Callable[[str], bool]] = {}
 
 # Flush hit counts to DB every 60 seconds
 _HIT_COUNT_FLUSH_INTERVAL = 60
 
 
-def register_validator(name, fn):
+def register_validator(name: str, fn: Callable[[str], bool]) -> None:
     """Register a named validator function."""
     _VALIDATORS[name] = fn
 
@@ -67,26 +72,26 @@ class RulesDetector(BaseDetector):
 
     def __init__(
         self,
-        store=None,
-        license_checker=None,
-        metrics_collector=None,
-        parallel=False,
-        accelerator_factory=None,
-        rebuild_delay=2.0,
-    ):
+        store: AnalyticsStore | None = None,
+        license_checker: Any = None,
+        metrics_collector: Any = None,
+        parallel: bool = False,
+        accelerator_factory: Optional[Callable[[], Any]] = None,
+        rebuild_delay: float = 2.0,
+    ) -> None:
         self._store = store
         self._license = license_checker
         self._metrics = metrics_collector
         self._accelerator_factory = accelerator_factory
-        self._skip_list = set()
+        self._skip_list: Set[str] = set()
         self._parallel = parallel
-        self._pool = None  # type: ThreadPoolExecutor | None
+        self._pool: Optional[ThreadPoolExecutor] = None
         if parallel:
             self._pool = ThreadPoolExecutor(max_workers=4)
-        self._compiled_rules = []  # type: list
+        self._compiled_rules: list[dict[str, Any]] = []
         self._accelerator = self._new_accelerator()
         # In-memory hit count accumulation: {rule_name: count}
-        self._hit_counts = {}  # type: dict
+        self._hit_counts: dict[str, int] = {}
         self._hit_counts_lock = threading.Lock()
         self._last_flush = time.monotonic()
         # Debounced async rebuild state
@@ -94,14 +99,14 @@ class RulesDetector(BaseDetector):
         self._dirty = False
         self._rebuild_lock = threading.Lock()  # prevents concurrent rebuild threads
         self._debounce_lock = threading.Lock()  # protects _debounce_handle and _dirty
-        self._debounce_handle = None  # asyncio TimerHandle or threading.Timer
+        self._debounce_handle: Any = None  # asyncio TimerHandle or threading.Timer
         # Protects _accelerator/_compiled_rules swap for no-GIL Python 3.13+.
         # scan() snapshots both under this lock; reload() writes both under it.
         self._swap_lock = threading.Lock()
         if store:
             self.reload()
 
-    def _new_accelerator(self):
+    def _new_accelerator(self) -> Any:
         """Create a new accelerator via factory or default AhoCorasickAccelerator.
 
         The returned object must implement:
@@ -119,7 +124,7 @@ class RulesDetector(BaseDetector):
                 log.warning("accelerator_factory raised %s, falling back to AhoCorasickAccelerator", exc)
         return AhoCorasickAccelerator()
 
-    def reload(self):
+    def reload(self) -> None:
         """Reload rules from DB, compile patterns, and rebuild accelerator."""
         if not self._store:
             return
@@ -171,7 +176,7 @@ class RulesDetector(BaseDetector):
             "enabled" if self._accelerator.available else "disabled",
         )
 
-    def _flush_hit_counts(self):
+    def _flush_hit_counts(self) -> None:
         """Flush accumulated hit counts to DB in a single batch."""
         with self._hit_counts_lock:
             if not self._hit_counts:
@@ -196,7 +201,7 @@ class RulesDetector(BaseDetector):
         except Exception as e:
             log.warning("hit count flush failed: %s", e)
 
-    def _record_hit(self, rule_name):
+    def _record_hit(self, rule_name: str) -> None:
         """Accumulate a hit in memory. Flush periodically."""
         should_flush = False
         with self._hit_counts_lock:
@@ -225,12 +230,12 @@ class RulesDetector(BaseDetector):
         self._parallel = enabled
         log.debug("parallel rule evaluation: %s", "enabled" if enabled else "disabled")
 
-    def set_skip_list(self, names):
+    def set_skip_list(self, names: Any) -> None:
         """Update the set of rule names to skip during scanning."""
         self._skip_list = set(names) if names else set()
         log.info("rule skip list updated: %d rules", len(self._skip_list))
 
-    def on_rules_changed(self, change_type, rule_name=None):
+    def on_rules_changed(self, change_type: str, rule_name: Optional[str] = None) -> None:
         """Handle rule changes from store callback.
 
         Schedules a debounced async rebuild instead of rebuilding synchronously.
@@ -245,7 +250,7 @@ class RulesDetector(BaseDetector):
             self._dirty = True
         self._schedule_rebuild()
 
-    def _schedule_rebuild(self):
+    def _schedule_rebuild(self) -> None:
         """Start or reset the debounce timer for async rebuild.
 
         Thread-safe: protects _debounce_handle under _debounce_lock.
@@ -275,7 +280,7 @@ class RulesDetector(BaseDetector):
                 timer.start()
                 self._debounce_handle = timer
 
-    def _trigger_rebuild(self):
+    def _trigger_rebuild(self) -> None:
         """Called when debounce timer fires. Spawns background thread for rebuild."""
         if not self._rebuild_lock.acquire(blocking=False):
             # Another rebuild is running — it will check _dirty after swap
@@ -287,7 +292,7 @@ class RulesDetector(BaseDetector):
             self._rebuild_lock.release()
             log.warning("rules detector: failed to start rebuild thread")
 
-    def _background_rebuild(self):
+    def _background_rebuild(self) -> None:
         """Run full reload() in background thread. Check _dirty after swap.
 
         Uses _debounce_lock to atomically clear _dirty before reload and
@@ -310,7 +315,9 @@ class RulesDetector(BaseDetector):
         if needs_reschedule:
             self._schedule_rebuild()
 
-    def _eval_rule(self, rule, field, allowlist, metrics):
+    def _eval_rule(
+        self, rule: dict[str, Any], field: ScanField, allowlist: AllowlistMatcher, metrics: Any
+    ) -> list[Finding]:
         """Evaluate a single rule against a field. Returns list of findings.
 
         Extracted for reuse by both sequential and parallel scan paths.
@@ -351,7 +358,14 @@ class RulesDetector(BaseDetector):
 
         return findings
 
-    def _eval_group(self, indices, compiled_rules, field, allowlist, metrics):
+    def _eval_group(
+        self,
+        indices: list[int],
+        compiled_rules: list[dict[str, Any]],
+        field: ScanField,
+        allowlist: AllowlistMatcher,
+        metrics: Any,
+    ) -> list[Finding]:
         """Evaluate a group of rule indices against a field. Used by parallel path."""
         group_findings = []
         for idx in indices:
@@ -429,7 +443,15 @@ class RulesDetector(BaseDetector):
 
         return findings
 
-    def _scan_field_parallel(self, candidates, compiled_rules, field, allowlist, metrics, skip_list):
+    def _scan_field_parallel(
+        self,
+        candidates: Set[int],
+        compiled_rules: list[dict[str, Any]],
+        field: ScanField,
+        allowlist: AllowlistMatcher,
+        metrics: Any,
+        skip_list: Set[str],
+    ) -> list[Finding]:
         """Evaluate candidate rules in parallel, grouped by detector category.
 
         Python's re module releases the GIL during C-level regex matching,
@@ -439,7 +461,7 @@ class RulesDetector(BaseDetector):
         Note: all groups run to completion — early termination is post-hoc
         (block detected after groups finish, prevents scanning next field).
         """
-        groups = {}  # type: dict
+        groups: dict[str, list[int]] = {}
         for idx in candidates:
             if idx >= len(compiled_rules):
                 continue
@@ -450,12 +472,16 @@ class RulesDetector(BaseDetector):
                 groups[det] = []
             groups[det].append(idx)
 
-        all_findings = []
+        all_findings: list[Finding] = []
         pool = self._pool
-        futures = []
-        for group_indices in groups.values():
-            if group_indices:
-                futures.append(pool.submit(self._eval_group, group_indices, compiled_rules, field, allowlist, metrics))
+        if pool is None:
+            log.error("parallel scan requested but ThreadPoolExecutor not initialized")
+            return all_findings
+        futures = [
+            pool.submit(self._eval_group, group_indices, compiled_rules, field, allowlist, metrics)
+            for group_indices in groups.values()
+            if group_indices
+        ]
         for f in futures:
             try:
                 all_findings.extend(f.result())

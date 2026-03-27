@@ -327,10 +327,10 @@ class TestAPIEndpoints(StoreTestCase):
         self.assertEqual(data["status"], "dismissed")
 
     def test_get_no_store(self):
-        from lumen_argus.dashboard.api import _handle_rule_analysis_get
+        from lumen_argus.dashboard.api import handle_community_api
 
         with patch("lumen_argus.rule_analysis.HAS_CROSSFIRE", True):
-            status, body = _handle_rule_analysis_get(None)
+            status, body = handle_community_api("/api/v1/rules/analysis", "GET", b"", None)
         self.assertEqual(status, 500)
 
 
@@ -403,6 +403,7 @@ class TestQualityToDict(unittest.TestCase):
     )
     def test_converts_quality_report(self):
         from crossfire.quality import QualityReport, RuleQuality
+
         from lumen_argus.rule_analysis import _quality_to_dict
 
         rq = RuleQuality(

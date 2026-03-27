@@ -4,9 +4,12 @@ Prevents a malicious MCP server from injecting responses for requests
 the client never sent. Uses FIFO eviction to bound memory.
 """
 
+from __future__ import annotations
+
 import json
 import logging
 from collections import OrderedDict
+from typing import Any
 
 log = logging.getLogger("argus.mcp")
 
@@ -21,12 +24,12 @@ class RequestTracker:
                 or "block" (drop + log). Default: "warn".
     """
 
-    def __init__(self, action: str = "warn"):
-        self._pending = OrderedDict()  # id_key -> True, insertion order
+    def __init__(self, action: str = "warn") -> None:
+        self._pending: OrderedDict[str, bool] = OrderedDict()  # id_key -> True, insertion order
         self._seeded = False
         self._action = action
 
-    def track(self, msg_id) -> None:
+    def track(self, msg_id: Any) -> None:
         """Record an outbound request ID before forwarding to server.
 
         Null/None IDs are ignored (JSON-RPC notifications have no response).
@@ -40,7 +43,7 @@ class RequestTracker:
         while len(self._pending) > _MAX_TRACKED:
             self._pending.popitem(last=False)
 
-    def validate(self, msg_id) -> bool:
+    def validate(self, msg_id: Any) -> bool:
         """Check if an inbound response ID was previously tracked.
 
         Returns True if valid (ID was tracked, or validation not yet active).
@@ -66,7 +69,7 @@ class RequestTracker:
         return self._action == "block"
 
     @staticmethod
-    def _normalize_id(msg_id) -> str:
+    def _normalize_id(msg_id: Any) -> str:
         """Normalize ID to string key for dict lookup.
 
         JSON-RPC IDs can be string, number, or null. We serialize to

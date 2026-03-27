@@ -1,5 +1,7 @@
 """PII detector: regex-based with validation (email, SSN, CC, phone, IP, IBAN)."""
 
+from __future__ import annotations
+
 from typing import List, Tuple
 
 from lumen_argus.allowlist import AllowlistMatcher

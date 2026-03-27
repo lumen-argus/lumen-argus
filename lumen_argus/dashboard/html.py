@@ -11,12 +11,14 @@ in the JS source code — these are hardcoded strings, never user data.
 No external dependencies, no build step, no CDN.
 """
 
+from __future__ import annotations
+
 import os
 
 _STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 
 
-def _read_static(filename):
+def _read_static(filename: str) -> str:
     """Read a static asset file from the dashboard/static/ directory."""
     path = os.path.join(_STATIC_DIR, filename)
     with open(path, "r", encoding="utf-8") as f:
@@ -38,7 +40,7 @@ _JS_MODULES = [
 ]
 
 
-def _build_dashboard_html():
+def _build_dashboard_html() -> str:
     """Assemble the dashboard SPA from static HTML, CSS, and JS files.
 
     JS is concatenated from per-page modules in _JS_MODULES order.

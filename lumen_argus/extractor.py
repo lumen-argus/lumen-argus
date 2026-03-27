@@ -4,8 +4,10 @@ Knows how to extract scannable text from Anthropic, OpenAI, and Gemini
 API request formats.
 """
 
+from __future__ import annotations
+
 import json
-from typing import List
+from typing import Any, List
 
 from lumen_argus.models import ScanField
 
@@ -39,7 +41,7 @@ class RequestExtractor:
         extractor = dispatch.get(provider, self._extract_generic)
         return extractor(data)
 
-    def _extract_anthropic(self, data: dict) -> List[ScanField]:
+    def _extract_anthropic(self, data: dict[str, Any]) -> List[ScanField]:
         """Extract from Anthropic Messages API format."""
         fields = []  # type: List[ScanField]
 
@@ -87,7 +89,7 @@ class RequestExtractor:
 
         return fields
 
-    def _extract_tool_result(self, block: dict, base_path: str, fields: List[ScanField]) -> None:
+    def _extract_tool_result(self, block: dict[str, Any], base_path: str, fields: List[ScanField]) -> None:
         """Extract text from tool_result content blocks."""
         content = block.get("content")
         source_file = ""
@@ -120,7 +122,7 @@ class RequestExtractor:
                             )
                         )
 
-    def _extract_openai(self, data: dict) -> List[ScanField]:
+    def _extract_openai(self, data: dict[str, Any]) -> List[ScanField]:
         """Extract from OpenAI Chat Completions API format."""
         fields = []  # type: List[ScanField]
 
@@ -199,7 +201,7 @@ class RequestExtractor:
 
         return fields
 
-    def _extract_gemini(self, data: dict) -> List[ScanField]:
+    def _extract_gemini(self, data: dict[str, Any]) -> List[ScanField]:
         """Extract from Gemini generateContent API format."""
         fields = []  # type: List[ScanField]
 
@@ -269,7 +271,7 @@ class RequestExtractor:
             for i, v in enumerate(obj):
                 self._walk_nested(v, "%s[%d]" % (path, i), fields)
 
-    def _extract_generic(self, data: dict) -> List[ScanField]:
+    def _extract_generic(self, data: dict[str, Any]) -> List[ScanField]:
         """Fallback: recursively extract all string values > 20 chars."""
         fields = []  # type: List[ScanField]
         self._walk(data, "", fields)

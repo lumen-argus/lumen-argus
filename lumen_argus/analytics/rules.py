@@ -1,10 +1,15 @@
 """Rules repository — extracted from AnalyticsStore."""
 
+from __future__ import annotations
+
 import json
 import logging
 import re
 import sqlite3
-from typing import Optional
+from typing import TYPE_CHECKING, Any, Optional
+
+if TYPE_CHECKING:
+    from lumen_argus.analytics.store import AnalyticsStore
 
 log = logging.getLogger("argus.analytics")
 
@@ -45,18 +50,19 @@ _RULES_COLUMNS = (
 class RulesRepository:
     """Repository for rules CRUD operations."""
 
-    def __init__(self, store):
+    def __init__(self, store: AnalyticsStore) -> None:
         self._store = store
 
     def get_count(self) -> int:
         """Return total number of rules in the DB."""
         with self._store._connect() as conn:
-            return conn.execute("SELECT COUNT(*) FROM rules").fetchone()[0]
+            row = conn.execute("SELECT COUNT(*) FROM rules").fetchone()
+            return row[0] if row else 0
 
-    def get_active(self, detector: Optional[str] = None, tier: Optional[str] = None) -> list:
+    def get_active(self, detector: Optional[str] = None, tier: Optional[str] = None) -> list[dict[str, Any]]:
         """Return enabled rules, optionally filtered by detector/tier."""
         query = "SELECT " + _RULES_COLUMNS + " FROM rules WHERE enabled = 1"
-        params = []  # type: list
+        params: list[Any] = []
         if detector:
             query += " AND detector = ?"
             params.append(detector)
@@ -66,7 +72,7 @@ class RulesRepository:
         query += " ORDER BY id"
         with self._store._connect() as conn:
             rows = conn.execute(query, params).fetchall()
-        result = []
+        result: list[dict[str, Any]] = []
         for r in rows:
             d = dict(r)
             d["enabled"] = bool(d.get("enabled", 1))
@@ -88,10 +94,10 @@ class RulesRepository:
         enabled: Optional[bool] = None,
         severity: Optional[str] = None,
         tag: Optional[str] = None,
-    ) -> tuple:
+    ) -> tuple[list[dict[str, Any]], Any]:
         """Paginated rules for dashboard. Returns (rules_list, total_count)."""
-        conditions = []
-        params = []  # type: list
+        conditions: list[str] = []
+        params: list[Any] = []
         if search:
             terms = [t.strip() for t in search.split(",") if t.strip()]
             if len(terms) == 1:
@@ -123,12 +129,13 @@ class RulesRepository:
         where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
 
         with self._store._connect() as conn:
-            total = conn.execute("SELECT COUNT(*) FROM rules" + where, params).fetchone()[0]
+            count_row = conn.execute("SELECT COUNT(*) FROM rules" + where, params).fetchone()
+            total: int = count_row[0] if count_row else 0
             rows = conn.execute(
                 "SELECT " + _RULES_COLUMNS + " FROM rules" + where + " ORDER BY id LIMIT ? OFFSET ?",
-                params + [limit, offset],
+                [*params, limit, offset],
             ).fetchall()
-        result = []
+        result: list[dict[str, Any]] = []
         for r in rows:
             d = dict(r)
             d["enabled"] = bool(d.get("enabled", 1))
@@ -140,7 +147,7 @@ class RulesRepository:
             result.append(d)
         return result, total
 
-    def get_by_name(self, name: str) -> Optional[dict]:
+    def get_by_name(self, name: str) -> Optional[dict[str, Any]]:
         """Return a single rule by name."""
         with self._store._connect() as conn:
             row = conn.execute("SELECT " + _RULES_COLUMNS + " FROM rules WHERE name = ?", (name,)).fetchone()
@@ -155,7 +162,7 @@ class RulesRepository:
                 d["tags"] = []
         return d
 
-    def create(self, data: dict) -> dict:
+    def create(self, data: dict[str, Any]) -> Optional[dict[str, Any]]:
         """Create a custom rule. Validates pattern regex. Returns created rule."""
 
         name = data.get("name", "").strip()
@@ -203,13 +210,13 @@ class RulesRepository:
         self._store._notify_rules_changed("create", rule_name=name)
         return self.get_by_name(name)
 
-    def _build_set_clause(self, data: dict) -> tuple:
+    def _build_set_clause(self, data: dict[str, Any]) -> tuple[list[str], list[Any]]:
         """Build SET clause fragments and params from update data.
 
         Returns (set_fragments, params) or ([], []) if no updatable fields.
         """
-        fragments = []
-        params = []
+        fragments: list[str] = []
+        params: list[Any] = []
         for key in ("pattern", "detector", "severity", "action", "description", "validator"):
             if key in data:
                 fragments.append("%s = ?" % key)
@@ -231,7 +238,7 @@ class RulesRepository:
                 params.append(data["updated_by"])
         return fragments, params
 
-    def update(self, name: str, data: dict) -> Optional[dict]:
+    def update(self, name: str, data: dict[str, Any]) -> Optional[dict[str, Any]]:
         """Update rule fields. Returns updated rule or None if not found."""
         fragments, params = self._build_set_clause(data)
         if not fragments:
@@ -249,7 +256,7 @@ class RulesRepository:
         self._store._notify_rules_changed("update", rule_name=name)
         return self.get_by_name(name)
 
-    def bulk_update(self, names: list, data: dict) -> dict:
+    def bulk_update(self, names: list[str], data: dict[str, Any]) -> dict[str, Any]:
         """Update multiple rules in a single transaction.
 
         Returns {"updated": N, "failed": [{"name": ..., "reason": ...}]}.
@@ -262,12 +269,12 @@ class RulesRepository:
 
         set_clause = ", ".join(fragments)
         updated = 0
-        failed = []
+        failed: list[dict[str, str]] = []
 
         with self._store._lock:
             with self._store._connect() as conn:
                 for name in names:
-                    params = list(base_params) + [name]
+                    params = [*list(base_params), name]
                     cursor = conn.execute(
                         "UPDATE rules SET %s WHERE name = ?" % set_clause,
                         params,
@@ -297,7 +304,7 @@ class RulesRepository:
             self._store._notify_rules_changed("delete", rule_name=name)
         return deleted
 
-    def clone(self, name: str, new_name: str) -> dict:
+    def clone(self, name: str, new_name: str) -> Optional[dict[str, Any]]:
         """Clone a rule as source='dashboard', tier='custom'."""
         original = self.get_by_name(name)
         if not original:
@@ -319,7 +326,7 @@ class RulesRepository:
             }
         )
 
-    def import_bulk(self, rules: list, tier: str = "community", force: bool = False) -> dict:
+    def import_bulk(self, rules: list[dict[str, Any]], tier: str = "community", force: bool = False) -> dict[str, int]:
         """Bulk import rules from a JSON bundle.
 
         Returns {"created": N, "updated": N, "skipped": N}.
@@ -426,11 +433,11 @@ class RulesRepository:
             self._store._notify_rules_changed("bulk")
         return result
 
-    def export(self, tier: Optional[str] = None, detector: Optional[str] = None) -> list:
+    def export(self, tier: Optional[str] = None, detector: Optional[str] = None) -> list[dict[str, Any]]:
         """Export rules as dicts for JSON serialization."""
         query = "SELECT " + _RULES_COLUMNS + " FROM rules"
-        conditions = []
-        params = []  # type: list
+        conditions: list[str] = []
+        params: list[Any] = []
         if tier:
             conditions.append("tier = ?")
             params.append(tier)
@@ -443,7 +450,7 @@ class RulesRepository:
 
         with self._store._connect() as conn:
             rows = conn.execute(query, params).fetchall()
-        result = []
+        result: list[dict[str, Any]] = []
         for r in rows:
             d = dict(r)
             d["enabled"] = bool(d.get("enabled", 1))
@@ -455,17 +462,17 @@ class RulesRepository:
             result.append(d)
         return result
 
-    def get_stats(self) -> dict:
+    def get_stats(self) -> dict[str, Any]:
         """Rule counts by tier, detector, enabled."""
         with self._store._connect() as conn:
-            total = conn.execute("SELECT COUNT(*) FROM rules").fetchone()[0]
-            by_tier = {}
+            total: int = conn.execute("SELECT COUNT(*) FROM rules").fetchone()[0]
+            by_tier: dict[str, Any] = {}
             for row in conn.execute("SELECT tier, COUNT(*) as cnt FROM rules GROUP BY tier"):
                 by_tier[row["tier"]] = row["cnt"]
-            by_detector = {}
+            by_detector: dict[str, Any] = {}
             for row in conn.execute("SELECT detector, COUNT(*) as cnt FROM rules GROUP BY detector"):
                 by_detector[row["detector"]] = row["cnt"]
-            enabled = conn.execute("SELECT COUNT(*) FROM rules WHERE enabled = 1").fetchone()[0]
+            enabled: int = conn.execute("SELECT COUNT(*) FROM rules WHERE enabled = 1").fetchone()[0]
         return {
             "total": total,
             "enabled": enabled,
@@ -474,7 +481,7 @@ class RulesRepository:
             "by_detector": by_detector,
         }
 
-    def get_coverage(self) -> dict:
+    def get_coverage(self) -> dict[str, int]:
         """Detection coverage stats for dashboard gauge."""
         with self._store._connect() as conn:
             total = conn.execute("SELECT COUNT(*) FROM rules").fetchone()[0]
@@ -486,7 +493,7 @@ class RulesRepository:
             "pro_imported": pro_imported,
         }
 
-    def get_tag_stats(self) -> list:
+    def get_tag_stats(self) -> list[dict[str, Any]]:
         """Return tag counts for category chip display.
 
         Returns list of {"tag": "cloud", "total": N, "enabled": M}.
@@ -495,7 +502,7 @@ class RulesRepository:
         with self._store._connect() as conn:
             rows = conn.execute("SELECT tags, enabled FROM rules WHERE tags != '[]' AND tags != ''").fetchall()
 
-        tag_counts = {}  # type: dict
+        tag_counts: dict[str, dict[str, int]] = {}
         for row in rows:
             try:
                 tags = json.loads(row["tags"])
@@ -513,7 +520,7 @@ class RulesRepository:
             key=lambda x: x["tag"],
         )
 
-    def reconcile_yaml(self, custom_rules: list) -> dict:
+    def reconcile_yaml(self, custom_rules: list[Any]) -> dict[str, list[str]]:
         """Kubernetes-style reconciliation of YAML custom_rules to DB.
 
         YAML is authoritative for source='yaml' rules: all fields overwrite.
@@ -522,10 +529,10 @@ class RulesRepository:
         Returns {"created": [...], "updated": [...], "deleted": [...]}.
         """
 
-        result = {"created": [], "updated": [], "deleted": []}  # type: dict
+        result: dict[str, list[str]] = {"created": [], "updated": [], "deleted": []}
         now = self._store._now()
 
-        yaml_by_name = {}
+        yaml_by_name: dict[str, Any] = {}
         for rule in custom_rules:
             if not isinstance(rule, dict):
                 continue
@@ -538,7 +545,7 @@ class RulesRepository:
         with self._store._lock:
             with self._store._connect() as conn:
                 # Snapshot YAML-sourced rules inside the lock to avoid TOCTOU
-                db_yaml = {}
+                db_yaml: dict[str, bool] = {}
                 for row in conn.execute("SELECT name FROM rules WHERE source = 'yaml'").fetchall():
                     db_yaml[row[0]] = True
 

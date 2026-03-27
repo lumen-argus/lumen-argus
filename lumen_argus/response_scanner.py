@@ -12,10 +12,15 @@ Runs asynchronously (post-hoc) in community edition — no latency impact.
 Pro adds buffered/blocking mode and custom injection patterns.
 """
 
+from __future__ import annotations
+
 import logging
 import re
 import time
-from typing import List
+from typing import TYPE_CHECKING, Any, List, Optional
+
+if TYPE_CHECKING:
+    from lumen_argus.analytics.store import AnalyticsStore
 
 from lumen_argus.models import Finding, ScanField
 from lumen_argus.text_utils import sanitize_text
@@ -63,9 +68,9 @@ class ResponseScanner:
 
     def __init__(
         self,
-        detectors: list = None,
-        allowlist=None,
-        store=None,
+        detectors: Optional[list[Any]] = None,
+        allowlist: Any = None,
+        store: AnalyticsStore | None = None,
         scan_secrets: bool = True,
         scan_injection: bool = True,
         max_response_size: int = 1_048_576,  # 1MB
@@ -78,7 +83,7 @@ class ResponseScanner:
         self._max_response_size = max_response_size
 
         # Load injection rules from DB or fallback
-        self._injection_rules = []  # type: list
+        self._injection_rules: list[dict[str, Any]] = []
         self._load_injection_rules()
 
     def _load_injection_rules(self) -> None:

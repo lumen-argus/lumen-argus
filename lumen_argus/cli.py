@@ -1,5 +1,7 @@
 """CLI entry point: argument parsing, startup, and run loop."""
 
+from __future__ import annotations
+
 import argparse
 import json
 import logging
@@ -8,11 +10,14 @@ import platform
 import signal
 import sys
 import time
+from typing import TYPE_CHECKING, Any, Optional, Union
+
+if TYPE_CHECKING:
+    from lumen_argus.analytics.store import AnalyticsStore
 
 from lumen_argus import __version__
-
 from lumen_argus.audit import AuditLogger
-from lumen_argus.config import load_config
+from lumen_argus.config import Config, load_config
 from lumen_argus.display import JsonDisplay, TerminalDisplay
 from lumen_argus.extensions import ExtensionRegistry
 from lumen_argus.log_utils import setup_file_logging
@@ -22,7 +27,7 @@ from lumen_argus.provider import ProviderRouter
 log = logging.getLogger("argus.cli")
 
 
-def _setup_minimal_logging():
+def _setup_minimal_logging() -> None:
     """Configure minimal stderr logging for non-serve CLI commands."""
     handler = logging.StreamHandler(sys.stderr)
     handler.setFormatter(logging.Formatter("  [%(name)s] %(levelname)s: %(message)s"))
@@ -30,9 +35,13 @@ def _setup_minimal_logging():
     logging.getLogger().setLevel(logging.WARNING)
 
 
-def _trigger_auto_analysis(store, extensions, config=None):
+def _trigger_auto_analysis(
+    store: AnalyticsStore | None, extensions: ExtensionRegistry | None, config: Config | None = None
+) -> None:
     """Run rule overlap analysis in background if crossfire is available and enabled."""
     if config and not config.rule_analysis.auto_on_import:
+        return
+    if not store:
         return
     try:
         from lumen_argus.rule_analysis import run_analysis_in_background
@@ -41,7 +50,9 @@ def _trigger_auto_analysis(store, extensions, config=None):
     run_analysis_in_background(store, extensions, thread_name="rule-analysis-auto", config=config)
 
 
-def _initialize_analytics(config, args, extensions, action_overrides):
+def _initialize_analytics(
+    config: Config, args: argparse.Namespace, extensions: ExtensionRegistry, action_overrides: dict[str, str]
+) -> AnalyticsStore | None:
     """Initialize analytics store, auto-import rules, reconcile YAML, apply DB overrides.
 
     Returns the AnalyticsStore instance (or None if dashboard is disabled).
@@ -58,7 +69,7 @@ def _initialize_analytics(config, args, extensions, action_overrides):
         hmac_key = _load_hmac_key()
 
     # Create analytics store (or use plugin-provided one)
-    analytics_store = extensions.get_analytics_store()
+    analytics_store: AnalyticsStore | None = extensions.get_analytics_store()
     if analytics_store is None and config.analytics.enabled:
         analytics_store = AnalyticsStore(db_path=config.analytics.db_path, hmac_key=hmac_key)
         extensions.set_analytics_store(analytics_store)
@@ -142,7 +153,9 @@ def _initialize_analytics(config, args, extensions, action_overrides):
     return analytics_store
 
 
-def _setup_mcp_scanning(config, server, pipeline, analytics_store):
+def _setup_mcp_scanning(
+    config: Config, server: Any, pipeline: ScannerPipeline, analytics_store: AnalyticsStore | None
+) -> None:
     """Configure MCP tool argument/response scanning on the HTTP proxy."""
     mcp_args_enabled = config.pipeline.mcp_arguments.enabled
     mcp_resp_enabled = config.pipeline.mcp_responses.enabled
@@ -183,7 +196,13 @@ def _setup_mcp_scanning(config, server, pipeline, analytics_store):
     )
 
 
-def _setup_ws_scanning(config, server, pipeline, analytics_store, extensions):
+def _setup_ws_scanning(
+    config: Config,
+    server: Any,
+    pipeline: ScannerPipeline,
+    analytics_store: AnalyticsStore | None,
+    extensions: ExtensionRegistry,
+) -> None:
     """Configure WebSocket frame scanning and connection lifecycle hook."""
     from lumen_argus.ws_proxy import WebSocketScanner
 
@@ -205,7 +224,7 @@ def _setup_ws_scanning(config, server, pipeline, analytics_store, extensions):
     # Pro can override via extensions.set_ws_connection_hook() to add richer analytics.
     if analytics_store and not extensions.get_ws_connection_hook():
 
-        def _default_ws_hook(event_type, connection_id, metadata):
+        def _default_ws_hook(event_type: str, connection_id: str, metadata: dict[str, Any]) -> None:
             if event_type == "open":
                 analytics_store.record_ws_connection_open(
                     connection_id,
@@ -230,7 +249,7 @@ def _setup_ws_scanning(config, server, pipeline, analytics_store, extensions):
         log.debug("default WebSocket connection hook registered")
 
 
-def _build_pipeline_config(cfg):
+def _build_pipeline_config(cfg: Any) -> dict[str, Any]:
     """Build flat dict from PipelineConfig for ScannerPipeline."""
     enc = cfg.pipeline.encoding_decode
     return {
@@ -246,7 +265,7 @@ def _build_pipeline_config(cfg):
     }
 
 
-def main(argv=None):
+def main(argv: list[str] | None = None) -> None:
     """Main entry point."""
     parser = argparse.ArgumentParser(
         prog="lumen-argus",
@@ -513,6 +532,7 @@ def main(argv=None):
         action_overrides["proprietary"] = config.proprietary.action
 
     # Construct components
+    display: Union[JsonDisplay, TerminalDisplay]
     if args.output_format == "json":
         display = JsonDisplay()
     else:
@@ -601,7 +621,7 @@ def main(argv=None):
             pipeline=pipeline,
             router=router,
             audit=audit,
-            display=display,
+            display=display,  # type: ignore[arg-type]
             timeout=config.proxy.timeout,
             retries=config.proxy.retries,
             max_body_size=config.proxy.max_body_size,
@@ -686,16 +706,16 @@ def main(argv=None):
     # --- Async run loop ---
     import asyncio
 
-    async def _run_async():
+    async def _run_async() -> None:
         await server.start()
 
         loop = asyncio.get_running_loop()
         shutdown_event = asyncio.Event()
 
-        def _shutdown():
+        def _shutdown() -> None:
             shutdown_event.set()
 
-        def _reload():
+        def _reload() -> None:
             # Run reload in thread pool to avoid blocking event loop
             # with file I/O (YAML load) and SQLite reads (config overrides).
             task = asyncio.ensure_future(
@@ -767,7 +787,15 @@ def _load_hmac_key() -> bytes:
     return key
 
 
-def _do_reload(server, config_path, file_handler, console_level, root_logger, extensions, current_config):
+def _do_reload(
+    server: Any,
+    config_path: str | None,
+    file_handler: logging.Handler,
+    console_level: int,
+    root_logger: logging.Logger,
+    extensions: ExtensionRegistry,
+    current_config: list[Any],
+) -> None:
     """Reload config from disk — runs in main thread, safe for locks."""
     try:
         from lumen_argus.log_utils import config_diff
@@ -776,7 +804,7 @@ def _do_reload(server, config_path, file_handler, console_level, root_logger, ex
 
         # Reconcile YAML custom rules to DB BEFORE pipeline reload
         # so RulesDetector.reload() sees the updated rules
-        analytics_store = extensions.get_analytics_store()
+        analytics_store: AnalyticsStore | None = extensions.get_analytics_store()
         from lumen_argus.scanner import _build_allowlist
 
         new_allowlist = _build_allowlist(new_config, store=analytics_store, extensions=extensions)
@@ -1018,7 +1046,7 @@ def _do_reload(server, config_path, file_handler, console_level, root_logger, ex
         log.error("config reload failed: %s", e)
 
 
-def _run_scan(args):
+def _run_scan(args: argparse.Namespace) -> None:
     """Execute the 'scan' subcommand."""
     from lumen_argus.scanner import scan_diff, scan_files, scan_text
 
@@ -1049,7 +1077,7 @@ def _run_scan(args):
     sys.exit(exit_code)
 
 
-def _run_logs(args):
+def _run_logs(args: argparse.Namespace) -> None:
     """Execute the 'logs' subcommand."""
     from lumen_argus.config import load_config as _load_config
     from lumen_argus.log_utils import export_logs
@@ -1059,7 +1087,7 @@ def _run_logs(args):
     sys.exit(exit_code)
 
 
-def _run_clients(args):
+def _run_clients(args: argparse.Namespace) -> None:
     """Execute the 'clients' subcommand — list supported AI CLI agents."""
     from lumen_argus.clients import get_all_clients
 
@@ -1081,7 +1109,7 @@ def _run_clients(args):
     print("Run 'lumen-argus setup' to auto-configure detected tools.")
 
 
-def _run_detect(args):
+def _run_detect(args: argparse.Namespace) -> None:
     """Execute the 'detect' subcommand — scan for installed AI CLI agents."""
     from lumen_argus.detect import detect_installed_clients
 
@@ -1137,7 +1165,7 @@ def _run_detect(args):
         print("Run 'lumen-argus setup' to configure remaining tools.")
 
 
-def _run_setup(args):
+def _run_setup(args: argparse.Namespace) -> None:
     """Execute the 'setup' subcommand — configure tools to use proxy."""
     from lumen_argus.setup_wizard import run_setup, undo_setup
 
@@ -1157,7 +1185,7 @@ def _run_setup(args):
     )
 
 
-def _load_rules_bundle(path: str = None, pro: bool = False) -> tuple:
+def _load_rules_bundle(path: Optional[str] = None, pro: bool = False) -> tuple[list[Any], str, str]:
     """Load a rules JSON bundle. Returns (rules_list, version, tier)."""
     if path:
         with open(path, encoding="utf-8") as f:
@@ -1196,7 +1224,7 @@ def _load_rules_bundle(path: str = None, pro: bool = False) -> tuple:
     return bundle.get("rules", []), bundle.get("version", ""), "community"
 
 
-def _run_rules(args):
+def _run_rules(args: argparse.Namespace) -> None:
     """Execute the 'rules' subcommand."""
     from lumen_argus.analytics.store import AnalyticsStore
     from lumen_argus.config import load_config as _load_config
@@ -1208,7 +1236,7 @@ def _run_rules(args):
     if args.rules_command == "import":
         if args.pro:
             try:
-                from lumen_argus_pro.license import get_license
+                from lumen_argus_pro.license import get_license  # type: ignore[import-not-found]
 
                 lic = get_license()
                 if not lic.is_valid:
@@ -1292,7 +1320,7 @@ def _run_rules(args):
             print("  %d rules validated, 0 errors" % len(rules))
 
 
-def _run_mcp(args, extensions=None):
+def _run_mcp(args: argparse.Namespace, extensions: ExtensionRegistry | None = None) -> None:
     """Run the unified MCP scanning proxy."""
     import asyncio
 
@@ -1331,10 +1359,11 @@ def _run_mcp(args, extensions=None):
     config = load_config(config_path=args.config)
 
     # Build detectors (lightweight — no DB, no rules engine, just hardcoded patterns)
+    from lumen_argus.detectors import BaseDetector
     from lumen_argus.detectors.pii import PIIDetector
     from lumen_argus.detectors.secrets import SecretsDetector
 
-    detectors = []
+    detectors: list[BaseDetector] = []
     if config.secrets.enabled:
         detectors.append(SecretsDetector(entropy_threshold=config.entropy_threshold))
     if config.pii.enabled:
@@ -1373,8 +1402,8 @@ def _run_mcp(args, extensions=None):
         except Exception as e:
             log.warning("mcp: could not load tool lists from DB: %s", e)
 
-    allowed_tools = allowed_tools or None
-    blocked_tools = blocked_tools or None
+    allowed_tools_opt: set[Any] | None = allowed_tools or None
+    blocked_tools_opt: set[Any] | None = blocked_tools or None
 
     # Load extensions (Pro hooks for policy engine + adaptive enforcement)
     if extensions is None:
@@ -1416,8 +1445,8 @@ def _run_mcp(args, extensions=None):
         response_scanner=response_scanner,
         scan_arguments=config.pipeline.mcp_arguments.enabled,
         scan_responses=config.pipeline.mcp_responses.enabled,
-        allowed_tools=allowed_tools,
-        blocked_tools=blocked_tools,
+        allowed_tools=allowed_tools_opt,
+        blocked_tools=blocked_tools_opt,
         action=action,
         request_tracker=request_tracker,
         session_binding=session_binding_obj,
@@ -1454,6 +1483,9 @@ def _run_mcp(args, extensions=None):
         # HTTP reverse proxy mode
         from lumen_argus.mcp.proxy import run_http_listener
 
+        if upstream is None:
+            print("Error: --upstream is required with --listen", file=sys.stderr)
+            sys.exit(1)
         # Parse listen address
         if ":" in listen:
             parts = listen.rsplit(":", 1)
@@ -1467,23 +1499,28 @@ def _run_mcp(args, extensions=None):
             run_http_listener(host, port, upstream, scanner, policy_engine=policy_engine, escalation_fn=escalation_fn)
         )
 
-    elif upstream.startswith("ws://") or upstream.startswith("wss://"):
-        # WebSocket bridge mode
-        from lumen_argus.mcp.proxy import run_ws_bridge
-
-        exit_code = asyncio.run(
-            run_ws_bridge(upstream, scanner, policy_engine=policy_engine, escalation_fn=escalation_fn)
-        )
-        sys.exit(exit_code)
-
     else:
-        # HTTP bridge mode (stdio client -> HTTP upstream)
-        from lumen_argus.mcp.proxy import run_http_bridge
+        # upstream must be set here (validated above)
+        if upstream is None:
+            print("Error: --upstream is required for bridge mode", file=sys.stderr)
+            sys.exit(1)
+        if upstream.startswith(("ws://", "wss://")):
+            # WebSocket bridge mode
+            from lumen_argus.mcp.proxy import run_ws_bridge
 
-        exit_code = asyncio.run(
-            run_http_bridge(upstream, scanner, policy_engine=policy_engine, escalation_fn=escalation_fn)
-        )
-        sys.exit(exit_code)
+            exit_code = asyncio.run(
+                run_ws_bridge(upstream, scanner, policy_engine=policy_engine, escalation_fn=escalation_fn)
+            )
+            sys.exit(exit_code)
+
+        else:
+            # HTTP bridge mode (stdio client -> HTTP upstream)
+            from lumen_argus.mcp.proxy import run_http_bridge
+
+            exit_code = asyncio.run(
+                run_http_bridge(upstream, scanner, policy_engine=policy_engine, escalation_fn=escalation_fn)
+            )
+            sys.exit(exit_code)
 
 
 if __name__ == "__main__":

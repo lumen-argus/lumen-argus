@@ -10,6 +10,8 @@ Scanning logic is unchanged — CPU-bound scanning runs in a thread pool
 via asyncio.to_thread() to avoid blocking the event loop.
 """
 
+from __future__ import annotations
+
 import asyncio
 import itertools
 import json
@@ -19,11 +21,13 @@ import ssl
 import threading
 import time
 import uuid
+from typing import TYPE_CHECKING, Any, Optional
+
+if TYPE_CHECKING:
+    from lumen_argus.extensions import ExtensionRegistry
 
 import aiohttp
 from aiohttp import web
-
-from aiohttp.web import AppKey as _AppKey
 
 from lumen_argus.actions import build_block_response, should_forward, try_strip_blocked_history
 from lumen_argus.audit import AuditLogger
@@ -64,7 +68,7 @@ def build_ssl_context(ca_bundle: str = "", verify_ssl: bool = True) -> ssl.SSLCo
 
 
 # Typed app key for storing the proxy reference (avoids aiohttp AppKey warning).
-_PROXY_KEY = _AppKey("proxy", t="AsyncArgusProxy")
+_PROXY_KEY: Any = web.AppKey("proxy", t=str)
 
 # Thread-safe request counter (shared with legacy proxy if both loaded).
 _request_counter = itertools.count(1)
@@ -94,7 +98,7 @@ def _log_audit(
     result: ScanResult,
     body_size: int,
     passed: bool,
-    session: SessionContext = None,
+    session: SessionContext | None = None,
 ) -> None:
     """Write audit log entry."""
     entry = AuditEntry(
@@ -162,7 +166,7 @@ async def _handle_metrics(request: web.Request) -> web.Response:
     return resp
 
 
-async def _handle_websocket(request: web.Request, server: "AsyncArgusProxy") -> web.WebSocketResponse:
+async def _handle_websocket(request: web.Request, server: "AsyncArgusProxy") -> web.WebSocketResponse | web.Response:
     """Handle WebSocket upgrade — relay frames with scanning on same port.
 
     Client connects: ws://localhost:8080/ws?url=ws://real-server:3000/path
@@ -236,6 +240,9 @@ async def _handle_websocket(request: web.Request, server: "AsyncArgusProxy") -> 
     close_code = 1000
     # Connect to upstream via aiohttp client session
     try:
+        if server.client_session is None:
+            log.error("ws: client session not initialized, cannot connect to %s", target_url)
+            return web.Response(text="Proxy client session not ready", status=502)
         async with server.client_session.ws_connect(target_url) as ws_upstream:
             log.debug("ws: upstream connected to %s (conn=%s)", target_url, connection_id[:8])
 
@@ -248,7 +255,7 @@ async def _handle_websocket(request: web.Request, server: "AsyncArgusProxy") -> 
             # Shared event: set on block to cancel both relay directions
             _blocked = asyncio.Event()
 
-            async def _evaluate_ws_findings(findings, direction):
+            async def _evaluate_ws_findings(findings: list[Finding], direction: str) -> bool:
                 """Evaluate findings against policy. Returns True if connection should close."""
                 decision = await asyncio.to_thread(ws_policy.evaluate, findings)
                 if decision.action == "block":
@@ -270,7 +277,7 @@ async def _handle_websocket(request: web.Request, server: "AsyncArgusProxy") -> 
                 )
                 return False
 
-            async def _fire_finding_hook(direction, frame_size, fc):
+            async def _fire_finding_hook(direction: str, frame_size: int, fc: int) -> None:
                 """Fire finding_detected hook in thread pool."""
                 if ws_hook:
                     try:
@@ -288,7 +295,7 @@ async def _handle_websocket(request: web.Request, server: "AsyncArgusProxy") -> 
                     except Exception as e:
                         log.debug("ws hook finding error: %s", e)
 
-            async def _client_to_server():
+            async def _client_to_server() -> None:
                 """Relay client → upstream with outbound scanning."""
                 nonlocal frames_sent, findings_total
                 try:
@@ -313,7 +320,7 @@ async def _handle_websocket(request: web.Request, server: "AsyncArgusProxy") -> 
                 except Exception as e:
                     log.debug("ws client->server relay ended: %s", e)
 
-            async def _server_to_client():
+            async def _server_to_client() -> None:
                 """Relay upstream → client with inbound scanning."""
                 nonlocal frames_received, findings_total
                 try:
@@ -343,7 +350,7 @@ async def _handle_websocket(request: web.Request, server: "AsyncArgusProxy") -> 
             # cancel the other to avoid hanging on the remaining async for.
             task_c2s = asyncio.create_task(_client_to_server())
             task_s2c = asyncio.create_task(_server_to_client())
-            done, pending = await asyncio.wait([task_c2s, task_s2c], return_when=asyncio.FIRST_COMPLETED)
+            _done, pending = await asyncio.wait([task_c2s, task_s2c], return_when=asyncio.FIRST_COMPLETED)
             for task in pending:
                 task.cancel()
                 try:
@@ -424,11 +431,11 @@ async def _handle_request(request: web.Request) -> web.StreamResponse:
 
     # WebSocket upgrade — handle on same port
     if request.headers.get("Upgrade", "").lower() == "websocket" or path.startswith("/ws"):
-        server = request.app[_PROXY_KEY]
-        return await _handle_websocket(request, server)
+        ws_server: AsyncArgusProxy = request.app[_PROXY_KEY]
+        return await _handle_websocket(request, ws_server)
 
     request_id = next(_request_counter)
-    server = request.app[_PROXY_KEY]  # type: AsyncArgusProxy
+    server: AsyncArgusProxy = request.app[_PROXY_KEY]
 
     # OTel trace span wraps the full request lifecycle
     trace_hook = server.extensions.get_trace_request_hook() if server.extensions else None
@@ -456,7 +463,7 @@ async def _handle_request(request: web.Request) -> web.StreamResponse:
 
 
 async def _do_forward(
-    request: web.Request, request_id: int, server: "AsyncArgusProxy", span=None
+    request: web.Request, request_id: int, server: "AsyncArgusProxy", span: Any = None
 ) -> web.StreamResponse:
     """Inner forwarding logic — separated for active request tracking."""
     # Pre-request hook
@@ -689,7 +696,9 @@ async def _do_forward(
 
         # Check if we should block
         if not should_forward(scan_result):
-            stripped_body = try_strip_blocked_history(req_data, scan_result.findings)
+            stripped_body = (
+                try_strip_blocked_history(req_data, scan_result.findings) if isinstance(req_data, dict) else None
+            )
             if stripped_body is not None:
                 types = ", ".join(f.type for f in scan_result.findings)
                 log.info(
@@ -783,6 +792,9 @@ async def _do_forward(
         upstream_url = "%s://%s:%d%s" % (scheme, host, port, path)
 
         # Forward to upstream via aiohttp ClientSession
+        if server.client_session is None:
+            log.error("#%d client session not initialized", request_id)
+            return web.Response(status=502, text="Proxy not ready")
         client_session = server.client_session
         try:
             async with client_session.request(
@@ -856,7 +868,7 @@ async def _do_forward(
                     # Hook passed — forward the response normally
                     resp_size = len(data)
                     resp_text = ""  # hook handled — skip async scan
-                    response = web.Response(
+                    response: web.StreamResponse = web.Response(
                         body=data,
                         status=upstream_resp.status,
                         headers=resp_headers,
@@ -1069,11 +1081,11 @@ def _async_response_scan(
     text: str,
     provider: str,
     model: str,
-    session: SessionContext = None,
+    session: SessionContext | None = None,
 ) -> None:
     """Run response scanning in a background task (async mode)."""
 
-    async def _scan():
+    async def _scan() -> None:
         try:
             findings = await asyncio.to_thread(server.response_scanner.scan, text, provider, model)
             if not findings:
@@ -1132,8 +1144,8 @@ class AsyncArgusProxy:
         timeout: int = 30,
         retries: int = 1,
         max_body_size: int = 50 * 1024 * 1024,
-        redact_hook: object = None,
-        ssl_context: ssl.SSLContext = None,
+        redact_hook: Any = None,
+        ssl_context: Optional[ssl.SSLContext] = None,
         max_connections: int = 10,
     ):
         if bind not in ("127.0.0.1", "localhost"):
@@ -1154,18 +1166,18 @@ class AsyncArgusProxy:
         self._active_requests = 0
         self._active_ws_connections = 0
         self._active_lock = threading.Lock()  # free-threaded Python safety
-        self._background_tasks = set()  # prevent GC of background scan tasks
+        self._background_tasks: set[asyncio.Task[Any]] = set()
         self.stats = SessionStats()
         self.start_time = time.monotonic()
-        self.extensions = None
-        self.response_scanner = None
-        self.mcp_scanner = None
-        self.ws_scanner = None  # WebSocketScanner, set by cli.py
-        self.ws_allowed_origins = []  # set by cli.py
-        self.client_session = None  # Created in _create_app()
-        self._app = None
-        self._runner = None
-        self._site = None
+        self.extensions: ExtensionRegistry | None = None
+        self.response_scanner: Any = None
+        self.mcp_scanner: Any = None
+        self.ws_scanner: Any = None  # WebSocketScanner, set by cli.py
+        self.ws_allowed_origins: list[str] = []  # set by cli.py
+        self.client_session: aiohttp.ClientSession | None = None
+        self._app: web.Application | None = None
+        self._runner: web.AppRunner | None = None
+        self._site: web.TCPSite | None = None
 
     @property
     def active_requests(self) -> int:
@@ -1178,7 +1190,7 @@ class AsyncArgusProxy:
             return self._active_ws_connections
 
     @property
-    def server_address(self) -> tuple:
+    def server_address(self) -> tuple[str, int]:
         """Compatible with ThreadingHTTPServer.server_address."""
         return (self.bind, self.port)
 
@@ -1203,7 +1215,7 @@ class AsyncArgusProxy:
         """Create the aiohttp ClientSession for upstream connections."""
         connector = aiohttp.TCPConnector(
             limit=self.max_connections,
-            ssl=self._ssl_context,
+            ssl=self._ssl_context if self._ssl_context else False,
             enable_cleanup_closed=True,
         )
         self.client_session = aiohttp.ClientSession(
@@ -1222,6 +1234,9 @@ class AsyncArgusProxy:
         """Start the async proxy server."""
         if self._app is None:
             self._create_app()
+        if self._app is None:
+            log.error("failed to create aiohttp application")
+            raise RuntimeError("failed to create aiohttp application")
 
         self._runner = web.AppRunner(self._app, handle_signals=False)
         await self._runner.setup()

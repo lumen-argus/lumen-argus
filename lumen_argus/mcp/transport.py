@@ -7,10 +7,12 @@ protocol. The scanning loop in proxy.py operates on transport pairs
 Wire format for stdio: newline-delimited JSON-RPC 2.0 (one message per line).
 """
 
+from __future__ import annotations
+
 import asyncio
 import logging
 import sys
-from typing import Optional
+from typing import Any, Optional, Tuple
 
 log = logging.getLogger("argus.mcp")
 
@@ -22,7 +24,7 @@ class StdioTransport:
     pipes (server side in stdio subprocess mode).
     """
 
-    def __init__(self, reader, writer, label="stdio"):
+    def __init__(self, reader: Any, writer: Any, label: str = "stdio") -> None:
         self._reader = reader
         self._writer = writer
         self._label = label
@@ -35,7 +37,7 @@ class StdioTransport:
         stripped = line.rstrip(b"\r\n")
         if not stripped:
             return None
-        return stripped
+        return stripped  # type: ignore[no-any-return]
 
     async def write_message(self, data: bytes) -> None:
         """Write a JSON-RPC message followed by newline."""
@@ -53,7 +55,7 @@ class StdioTransport:
             pass
 
     @classmethod
-    async def from_process_stdio(cls):
+    async def from_process_stdio(cls) -> StdioTransport:
         """Create a StdioTransport connected to the current process stdin/stdout."""
         loop = asyncio.get_running_loop()
         reader = asyncio.StreamReader()
@@ -65,7 +67,7 @@ class StdioTransport:
         return cls(reader, writer, label="client-stdio")
 
     @classmethod
-    async def from_subprocess(cls, proc):
+    async def from_subprocess(cls, proc: Any) -> Tuple[StdioTransport, StdioTransport]:
         """Create client/server transports from a subprocess.
 
         Returns (server_stdin_transport, server_stdout_transport).
@@ -95,11 +97,11 @@ class HTTPClientTransport:
     Uses aiohttp.ClientSession for connection pooling.
     """
 
-    def __init__(self, session, upstream_url):
+    def __init__(self, session: Any, upstream_url: str) -> None:
         self._session = session
         self._url = upstream_url
-        self._session_id = None  # Mcp-Session-Id from server
-        self._pending_response = None  # buffered response body
+        self._session_id: Optional[str] = None  # Mcp-Session-Id from server
+        self._pending_response: Optional[bytes] = None  # buffered response body
 
     async def send_and_receive(self, data: bytes) -> Optional[bytes]:
         """POST a JSON-RPC message and return the response body."""
@@ -118,7 +120,7 @@ class HTTPClientTransport:
             if resp.status >= 400:
                 body = await resp.read()
                 log.warning("mcp http upstream returned %d: %s", resp.status, body[:200])
-                return body  # return error for client to see
+                return body  # type: ignore[no-any-return]
 
             body = await resp.read()
             return body if body else None
@@ -146,7 +148,7 @@ class WebSocketClientTransport:
     Uses aiohttp.ClientSession.ws_connect() for the upstream connection.
     """
 
-    def __init__(self, ws):
+    def __init__(self, ws: Any) -> None:
         self._ws = ws
 
     async def read_message(self) -> Optional[bytes]:
@@ -155,7 +157,8 @@ class WebSocketClientTransport:
 
         msg = await self._ws.receive()
         if msg.type == aiohttp.WSMsgType.TEXT:
-            return msg.data.encode("utf-8")
+            data: str = msg.data
+            return data.encode("utf-8")
         if msg.type in (aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.CLOSING, aiohttp.WSMsgType.CLOSED):
             return None
         if msg.type == aiohttp.WSMsgType.BINARY:

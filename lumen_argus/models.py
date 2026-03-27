@@ -1,7 +1,9 @@
 """Core data structures used across all modules."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
-from typing import Dict, List
+from typing import Any, Dict, List
 
 
 @dataclass
@@ -65,9 +67,9 @@ class ScanResult:
     scan_duration_ms: float = 0.0
     action: str = "pass"  # "pass" | "log" | "alert" | "block" | "strip" (audit-only)
     stage_timings: Dict[str, float] = field(default_factory=dict)  # {stage_name: elapsed_ms}
-    # Opaque token for deferred fingerprint commit. Set by pipeline on block
+    # Deferred fingerprint commit token. Set by pipeline on block
     # so the proxy can commit hashes after successful history stripping.
-    _pending_hashes: object = field(default=None, repr=False)
+    _pending_hashes: tuple[str, list[str]] | None = field(default=None, repr=False)
 
 
 @dataclass
@@ -96,7 +98,7 @@ class AuditEntry:
     client_name: str = ""
     client_version: str = ""
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize for JSONL output. Never includes matched_value."""
         d = {
             "timestamp": self.timestamp,

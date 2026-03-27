@@ -3,12 +3,11 @@
 import os
 import unittest
 
-from tests.helpers import StoreTestCase
-
-from lumen_argus.response_scanner import ResponseScanner, _FALLBACK_INJECTION_PATTERNS
-from lumen_argus.detectors.secrets import SecretsDetector
-from lumen_argus.detectors.pii import PIIDetector
 from lumen_argus.allowlist import AllowlistMatcher
+from lumen_argus.detectors.pii import PIIDetector
+from lumen_argus.detectors.secrets import SecretsDetector
+from lumen_argus.response_scanner import _FALLBACK_INJECTION_PATTERNS, ResponseScanner
+from tests.helpers import StoreTestCase
 
 
 class TestInjectionPatterns(unittest.TestCase):
