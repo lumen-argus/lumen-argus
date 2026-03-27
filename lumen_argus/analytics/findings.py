@@ -1,5 +1,7 @@
 """Findings repository — extracted from AnalyticsStore."""
 
+from __future__ import annotations
+
 import hashlib
 import hmac as hmac_mod
 import logging

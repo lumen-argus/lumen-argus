@@ -5,6 +5,8 @@ so it doesn't block the proxy. Supports optional password authentication
 with sessions and CSRF protection.
 """
 
+from __future__ import annotations
+
 import http.server
 import json
 import logging

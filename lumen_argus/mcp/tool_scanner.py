@@ -4,6 +4,8 @@ Scans tool descriptions from tools/list responses for injection patterns
 and tracks tool definition changes (rug-pull detection) via SHA-256 hashes.
 """
 
+from __future__ import annotations
+
 import hashlib
 import json
 import logging

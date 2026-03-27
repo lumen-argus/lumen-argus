@@ -9,6 +9,8 @@ Exit codes:
     3 — Findings with action "log" only (informational)
 """
 
+from __future__ import annotations
+
 import json
 import logging
 import re

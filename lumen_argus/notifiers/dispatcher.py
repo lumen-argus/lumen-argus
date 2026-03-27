@@ -1,5 +1,7 @@
 """Basic notification dispatcher — fire-and-forget."""
 
+from __future__ import annotations
+
 import json
 import logging
 import threading

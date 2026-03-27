@@ -12,6 +12,8 @@ Runs asynchronously (post-hoc) in community edition — no latency impact.
 Pro adds buffered/blocking mode and custom injection patterns.
 """
 
+from __future__ import annotations
+
 import logging
 import re
 import time

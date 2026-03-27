@@ -7,6 +7,8 @@ in the analytics DB for the dashboard Rule Analysis page.
 Install: pip install lumen-argus[rules-analysis]
 """
 
+from __future__ import annotations
+
 import json
 import logging
 import threading

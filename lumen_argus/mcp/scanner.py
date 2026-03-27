@@ -8,6 +8,8 @@ Used by:
 - async_proxy.py — MCP-aware scanning of HTTP API traffic
 """
 
+from __future__ import annotations
+
 import json
 import logging
 from typing import TYPE_CHECKING, Any

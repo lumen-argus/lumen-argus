@@ -17,6 +17,8 @@ This is how lumen-argus-pro registers itself. Community users can also
 write custom detectors using the same mechanism.
 """
 
+from __future__ import annotations
+
 import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Callable

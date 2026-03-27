@@ -1,5 +1,7 @@
 """Scanner pipeline: orchestrates extraction, detection, and policy evaluation."""
 
+from __future__ import annotations
+
 import hashlib
 import logging
 import threading

@@ -12,6 +12,8 @@ License-aware: rules with tier='pro' are skipped when the license
 checker reports invalid/expired.
 """
 
+from __future__ import annotations
+
 import asyncio
 import logging
 import re

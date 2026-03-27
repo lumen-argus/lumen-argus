@@ -1,5 +1,7 @@
 """CLI entry point: argument parsing, startup, and run loop."""
 
+from __future__ import annotations
+
 import argparse
 import json
 import logging

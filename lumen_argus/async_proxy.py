@@ -10,6 +10,8 @@ Scanning logic is unchanged — CPU-bound scanning runs in a thread pool
 via asyncio.to_thread() to avoid blocking the event loop.
 """
 
+from __future__ import annotations
+
 import asyncio
 import itertools
 import json
