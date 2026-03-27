@@ -5,13 +5,10 @@ Each field is expanded into the original text plus any decoded variants.
 Detectors then run on all variants, catching encoded secrets.
 """
 
-from __future__ import annotations
-
 import base64
 import logging
 import re
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
 from urllib.parse import unquote
 
 log = logging.getLogger("argus.decoders")
@@ -29,7 +26,7 @@ class DecodedContent:
     encoding: str  # "raw", "base64", "hex", "url", "unicode"
     # (start, end) in original text — set for segment decodings (base64, hex),
     # None for full-text decodings (url, unicode) where the entire field is transformed
-    original_span: Optional[Tuple[int, int]] = None
+    original_span: tuple[int, int] | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -94,7 +91,7 @@ class ContentDecoder:
         self._min_decoded_length = min_decoded_length
         self._max_decoded_length = max_decoded_length
 
-    def decode_field(self, text: str) -> List[DecodedContent]:
+    def decode_field(self, text: str) -> list[DecodedContent]:
         """Return original text plus any decoded variants found.
 
         The original text is always first in the list (encoding="raw").
@@ -105,7 +102,7 @@ class ContentDecoder:
         self._decode_recursive(text, results, depth=0)
         return results
 
-    def _decode_recursive(self, text: str, results: List[DecodedContent], depth: int) -> None:
+    def _decode_recursive(self, text: str, results: list[DecodedContent], depth: int) -> None:
         """Decode at the current depth, recurse for nested encodings."""
         if depth >= self._max_depth:
             return
@@ -130,7 +127,7 @@ class ContentDecoder:
             if depth + 1 < self._max_depth:
                 self._decode_recursive(d.text, results, depth + 1)
 
-    def _decode_base64(self, text: str) -> List[DecodedContent]:
+    def _decode_base64(self, text: str) -> list[DecodedContent]:
         """Find and decode base64-encoded segments."""
         results = []
         for match in _BASE64_RE.finditer(text):
@@ -161,7 +158,7 @@ class ContentDecoder:
             )
         return results
 
-    def _decode_hex(self, text: str) -> List[DecodedContent]:
+    def _decode_hex(self, text: str) -> list[DecodedContent]:
         """Find and decode hex-encoded segments."""
         results = []
         for match in _HEX_RE.finditer(text):
@@ -191,7 +188,7 @@ class ContentDecoder:
             )
         return results
 
-    def _decode_url(self, text: str) -> List[DecodedContent]:
+    def _decode_url(self, text: str) -> list[DecodedContent]:
         """Decode URL-encoded content."""
         if "%" not in text:
             return []
@@ -205,7 +202,7 @@ class ContentDecoder:
         log.debug("url decoded: %d chars -> %d chars", len(text), len(decoded))
         return [DecodedContent(text=decoded, encoding="url")]
 
-    def _decode_unicode(self, text: str) -> List[DecodedContent]:
+    def _decode_unicode(self, text: str) -> list[DecodedContent]:
         """Decode Unicode escape sequences (\\uXXXX)."""
         if "\\u" not in text:
             return []

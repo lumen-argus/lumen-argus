@@ -1,10 +1,8 @@
 """Rule analysis repository — caches overlap analysis results."""
 
-from __future__ import annotations
-
 import json
 import logging
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from lumen_argus.analytics.store import AnalyticsStore
@@ -58,7 +56,7 @@ class RuleAnalysisRepository:
             )
         log.debug("saved rule analysis: %d rules, %d dup, %d sub, %d ovr", total_rules, duplicates, subsets, overlaps)
 
-    def get_latest_analysis(self) -> Optional[dict[str, Any]]:
+    def get_latest_analysis(self) -> dict[str, Any] | None:
         """Get the most recent analysis result, or None."""
         with self._store._connect() as conn:
             row = conn.execute(
@@ -94,7 +92,7 @@ class RuleAnalysisRepository:
             "dismissed": dismissed,
         }
 
-    def get_latest_analysis_filtered(self) -> Optional[dict[str, Any]]:
+    def get_latest_analysis_filtered(self) -> dict[str, Any] | None:
         """Get the most recent analysis with dismissed findings removed.
 
         Returns the result dict without the 'dismissed' key — ready for API response.

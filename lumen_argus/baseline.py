@@ -8,19 +8,16 @@ The baseline never stores actual secret values — only detector type,
 finding type, file path, and a hash of the matched line content.
 """
 
-from __future__ import annotations
-
 import hashlib
 import json
 import os
 import sys
 from datetime import datetime, timezone
-from typing import Dict, List, Set, Tuple
 
 from lumen_argus.models import Finding
 
 
-def _finding_key(finding: Finding, filepath: str) -> Tuple[str, str, str, str]:
+def _finding_key(finding: Finding, filepath: str) -> tuple[str, str, str, str]:
     """Create a baseline key for a finding.
 
     Uses a hash of matched_value instead of the value itself — the
@@ -30,7 +27,7 @@ def _finding_key(finding: Finding, filepath: str) -> Tuple[str, str, str, str]:
     return (finding.detector, finding.type, filepath, value_hash)
 
 
-def load_baseline(path: str) -> Set[Tuple[str, str, str, str]]:
+def load_baseline(path: str) -> set[tuple[str, str, str, str]]:
     """Load baseline from JSON file. Returns set of finding keys."""
     path = os.path.expanduser(path)
     if not os.path.exists(path):
@@ -54,7 +51,7 @@ def load_baseline(path: str) -> Set[Tuple[str, str, str, str]]:
         return set()
 
 
-def save_baseline(path: str, findings_by_file: Dict[str, List[Finding]]) -> None:
+def save_baseline(path: str, findings_by_file: dict[str, list[Finding]]) -> None:
     """Save findings as a baseline JSON file."""
     path = os.path.expanduser(path)
     entries = []
@@ -89,7 +86,7 @@ def save_baseline(path: str, findings_by_file: Dict[str, List[Finding]]) -> None
         print("lumen-argus: failed to save baseline: %s" % e, file=sys.stderr)
 
 
-def filter_baseline(findings: List[Finding], filepath: str, baseline: Set[Tuple[str, str, str, str]]) -> List[Finding]:
+def filter_baseline(findings: list[Finding], filepath: str, baseline: set[tuple[str, str, str, str]]) -> list[Finding]:
     """Remove findings that are in the baseline."""
     if not baseline:
         return findings

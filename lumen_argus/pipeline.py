@@ -1,12 +1,10 @@
 """Scanner pipeline: orchestrates extraction, detection, and policy evaluation."""
 
-from __future__ import annotations
-
 import hashlib
 import logging
 import threading
 import time
-from typing import TYPE_CHECKING, Any, List, Optional
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from lumen_argus.analytics.store import AnalyticsStore
@@ -26,7 +24,6 @@ from lumen_argus.policy import PolicyEngine
 from lumen_argus.text_utils import sanitize_text
 
 log = logging.getLogger("argus.pipeline")
-
 
 # ---------------------------------------------------------------------------
 # Layer 1: Content Fingerprinting — skip already-scanned fields
@@ -281,14 +278,14 @@ class ScannerPipeline:
     def __init__(
         self,
         default_action: str = "alert",
-        action_overrides: Optional[dict[str, str]] = None,
-        allowlist: Optional[AllowlistMatcher] = None,
+        action_overrides: dict[str, str] | None = None,
+        allowlist: AllowlistMatcher | None = None,
         entropy_threshold: float = 4.5,
-        extensions: Optional[ExtensionRegistry] = None,
+        extensions: ExtensionRegistry | None = None,
         max_scan_bytes: int = MAX_SCAN_TEXT_BYTES,
-        custom_rules: Optional[list[Any]] = None,
-        dedup_config: Optional[dict[str, Any]] = None,
-        pipeline_config: Optional[dict[str, Any]] = None,
+        custom_rules: list[Any] | None | None = None,
+        dedup_config: dict[str, Any] | None | None = None,
+        pipeline_config: dict[str, Any] | None | None = None,
         rebuild_delay: float = 2.0,
     ):
         self._extractor = RequestExtractor()
@@ -317,8 +314,8 @@ class ScannerPipeline:
         # If DB has rules, use RulesDetector (replaces Secrets/PII/Custom).
         # ProprietaryDetector always runs (file-pattern + keyword based, not regex rules).
         # Fallback to hardcoded detectors if no rules in DB.
-        self._detectors: List[BaseDetector] = []
-        self._rules_detector: Optional[RulesDetector] = None
+        self._detectors: list[BaseDetector] = []
+        self._rules_detector: RulesDetector | None = None
         store: AnalyticsStore | None = extensions.get_analytics_store() if extensions else None
         has_rules = False
         if store and hasattr(store, "get_rules_count"):
@@ -395,9 +392,9 @@ class ScannerPipeline:
         self,
         allowlist: AllowlistMatcher,
         default_action: str,
-        action_overrides: Optional[dict[str, str]] = None,
-        custom_rules: Optional[list[Any]] = None,
-        pipeline_config: Optional[dict[str, Any]] = None,
+        action_overrides: dict[str, str] | None = None,
+        custom_rules: list[Any] | None | None = None,
+        pipeline_config: dict[str, Any] | None | None = None,
     ) -> None:
         """Reload policy, allowlist, custom rules, and pipeline config.
 
@@ -450,7 +447,7 @@ class ScannerPipeline:
             max_decoded_length=int(pc.get("encoding_max_decoded_length", 10_000)),
         )
 
-    def scan(self, body: bytes, provider: str, model: str = "", session: Optional[SessionContext] = None) -> ScanResult:
+    def scan(self, body: bytes, provider: str, model: str = "", session: SessionContext | None = None) -> ScanResult:
         """Run the full scan pipeline on a request body.
 
         Args:
@@ -580,7 +577,7 @@ class ScannerPipeline:
 
         # Run all detectors (gated by outbound_dlp stage toggle)
         t_stage = time.monotonic()
-        all_findings = []  # type: List[Finding]
+        all_findings = []  # type: list[Finding]
         if outbound_dlp_enabled:
             for detector in detectors:
                 det_findings = detector.scan(fields_to_scan, allowlist)
@@ -685,7 +682,7 @@ class ScannerPipeline:
         return result
 
     @staticmethod
-    def _deduplicate(findings: List[Finding]) -> List[Finding]:
+    def _deduplicate(findings: list[Finding]) -> list[Finding]:
         """Collapse duplicate findings into one with a count.
 
         Same (detector, type, matched_value) → keep first occurrence, set count.

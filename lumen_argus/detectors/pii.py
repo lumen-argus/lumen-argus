@@ -1,9 +1,5 @@
 """PII detector: regex-based with validation (email, SSN, CC, phone, IP, IBAN)."""
 
-from __future__ import annotations
-
-from typing import List, Tuple
-
 from lumen_argus.allowlist import AllowlistMatcher
 from lumen_argus.detectors import BaseDetector
 from lumen_argus.models import Finding, ScanField
@@ -21,10 +17,10 @@ def _mask_value(value: str) -> str:
 _FIELD_SEP = "\x00\x00\x00"
 
 
-def _build_merged_text(fields: List[ScanField]) -> Tuple[str, List[Tuple[int, int, int]]]:
+def _build_merged_text(fields: list[ScanField]) -> tuple[str, list[tuple[int, int, int]]]:
     """Concatenate fields into single string for batch scanning."""
     parts = []
-    boundaries = []  # type: List[Tuple[int, int, int]]
+    boundaries = []  # type: list[tuple[int, int, int]]
     offset = 0
     for i, field in enumerate(fields):
         if i > 0:
@@ -37,7 +33,7 @@ def _build_merged_text(fields: List[ScanField]) -> Tuple[str, List[Tuple[int, in
     return "".join(parts), boundaries
 
 
-def _find_field(pos: int, boundaries: List[Tuple[int, int, int]]) -> int:
+def _find_field(pos: int, boundaries: list[tuple[int, int, int]]) -> int:
     """Binary search for which field index contains position `pos`."""
     lo, hi = 0, len(boundaries) - 1
     while lo <= hi:
@@ -58,9 +54,9 @@ class PIIDetector(BaseDetector):
 
     def scan(
         self,
-        fields: List[ScanField],
+        fields: list[ScanField],
         allowlist: AllowlistMatcher,
-    ) -> List[Finding]:
+    ) -> list[Finding]:
         if not fields:
             return []
 
@@ -69,7 +65,7 @@ class PIIDetector(BaseDetector):
         if not merged:
             return []
 
-        findings = []  # type: List[Finding]
+        findings = []  # type: list[Finding]
 
         for pat in PII_PATTERNS:
             for match in pat.pattern.finditer(merged):

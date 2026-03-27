@@ -1,8 +1,6 @@
 """Custom regex detector: user-defined patterns from config."""
 
-from __future__ import annotations
-
-from typing import Any, List
+from typing import Any
 
 from lumen_argus.allowlist import AllowlistMatcher
 from lumen_argus.detectors import BaseDetector
@@ -31,9 +29,9 @@ class CustomDetector(BaseDetector):
 
     def scan(
         self,
-        fields: List[ScanField],
+        fields: list[ScanField],
         allowlist: AllowlistMatcher,
-    ) -> List[Finding]:
+    ) -> list[Finding]:
         if not fields or not self._rules:
             return []
 

@@ -1,13 +1,11 @@
 """Configuration loading using PyYAML."""
 
-from __future__ import annotations
-
 import logging
 import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import yaml
 
@@ -51,9 +49,9 @@ class DetectorConfig:
 
 @dataclass
 class AllowlistConfig:
-    secrets: List[str] = field(default_factory=list)
-    pii: List[str] = field(default_factory=list)
-    paths: List[str] = field(default_factory=list)
+    secrets: list[str] = field(default_factory=list)
+    pii: list[str] = field(default_factory=list)
+    paths: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -118,10 +116,10 @@ class AdaptiveEnforcementConfig:
 
 @dataclass
 class MCPConfig:
-    allowed_tools: List[str] = field(default_factory=list)  # empty = all allowed
-    blocked_tools: List[str] = field(default_factory=list)  # deny-list
+    allowed_tools: list[str] = field(default_factory=list)  # empty = all allowed
+    blocked_tools: list[str] = field(default_factory=list)  # deny-list
     env_filter: bool = True  # restrict subprocess environment
-    env_allowlist: List[str] = field(default_factory=list)  # additional safe vars
+    env_allowlist: list[str] = field(default_factory=list)  # additional safe vars
     request_tracking: bool = True  # confused deputy protection
     unsolicited_response_action: str = "warn"  # warn|block
     scan_tool_descriptions: bool = True  # poisoning detection
@@ -130,17 +128,17 @@ class MCPConfig:
     session_binding: bool = False  # tool inventory validation (opt-in)
     unknown_tool_action: str = "warn"  # warn|block
     # Pro: policy rules for tool call validation
-    tool_policies: List[dict[str, Any]] = field(default_factory=list)
+    tool_policies: list[dict[str, Any]] = field(default_factory=list)
     # Pro: adaptive enforcement config
     adaptive_enforcement: AdaptiveEnforcementConfig = field(default_factory=AdaptiveEnforcementConfig)
     # Pro: custom chain detection patterns
-    chain_signatures: List[dict[str, Any]] = field(default_factory=list)
+    chain_signatures: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
 class WebSocketConfig:
     max_frame_size: int = 1_048_576  # 1MB per frame cap
-    allowed_origins: List[str] = field(default_factory=list)  # empty = all allowed
+    allowed_origins: list[str] = field(default_factory=list)  # empty = all allowed
 
 
 @dataclass
@@ -222,8 +220,8 @@ class Config:
     allowlist: AllowlistConfig = field(default_factory=AllowlistConfig)
     audit: AuditConfig = field(default_factory=AuditConfig)
     logging_config: LoggingConfig = field(default_factory=LoggingConfig)
-    custom_rules: List["CustomRuleConfig"] = field(default_factory=list)
-    upstreams: Dict[str, str] = field(default_factory=dict)
+    custom_rules: list["CustomRuleConfig"] = field(default_factory=list)
+    upstreams: dict[str, str] = field(default_factory=dict)
     dashboard: DashboardConfig = field(default_factory=DashboardConfig)
     analytics: AnalyticsConfig = field(default_factory=AnalyticsConfig)
     rules: RulesConfig = field(default_factory=RulesConfig)
@@ -232,7 +230,7 @@ class Config:
     pipeline: PipelineConfig = field(default_factory=PipelineConfig)
     mcp: MCPConfig = field(default_factory=MCPConfig)
     websocket: WebSocketConfig = field(default_factory=WebSocketConfig)
-    notifications: List[dict[str, Any]] = field(default_factory=list)
+    notifications: list[dict[str, Any]] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -307,9 +305,9 @@ def _warn(msg: str) -> None:
     log.warning("%s", msg)
 
 
-def _validate_config(data: dict[str, Any], source: str) -> List[str]:
+def _validate_config(data: dict[str, Any], source: str) -> list[str]:
     """Validate parsed config data. Returns list of warnings."""
-    warnings = []  # type: List[str]
+    warnings = []  # type: list[str]
 
     if not isinstance(data, dict):
         warnings.append("%s: config root must be a mapping" % source)
@@ -788,8 +786,8 @@ def _create_default_config(path: Path) -> None:
 
 
 def load_config(
-    config_path: Optional[str] = None,
-    project_path: Optional[str] = None,
+    config_path: str | None = None,
+    project_path: str | None = None,
 ) -> Config:
     """Load and merge configuration from global and project YAML files.
 

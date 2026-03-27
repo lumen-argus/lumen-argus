@@ -4,8 +4,6 @@ Prevents a malicious MCP server from injecting responses for requests
 the client never sent. Uses FIFO eviction to bound memory.
 """
 
-from __future__ import annotations
-
 import json
 import logging
 from collections import OrderedDict

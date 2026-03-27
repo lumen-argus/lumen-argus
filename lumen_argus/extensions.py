@@ -17,11 +17,9 @@ This is how lumen-argus-pro registers itself. Community users can also
 write custom detectors using the same mechanism.
 """
 
-from __future__ import annotations
-
 import logging
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Any, Callable
 
 if TYPE_CHECKING:
     from lumen_argus.analytics.store import AnalyticsStore
@@ -39,53 +37,53 @@ class CliCommandDef:
     name: str  # subcommand name (e.g., "enroll")
     handler: Callable[..., Any]  # callable(args) invoked when subcommand runs
     help: str = ""  # help text for argparse
-    arguments: List[Dict[str, Any]] = field(default_factory=list)  # list of {"args": [...], "kwargs": {...}}
+    arguments: list[dict[str, Any]] = field(default_factory=list)  # list of {"args": [...], "kwargs": {...}}
 
 
 class ExtensionRegistry:
     """Discovers and loads extensions via Python entry points."""
 
-    # Type for redact hook: (body: bytes, findings: List[Finding]) -> bytes
-    RedactHook = Callable[[bytes, List[Finding]], bytes]
+    # Type for redact hook: (body: bytes, findings: list[Finding]) -> bytes
+    RedactHook = Callable[[bytes, list[Finding]], bytes]
 
     def __init__(self) -> None:
-        self._detectors: List[BaseDetector] = []
-        self._notifiers: List[Any] = []
-        self._redact_hook: Optional[ExtensionRegistry.RedactHook] = None
-        self._post_scan_hook: Optional[Callable[..., Any]] = None
-        self._config_reload_hook: Optional[Callable[..., Any]] = None
-        self._evaluate_hook: Optional[Callable[..., Any]] = None
-        self._pre_request_hook: Optional[Callable[..., Any]] = None
-        self._proxy_server: Optional[Any] = None
-        self._loaded_plugins: List[Tuple[str, str]] = []
+        self._detectors: list[BaseDetector] = []
+        self._notifiers: list[Any] = []
+        self._redact_hook: ExtensionRegistry.RedactHook | None = None
+        self._post_scan_hook: Callable[..., Any] | None = None
+        self._config_reload_hook: Callable[..., Any] | None = None
+        self._evaluate_hook: Callable[..., Any] | None = None
+        self._pre_request_hook: Callable[..., Any] | None = None
+        self._proxy_server: Any | None = None
+        self._loaded_plugins: list[tuple[str, str]] = []
         # Dashboard extension hooks
-        self._dashboard_pages: List[Dict[str, Any]] = []
-        self._dashboard_css: List[str] = []
-        self._dashboard_api_handler: Optional[Callable[..., Any]] = None
-        self._analytics_store: Optional[AnalyticsStore] = None
-        self._auth_providers: List[Any] = []
-        self._sse_broadcaster: Optional[Any] = None
+        self._dashboard_pages: list[dict[str, Any]] = []
+        self._dashboard_css: list[str] = []
+        self._dashboard_api_handler: Callable[..., Any] | None = None
+        self._analytics_store: AnalyticsStore | None = None
+        self._auth_providers: list[Any] = []
+        self._sse_broadcaster: Any | None = None
         # Notification channel hooks
-        self._channel_types: Dict[str, Any] = {}
-        self._notifier_builder: Optional[Callable[..., Any]] = None
-        self._dispatcher: Optional[Any] = None
-        self._channel_limit: Optional[int] = 1
-        self._health_hook: Optional[Callable[..., Any]] = None
-        self._metrics_hook: Optional[Callable[..., Any]] = None
-        self._trace_request_hook: Optional[Callable[..., Any]] = None
-        self._license_checker: Optional[Any] = None
-        self._response_scan_hook: Optional[Callable[..., Any]] = None
-        self._ws_connection_hook: Optional[Callable[..., Any]] = None
-        self._rule_metrics_collector: Optional[Any] = None
-        self._accelerator_factory: Optional[Callable[..., Any]] = None
-        self._extra_clients: List[Any] = []
-        self._extra_cli_commands: List[CliCommandDef] = []
-        self._allowlist_matcher_factory: Optional[Callable[..., Any]] = None
-        self._rule_skip_list: Set[str] = set()
-        self._rule_skip_list_callback: Optional[Callable[..., Any]] = None
+        self._channel_types: dict[str, Any] = {}
+        self._notifier_builder: Callable[..., Any] | None = None
+        self._dispatcher: Any | None = None
+        self._channel_limit: int | None = 1
+        self._health_hook: Callable[..., Any] | None = None
+        self._metrics_hook: Callable[..., Any] | None = None
+        self._trace_request_hook: Callable[..., Any] | None = None
+        self._license_checker: Any | None = None
+        self._response_scan_hook: Callable[..., Any] | None = None
+        self._ws_connection_hook: Callable[..., Any] | None = None
+        self._rule_metrics_collector: Any | None = None
+        self._accelerator_factory: Callable[..., Any] | None = None
+        self._extra_clients: list[Any] = []
+        self._extra_cli_commands: list[CliCommandDef] = []
+        self._allowlist_matcher_factory: Callable[..., Any] | None = None
+        self._rule_skip_list: set[str] = set()
+        self._rule_skip_list_callback: Callable[..., Any] | None = None
         # MCP Pro hooks
-        self._mcp_policy_engine: Optional[Any] = None
-        self._mcp_session_escalation: Optional[Callable[..., Any]] = None
+        self._mcp_policy_engine: Any | None = None
+        self._mcp_session_escalation: Callable[..., Any] | None = None
 
     def add_detector(self, detector: BaseDetector, priority: bool = False) -> None:
         """Register an additional detector.
@@ -103,11 +101,11 @@ class ExtensionRegistry:
         """Register an additional notifier."""
         self._notifiers.append(notifier)
 
-    def set_redact_hook(self, hook: ExtensionRegistry.RedactHook) -> None:
+    def set_redact_hook(self, hook: "ExtensionRegistry.RedactHook") -> None:
         """Register a redaction callback: (body, findings) -> redacted_body."""
         self._redact_hook = hook
 
-    def get_redact_hook(self) -> Optional[ExtensionRegistry.RedactHook]:
+    def get_redact_hook(self) -> "ExtensionRegistry.RedactHook | None":
         """Return the registered redaction hook, or None."""
         return self._redact_hook
 
@@ -119,14 +117,14 @@ class ExtensionRegistry:
         """
         self._post_scan_hook = hook
 
-    def get_post_scan_hook(self) -> Optional[Callable[..., Any]]:
+    def get_post_scan_hook(self) -> Callable[..., Any] | None:
         return self._post_scan_hook
 
     def set_config_reload_hook(self, hook: Callable[..., Any]) -> None:
         """Register: hook(pipeline) called after SIGHUP config reload."""
         self._config_reload_hook = hook
 
-    def get_config_reload_hook(self) -> Optional[Callable[..., Any]]:
+    def get_config_reload_hook(self) -> Callable[..., Any] | None:
         return self._config_reload_hook
 
     def set_evaluate_hook(self, hook: Callable[..., Any]) -> None:
@@ -143,21 +141,21 @@ class ExtensionRegistry:
         """
         self._evaluate_hook = hook
 
-    def get_evaluate_hook(self) -> Optional[Callable[..., Any]]:
+    def get_evaluate_hook(self) -> Callable[..., Any] | None:
         return self._evaluate_hook
 
     def set_pre_request_hook(self, hook: Callable[..., Any]) -> None:
         """Register: hook(request_id) called at the start of each request."""
         self._pre_request_hook = hook
 
-    def get_pre_request_hook(self) -> Optional[Callable[..., Any]]:
+    def get_pre_request_hook(self) -> Callable[..., Any] | None:
         return self._pre_request_hook
 
     def set_proxy_server(self, server: object) -> None:
         """Store server reference for Pro runtime config updates."""
         self._proxy_server = server
 
-    def get_proxy_server(self) -> Optional[Any]:
+    def get_proxy_server(self) -> Any | None:
         return self._proxy_server
 
     def get_ws_active_count(self) -> int:
@@ -171,15 +169,15 @@ class ExtensionRegistry:
             return proxy.active_ws_connections  # type: ignore[no-any-return]
         return 0
 
-    def extra_detectors(self) -> List[BaseDetector]:
+    def extra_detectors(self) -> list[BaseDetector]:
         return list(self._detectors)
 
-    def extra_notifiers(self) -> List[Any]:
+    def extra_notifiers(self) -> list[Any]:
         return list(self._notifiers)
 
     # --- Dashboard extension hooks ---
 
-    def register_dashboard_pages(self, pages: List[Dict[str, Any]]) -> None:
+    def register_dashboard_pages(self, pages: list[dict[str, Any]]) -> None:
         """Register additional dashboard pages from a plugin.
 
         Each page is a dict:
@@ -197,7 +195,7 @@ class ExtensionRegistry:
         """
         self._dashboard_pages.extend(pages)
 
-    def get_dashboard_pages(self) -> List[Dict[str, Any]]:
+    def get_dashboard_pages(self) -> list[dict[str, Any]]:
         """Return list of plugin-registered pages."""
         return list(self._dashboard_pages)
 
@@ -216,7 +214,7 @@ class ExtensionRegistry:
         """Register additional CSS from a plugin (injected after community CSS)."""
         self._dashboard_css.append(css)
 
-    def get_dashboard_css(self) -> List[str]:
+    def get_dashboard_css(self) -> list[str]:
         """Return list of plugin-registered CSS strings."""
         return list(self._dashboard_css)
 
@@ -228,7 +226,7 @@ class ExtensionRegistry:
         """
         self._dashboard_api_handler = handler
 
-    def get_dashboard_api_handler(self) -> Optional[Callable[..., Any]]:
+    def get_dashboard_api_handler(self) -> Callable[..., Any] | None:
         """Return plugin-provided API handler, or None."""
         return self._dashboard_api_handler
 
@@ -236,7 +234,7 @@ class ExtensionRegistry:
         """Set a plugin-provided analytics store (Pro passes its extended store)."""
         self._analytics_store = store
 
-    def get_analytics_store(self) -> Optional[AnalyticsStore]:
+    def get_analytics_store(self) -> AnalyticsStore | None:
         """Return plugin-provided analytics store, or None (use community default)."""
         return self._analytics_store
 
@@ -248,7 +246,7 @@ class ExtensionRegistry:
         """
         self._sse_broadcaster = broadcaster
 
-    def get_sse_broadcaster(self) -> Optional[Any]:
+    def get_sse_broadcaster(self) -> Any | None:
         """Return the SSE broadcaster, or None if dashboard is disabled."""
         return self._sse_broadcaster
 
@@ -261,23 +259,23 @@ class ExtensionRegistry:
         """
         self._auth_providers.append(provider)
 
-    def get_auth_providers(self) -> List[Any]:
+    def get_auth_providers(self) -> list[Any]:
         """Return list of registered auth providers."""
         return list(self._auth_providers)
 
     # --- Client registry hooks ---
 
-    def register_clients(self, clients: List[Any]) -> None:
+    def register_clients(self, clients: list[Any]) -> None:
         """Register additional client definitions from a plugin (Pro/Enterprise)."""
         self._extra_clients.extend(clients)
 
-    def get_extra_clients(self) -> List[Any]:
+    def get_extra_clients(self) -> list[Any]:
         """Return plugin-registered client definitions."""
         return list(self._extra_clients)
 
     # --- CLI extension hooks ---
 
-    def register_cli_commands(self, commands: List[CliCommandDef]) -> None:
+    def register_cli_commands(self, commands: list[CliCommandDef]) -> None:
         """Register additional CLI subcommands from a plugin.
 
         Args:
@@ -295,13 +293,13 @@ class ExtensionRegistry:
         self._extra_cli_commands.extend(commands)
         log.debug("registered %d CLI command(s): %s", len(commands), ", ".join(c.name for c in commands))
 
-    def get_extra_cli_commands(self) -> List[CliCommandDef]:
+    def get_extra_cli_commands(self) -> list[CliCommandDef]:
         """Return plugin-registered CLI commands."""
         return list(self._extra_cli_commands)
 
     # --- Notification channel hooks ---
 
-    def register_channel_types(self, types: Dict[str, Any]) -> None:
+    def register_channel_types(self, types: dict[str, Any]) -> None:
         """Register notification channel types from a plugin.
 
         Pro calls this to register all channel types (webhook, email,
@@ -310,7 +308,7 @@ class ExtensionRegistry:
         """
         self._channel_types.update(types)
 
-    def get_channel_types(self) -> Dict[str, Any]:
+    def get_channel_types(self) -> dict[str, Any]:
         """Return all registered channel types. Empty if Pro not loaded."""
         return dict(self._channel_types)
 
@@ -318,21 +316,21 @@ class ExtensionRegistry:
         """Register a notifier factory: builder(channel_dict) -> notifier or None."""
         self._notifier_builder = builder
 
-    def get_notifier_builder(self) -> Optional[Callable[..., Any]]:
+    def get_notifier_builder(self) -> Callable[..., Any] | None:
         return self._notifier_builder
 
     def set_dispatcher(self, dispatcher: object) -> None:
         """Set the notification dispatcher (Pro creates and registers this)."""
         self._dispatcher = dispatcher
 
-    def get_dispatcher(self) -> Optional[Any]:
+    def get_dispatcher(self) -> Any | None:
         return self._dispatcher
 
-    def set_channel_limit(self, limit: Optional[int]) -> None:
+    def set_channel_limit(self, limit: int | None) -> None:
         """Set notification channel limit. None=unlimited, 1=freemium default."""
         self._channel_limit = limit
 
-    def get_channel_limit(self) -> Optional[int]:
+    def get_channel_limit(self) -> int | None:
         """Return channel limit. None=unlimited, int=max channels."""
         return self._channel_limit
 
@@ -341,14 +339,14 @@ class ExtensionRegistry:
         Pro uses this to add license, notification, analytics health."""
         self._health_hook = hook
 
-    def get_health_hook(self) -> Optional[Callable[..., Any]]:
+    def get_health_hook(self) -> Callable[..., Any] | None:
         return self._health_hook
 
     def set_metrics_hook(self, hook: Callable[..., Any]) -> None:
         """Register: hook() -> str of Prometheus metric lines appended to /metrics."""
         self._metrics_hook = hook
 
-    def get_metrics_hook(self) -> Optional[Callable[..., Any]]:
+    def get_metrics_hook(self) -> Callable[..., Any] | None:
         return self._metrics_hook
 
     def set_trace_request_hook(self, hook: Callable[..., Any]) -> None:
@@ -359,7 +357,7 @@ class ExtensionRegistry:
         __enter__/__exit__ always called on the same thread."""
         self._trace_request_hook = hook
 
-    def get_trace_request_hook(self) -> Optional[Callable[..., Any]]:
+    def get_trace_request_hook(self) -> Callable[..., Any] | None:
         return self._trace_request_hook
 
     def set_response_scan_hook(self, hook: Callable[..., Any]) -> None:
@@ -371,7 +369,7 @@ class ExtensionRegistry:
         """
         self._response_scan_hook = hook
 
-    def get_response_scan_hook(self) -> Optional[Callable[..., Any]]:
+    def get_response_scan_hook(self) -> Callable[..., Any] | None:
         return self._response_scan_hook
 
     def set_ws_connection_hook(self, hook: Callable[..., Any]) -> None:
@@ -389,19 +387,19 @@ class ExtensionRegistry:
         """
         self._ws_connection_hook = hook
 
-    def get_ws_connection_hook(self) -> Optional[Callable[..., Any]]:
+    def get_ws_connection_hook(self) -> Callable[..., Any] | None:
         return self._ws_connection_hook
 
     def set_accelerator_factory(self, factory: Callable[..., Any]) -> None:
         """Register a factory callable that returns an accelerator instance.
 
         Factory signature: factory() -> accelerator
-        Accelerator must implement: build(compiled_rules), filter(text) -> Set[int],
+        Accelerator must implement: build(compiled_rules), filter(text) -> set[int],
         filter_ratio(candidates) -> float, available (property), stats (property)
         """
         self._accelerator_factory = factory
 
-    def get_accelerator_factory(self) -> Optional[Callable[..., Any]]:
+    def get_accelerator_factory(self) -> Callable[..., Any] | None:
         return self._accelerator_factory
 
     def set_allowlist_matcher_factory(self, factory: Callable[..., Any]) -> None:
@@ -412,20 +410,20 @@ class ExtensionRegistry:
         """
         self._allowlist_matcher_factory = factory
 
-    def get_allowlist_matcher_factory(self) -> Optional[Callable[..., Any]]:
+    def get_allowlist_matcher_factory(self) -> Callable[..., Any] | None:
         return self._allowlist_matcher_factory
 
     def set_mcp_policy_engine(self, engine: object) -> None:
         """Register Pro's MCP policy engine for tool call validation.
 
         Engine interface:
-          engine.evaluate(tool_name: str, arguments: dict) -> List[Finding]
+          engine.evaluate(tool_name: str, arguments: dict) -> list[Finding]
             Validates tool call arguments against policy rules with shell
             evasion normalization. Returns findings for blocked/warned calls.
         """
         self._mcp_policy_engine = engine
 
-    def get_mcp_policy_engine(self) -> Optional[Any]:
+    def get_mcp_policy_engine(self) -> Any | None:
         return self._mcp_policy_engine
 
     def set_mcp_session_escalation(self, fn: Callable[..., Any]) -> None:
@@ -438,7 +436,7 @@ class ExtensionRegistry:
         """
         self._mcp_session_escalation = fn
 
-    def get_mcp_session_escalation(self) -> Optional[Callable[..., Any]]:
+    def get_mcp_session_escalation(self) -> Callable[..., Any] | None:
         return self._mcp_session_escalation
 
     def set_rule_metrics_collector(self, collector: object) -> None:
@@ -452,10 +450,10 @@ class ExtensionRegistry:
         """
         self._rule_metrics_collector = collector
 
-    def get_rule_metrics_collector(self) -> Optional[Any]:
+    def get_rule_metrics_collector(self) -> Any | None:
         return self._rule_metrics_collector
 
-    def set_rule_skip_list(self, skip_set: Set[str] | None) -> None:
+    def set_rule_skip_list(self, skip_set: set[str] | None) -> None:
         """Register a set of rule names to skip during scanning.
 
         Pro computes this from analysis results (fully redundant subset rules)
@@ -467,7 +465,7 @@ class ExtensionRegistry:
         if self._rule_skip_list_callback:
             self._rule_skip_list_callback(self._rule_skip_list)
 
-    def get_rule_skip_list(self) -> Set[str]:
+    def get_rule_skip_list(self) -> set[str]:
         """Return the skip set, or empty set."""
         return self._rule_skip_list
 
@@ -479,28 +477,18 @@ class ExtensionRegistry:
         """Register a license checker with is_valid() method for rule-tier gating."""
         self._license_checker = checker
 
-    def get_license_checker(self) -> Optional[Any]:
+    def get_license_checker(self) -> Any | None:
         return self._license_checker
 
-    def loaded_plugins(self) -> List[Tuple[str, str]]:
+    def loaded_plugins(self) -> list[tuple[str, str]]:
         """Return list of (name, version) for loaded plugins."""
         return list(self._loaded_plugins)
 
     def load_plugins(self) -> None:
         """Discover and load all installed lumen_argus.extensions entry points."""
-        try:
-            from importlib.metadata import entry_points
-        except ImportError:
-            try:
-                from importlib_metadata import entry_points  # type: ignore[no-redef,import-not-found]
-            except ImportError:
-                return
+        from importlib.metadata import entry_points
 
-        try:
-            eps: Any = entry_points(group="lumen_argus.extensions")  # type: ignore[call-arg]
-        except TypeError:
-            all_eps: Any = entry_points()
-            eps = all_eps.get("lumen_argus.extensions", [])
+        eps = entry_points(group="lumen_argus.extensions")
 
         for ep in eps:
             try:
@@ -508,7 +496,8 @@ class ExtensionRegistry:
                 register_fn(self)
                 version = "unknown"
                 try:
-                    version = ep.dist.metadata["Version"]
+                    if ep.dist:
+                        version = ep.dist.metadata["Version"]
                 except Exception as ve:
                     log.debug("could not read version for %s: %s", ep.name, ve)
                 self._loaded_plugins.append((ep.name, version))

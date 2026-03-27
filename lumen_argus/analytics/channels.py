@@ -1,12 +1,10 @@
 """Notification channels repository — extracted from AnalyticsStore."""
 
-from __future__ import annotations
-
 import builtins
 import json
 import logging
 import sqlite3
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from lumen_argus.analytics.store import AnalyticsStore
@@ -53,7 +51,7 @@ class ChannelsRepository:
         d["enabled"] = bool(d.get("enabled", 1))
         return d
 
-    def list(self, source: Optional[str] = None) -> builtins.list[dict[str, Any]]:
+    def list(self, source: str | None = None) -> builtins.list[dict[str, Any]]:
         """Return all channels, optionally filtered by source."""
         query = (
             "SELECT "
@@ -62,12 +60,12 @@ class ChannelsRepository:
             + (" WHERE source = ?" if source else "")
             + " ORDER BY id"
         )
-        params: builtins.list[Optional[str]] = [source] if source else []
+        params: builtins.list[str | None] = [source] if source else []
         with self._store._connect() as conn:
             rows = conn.execute(query, params).fetchall()
         return [self._parse_row(r) for r in rows]
 
-    def get(self, channel_id: int) -> Optional[dict[str, Any]]:
+    def get(self, channel_id: int) -> dict[str, Any] | None:
         """Return a single channel by ID (with full config)."""
         with self._store._connect() as conn:
             row = conn.execute(
@@ -87,8 +85,8 @@ class ChannelsRepository:
     def create(
         self,
         data: dict[str, Any],
-        channel_limit: Optional[int] = None,
-    ) -> Optional[dict[str, Any]]:
+        channel_limit: int | None = None,
+    ) -> dict[str, Any] | None:
         """Create a channel. Raises ValueError on validation failure.
 
         channel_limit: if set, count check + insert runs under the same
@@ -143,7 +141,7 @@ class ChannelsRepository:
 
         return self.get(channel_id)
 
-    def update(self, channel_id: int, data: dict[str, Any]) -> Optional[dict[str, Any]]:
+    def update(self, channel_id: int, data: dict[str, Any]) -> dict[str, Any] | None:
         """Update channel fields. Only updates provided keys."""
         updates: builtins.list[str] = []
         params: builtins.list[Any] = []
@@ -227,7 +225,7 @@ class ChannelsRepository:
     def reconcile_yaml(
         self,
         yaml_channels: builtins.list[Any],
-        channel_limit: Optional[int] = None,
+        channel_limit: int | None = None,
     ) -> dict[str, builtins.list[str]]:
         """Kubernetes-style declarative reconciliation of YAML channels.
 

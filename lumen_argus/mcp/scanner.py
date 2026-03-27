@@ -8,11 +8,9 @@ Used by:
 - async_proxy.py — MCP-aware scanning of HTTP API traffic
 """
 
-from __future__ import annotations
-
 import json
 import logging
-from typing import TYPE_CHECKING, Any, List, Optional, Set
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from lumen_argus.analytics.store import AnalyticsStore
@@ -34,7 +32,7 @@ def extract_text_from_content(content: list[Any]) -> str:
     return "\n".join(parts)
 
 
-def detect_mcp_request(body: bytes) -> Optional[dict[str, Any]]:
+def detect_mcp_request(body: bytes) -> dict[str, Any] | None:
     """Detect MCP tools/call in an HTTP request body.
 
     Returns dict with tool_name, arguments, request_id if MCP detected.
@@ -54,7 +52,7 @@ def detect_mcp_request(body: bytes) -> Optional[dict[str, Any]]:
     return None
 
 
-def detect_mcp_method(body: bytes) -> Optional[str]:
+def detect_mcp_method(body: bytes) -> str | None:
     """Detect the JSON-RPC method in an MCP request body. Returns method or None."""
     try:
         msg = json.loads(body)
@@ -65,7 +63,7 @@ def detect_mcp_method(body: bytes) -> Optional[str]:
     return None
 
 
-def detect_mcp_tools_list_response(body: bytes) -> Optional[list[dict[str, Any]]]:
+def detect_mcp_tools_list_response(body: bytes) -> list[dict[str, Any]] | None:
     """Detect tools/list response and extract tool metadata.
 
     Returns list of {name, description, inputSchema} dicts, or None.
@@ -91,7 +89,7 @@ def detect_mcp_tools_list_response(body: bytes) -> Optional[list[dict[str, Any]]
     return None
 
 
-def detect_mcp_response(body: bytes) -> Optional[dict[str, Any]]:
+def detect_mcp_response(body: bytes) -> dict[str, Any] | None:
     """Detect MCP tool response in an HTTP response body.
 
     Returns dict with request_id, content if MCP response detected.
@@ -120,13 +118,13 @@ class MCPScanner:
 
     def __init__(
         self,
-        detectors: Optional[list[Any]] = None,
+        detectors: list[Any] | None | None = None,
         allowlist: Any = None,
         response_scanner: Any = None,
         scan_arguments: bool = True,
         scan_responses: bool = True,
-        allowed_tools: Optional[Set[str]] = None,
-        blocked_tools: Optional[Set[str]] = None,
+        allowed_tools: set[str] | None | None = None,
+        blocked_tools: set[str] | None | None = None,
         action: str = "alert",
         request_tracker: Any = None,
         session_binding: Any = None,
@@ -159,7 +157,7 @@ class MCPScanner:
             return False
         return True
 
-    def scan_request(self, msg: dict[str, Any]) -> List[Finding]:
+    def scan_request(self, msg: dict[str, Any]) -> list[Finding]:
         """Scan a tools/call request for secrets in arguments."""
         if not self._scan_arguments:
             return []
@@ -208,7 +206,7 @@ class MCPScanner:
 
         return findings
 
-    def scan_arguments(self, tool_name: str, arguments: dict[str, Any]) -> List[Finding]:
+    def scan_arguments(self, tool_name: str, arguments: dict[str, Any]) -> list[Finding]:
         """Scan tool call arguments directly (for proxy integration)."""
         if not self._scan_arguments or not arguments:
             return []
@@ -232,7 +230,7 @@ class MCPScanner:
 
         return findings
 
-    def scan_response(self, msg: dict[str, Any], request_method: str = "") -> List[Finding]:
+    def scan_response(self, msg: dict[str, Any], request_method: str = "") -> list[Finding]:
         """Scan a tool response for secrets and injection in content."""
         if not self._scan_responses:
             return []
@@ -247,7 +245,7 @@ class MCPScanner:
 
         return self.scan_response_content(content)
 
-    def scan_response_content(self, content: list[Any]) -> List[Finding]:
+    def scan_response_content(self, content: list[Any]) -> list[Finding]:
         """Scan MCP response content array (for proxy integration)."""
         if not self._scan_responses:
             return []
@@ -283,7 +281,7 @@ class MCPScanner:
 
         return findings
 
-    def process_tools_list(self, tools: list[dict[str, Any]]) -> List[Finding]:
+    def process_tools_list(self, tools: list[dict[str, Any]]) -> list[Finding]:
         """Process a tools/list response: poisoning scan, drift check, session binding.
 
         Args:

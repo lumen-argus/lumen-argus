@@ -6,8 +6,6 @@ to enable security investigation (WHO leaked, WHICH conversation, WHERE from).
 Moved from async_proxy.py to isolate session extraction logic from proxy transport.
 """
 
-from __future__ import annotations
-
 import hashlib
 import json
 import logging

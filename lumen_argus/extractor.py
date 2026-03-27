@@ -4,10 +4,8 @@ Knows how to extract scannable text from Anthropic, OpenAI, and Gemini
 API request formats.
 """
 
-from __future__ import annotations
-
 import json
-from typing import Any, List
+from typing import Any
 
 from lumen_argus.models import ScanField
 
@@ -15,7 +13,7 @@ from lumen_argus.models import ScanField
 class RequestExtractor:
     """Extracts scannable text fields from API request bodies."""
 
-    def extract(self, body: bytes, provider: str) -> List[ScanField]:
+    def extract(self, body: bytes, provider: str) -> list[ScanField]:
         """Parse request JSON and extract all text fields to scan.
 
         Args:
@@ -41,9 +39,9 @@ class RequestExtractor:
         extractor = dispatch.get(provider, self._extract_generic)
         return extractor(data)
 
-    def _extract_anthropic(self, data: dict[str, Any]) -> List[ScanField]:
+    def _extract_anthropic(self, data: dict[str, Any]) -> list[ScanField]:
         """Extract from Anthropic Messages API format."""
-        fields = []  # type: List[ScanField]
+        fields = []  # type: list[ScanField]
 
         # System prompt
         system = data.get("system")
@@ -89,7 +87,7 @@ class RequestExtractor:
 
         return fields
 
-    def _extract_tool_result(self, block: dict[str, Any], base_path: str, fields: List[ScanField]) -> None:
+    def _extract_tool_result(self, block: dict[str, Any], base_path: str, fields: list[ScanField]) -> None:
         """Extract text from tool_result content blocks."""
         content = block.get("content")
         source_file = ""
@@ -122,9 +120,9 @@ class RequestExtractor:
                             )
                         )
 
-    def _extract_openai(self, data: dict[str, Any]) -> List[ScanField]:
+    def _extract_openai(self, data: dict[str, Any]) -> list[ScanField]:
         """Extract from OpenAI Chat Completions API format."""
-        fields = []  # type: List[ScanField]
+        fields = []  # type: list[ScanField]
 
         messages = data.get("messages", [])
         for i, msg in enumerate(messages):
@@ -201,9 +199,9 @@ class RequestExtractor:
 
         return fields
 
-    def _extract_gemini(self, data: dict[str, Any]) -> List[ScanField]:
+    def _extract_gemini(self, data: dict[str, Any]) -> list[ScanField]:
         """Extract from Gemini generateContent API format."""
-        fields = []  # type: List[ScanField]
+        fields = []  # type: list[ScanField]
 
         # System instruction
         sys_instr = data.get("systemInstruction", {})
@@ -260,7 +258,7 @@ class RequestExtractor:
 
         return fields
 
-    def _walk_nested(self, obj: object, path: str, fields: List[ScanField]) -> None:
+    def _walk_nested(self, obj: object, path: str, fields: list[ScanField]) -> None:
         """Recursively extract string values from nested dicts/lists."""
         if isinstance(obj, str) and obj:
             fields.append(ScanField(path=path, text=obj))
@@ -271,13 +269,13 @@ class RequestExtractor:
             for i, v in enumerate(obj):
                 self._walk_nested(v, "%s[%d]" % (path, i), fields)
 
-    def _extract_generic(self, data: dict[str, Any]) -> List[ScanField]:
+    def _extract_generic(self, data: dict[str, Any]) -> list[ScanField]:
         """Fallback: recursively extract all string values > 20 chars."""
-        fields = []  # type: List[ScanField]
+        fields = []  # type: list[ScanField]
         self._walk(data, "", fields)
         return fields
 
-    def _walk(self, obj: object, path: str, fields: List[ScanField]) -> None:
+    def _walk(self, obj: object, path: str, fields: list[ScanField]) -> None:
         """Recursively walk JSON and collect long string values."""
         if isinstance(obj, str):
             if len(obj) > 20:

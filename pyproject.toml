@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "AI coding tool DLP proxy — scan outbound requests for secrets, PII, and proprietary data"
 readme = "README.md"
 license = "MIT"
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 authors = [
     {name = "lumen-argus contributors"},
 ]
@@ -19,8 +19,6 @@ classifiers = [
     "Intended Audience :: Developers",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -53,7 +51,7 @@ include = ["lumen_argus*"]
 "lumen_argus.rules" = ["*.json"]
 
 [tool.ruff]
-target-version = "py39"
+target-version = "py311"
 line-length = 120
 
 [tool.ruff.lint]
@@ -69,7 +67,7 @@ known-first-party = ["lumen_argus"]
 
 [tool.mypy]
 strict = true
-python_version = "3.9"
+python_version = "3.11"
 warn_return_any = true
 warn_unused_configs = true
 

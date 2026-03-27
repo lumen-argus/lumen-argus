@@ -1,9 +1,5 @@
 """Provider routing: map inbound requests to upstream HTTPS targets."""
 
-from __future__ import annotations
-
-from typing import Dict, Optional, Tuple
-
 # Default upstream URLs per provider.
 DEFAULT_UPSTREAMS = {
     "anthropic": "https://api.anthropic.com",
@@ -15,12 +11,12 @@ DEFAULT_UPSTREAMS = {
 class ProviderRouter:
     """Routes proxy requests to the correct upstream AI provider."""
 
-    def __init__(self, upstreams: Optional[Dict[str, str]] = None):
+    def __init__(self, upstreams: dict[str, str] | None = None):
         self._upstreams = dict(DEFAULT_UPSTREAMS)
         if upstreams:
             self._upstreams.update(upstreams)
 
-    def route(self, path: str, headers: dict[str, str]) -> Tuple[str, int, bool, str]:
+    def route(self, path: str, headers: dict[str, str]) -> tuple[str, int, bool, str]:
         """Determine upstream host, port, SSL flag, and provider name.
 
         Args:

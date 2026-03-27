@@ -1,13 +1,10 @@
 """Allowlist matching — skip known-safe values from detection."""
 
-from __future__ import annotations
-
 import fnmatch
 import re
-from typing import List, Optional
 
 
-def _compile_patterns(patterns: List[str]) -> Optional[re.Pattern[str]]:
+def _compile_patterns(patterns: list[str]) -> re.Pattern[str] | None:
     """Compile glob patterns into a single regex for O(1) matching.
 
     Returns compiled regex or None if no patterns.
@@ -30,9 +27,9 @@ class AllowlistMatcher:
 
     def __init__(
         self,
-        secrets: Optional[List[str]] = None,
-        pii: Optional[List[str]] = None,
-        paths: Optional[List[str]] = None,
+        secrets: list[str] | None = None,
+        pii: list[str] | None = None,
+        paths: list[str] | None = None,
     ):
         self._secrets_re = _compile_patterns(secrets or [])
         self._pii_re = _compile_patterns(pii or [])

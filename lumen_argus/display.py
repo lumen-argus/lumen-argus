@@ -1,11 +1,9 @@
 """Terminal display: CLI output with ANSI colors or JSON lines."""
 
-from __future__ import annotations
-
 import json
 import sys
 import threading
-from typing import Any, Optional
+from typing import Any
 
 from lumen_argus.models import ScanResult
 
@@ -125,7 +123,7 @@ class TerminalDisplay:
                 )
             )
 
-    def show_shutdown(self, stats: Optional[dict[str, Any]] = None) -> None:
+    def show_shutdown(self, stats: dict[str, Any] | None = None) -> None:
         """Display shutdown summary with optional session statistics."""
         with self._lock:
             print()
@@ -256,7 +254,7 @@ class JsonDisplay:
     def show_error(self, request_id: int, error: str) -> None:
         self._emit({"event": "error", "request_id": request_id, "error": error})
 
-    def show_shutdown(self, stats: Optional[dict[str, Any]] = None) -> None:
+    def show_shutdown(self, stats: dict[str, Any] | None = None) -> None:
         self._emit({"event": "shutdown", "stats": stats or {}})
 
     def _emit(self, data: dict[str, Any]) -> None:

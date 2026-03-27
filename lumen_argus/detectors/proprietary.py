@@ -1,9 +1,6 @@
 """Proprietary code detector: file pattern blocklist + keyword detection."""
 
-from __future__ import annotations
-
 import fnmatch
-from typing import List
 
 from lumen_argus.allowlist import AllowlistMatcher
 from lumen_argus.detectors import BaseDetector
@@ -66,16 +63,16 @@ class ProprietaryDetector(BaseDetector):
 
     def scan(
         self,
-        fields: List[ScanField],
+        fields: list[ScanField],
         allowlist: AllowlistMatcher,
-    ) -> List[Finding]:
-        findings = []  # type: List[Finding]
+    ) -> list[Finding]:
+        findings = []  # type: list[Finding]
         for field in fields:
             findings.extend(self._scan_field(field, allowlist))
         return findings
 
-    def _scan_field(self, field: ScanField, allowlist: AllowlistMatcher) -> List[Finding]:
-        findings = []  # type: List[Finding]
+    def _scan_field(self, field: ScanField, allowlist: AllowlistMatcher) -> list[Finding]:
+        findings = []  # type: list[Finding]
 
         # Check source filename against file pattern blocklist
         if field.source_filename:

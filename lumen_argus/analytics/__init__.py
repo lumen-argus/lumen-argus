@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from lumen_argus.analytics.allowlists import AllowlistRepository
 from lumen_argus.analytics.channels import ChannelsRepository
 from lumen_argus.analytics.config_overrides import ConfigOverridesRepository

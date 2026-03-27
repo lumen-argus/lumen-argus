@@ -5,8 +5,6 @@ Each connected client holds a thread (from ThreadingHTTPServer) until
 disconnected. A heartbeat thread prevents idle connection timeouts.
 """
 
-from __future__ import annotations
-
 import json
 import logging
 import threading

@@ -12,12 +12,10 @@ Runs asynchronously (post-hoc) in community edition — no latency impact.
 Pro adds buffered/blocking mode and custom injection patterns.
 """
 
-from __future__ import annotations
-
 import logging
 import re
 import time
-from typing import TYPE_CHECKING, Any, List, Optional
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from lumen_argus.analytics.store import AnalyticsStore
@@ -68,7 +66,7 @@ class ResponseScanner:
 
     def __init__(
         self,
-        detectors: Optional[list[Any]] = None,
+        detectors: list[Any] | None | None = None,
         allowlist: Any = None,
         store: AnalyticsStore | None = None,
         scan_secrets: bool = True,
@@ -124,7 +122,7 @@ class ResponseScanner:
             ]
             log.debug("using %d hardcoded injection patterns (no DB rules)", len(self._injection_rules))
 
-    def scan(self, text: str, provider: str = "", model: str = "") -> List[Finding]:
+    def scan(self, text: str, provider: str = "", model: str = "") -> list[Finding]:
         """Scan response text and return findings.
 
         Args:
@@ -152,7 +150,7 @@ class ResponseScanner:
         # Sanitize (same pre-processing as request scanning)
         text = sanitize_text(text)
 
-        findings = []  # type: List[Finding]
+        findings = []  # type: list[Finding]
 
         # Secret detection — reuse existing detectors on response text
         if self._scan_secrets and self._detectors:
@@ -184,7 +182,7 @@ class ResponseScanner:
 
         return findings
 
-    def _scan_injection_patterns(self, text: str) -> List[Finding]:
+    def _scan_injection_patterns(self, text: str) -> list[Finding]:
         """Scan text for prompt injection patterns (DB rules or fallback)."""
         findings = []
         for rule in self._injection_rules:

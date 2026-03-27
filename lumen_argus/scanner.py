@@ -9,15 +9,13 @@ Exit codes:
     3 — Findings with action "log" only (informational)
 """
 
-from __future__ import annotations
-
 import json
 import logging
 import re
 import subprocess
 import sys
 from dataclasses import replace
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from lumen_argus.analytics.store import AnalyticsStore
@@ -39,7 +37,7 @@ log = logging.getLogger("argus.scanner")
 _EXIT_CODES = {"block": 1, "redact": 2, "alert": 2, "log": 3}
 
 
-def _deduplicate(findings: List[Finding]) -> List[Finding]:
+def _deduplicate(findings: list[Finding]) -> list[Finding]:
     """Collapse duplicate findings. Creates new objects to avoid mutation."""
     seen: dict[tuple[str, str, str], int] = {}
     first: dict[tuple[str, str, str], Finding] = {}
@@ -65,7 +63,7 @@ def _build_detectors(config: Config) -> list[Any]:
     return detectors
 
 
-def _resolve_exit_code(findings: List[Finding], config: Config) -> int:
+def _resolve_exit_code(findings: list[Finding], config: Config) -> int:
     """Determine exit code from findings based on resolved actions.
 
     Uses the same action resolution as PolicyEngine: per-detector
@@ -125,7 +123,7 @@ def _build_allowlist(
 
 def scan_text(
     text: str,
-    config_path: Optional[str] = None,
+    config_path: str | None = None,
     output_format: str = "text",
 ) -> int:
     """Scan text for secrets/PII/proprietary content.
@@ -138,7 +136,7 @@ def scan_text(
     detectors = _build_detectors(config)
 
     fields = [ScanField(path="stdin", text=text)]
-    all_findings = []  # type: List[Finding]
+    all_findings = []  # type: list[Finding]
     for det in detectors:
         all_findings.extend(det.scan(fields, allowlist))
 
@@ -184,11 +182,11 @@ def scan_text(
 
 
 def scan_files(
-    files: List[str],
-    config_path: Optional[str] = None,
+    files: list[str],
+    config_path: str | None = None,
     output_format: str = "text",
-    baseline_path: Optional[str] = None,
-    create_baseline_path: Optional[str] = None,
+    baseline_path: str | None = None,
+    create_baseline_path: str | None = None,
 ) -> int:
     """Scan one or more files.
 
@@ -201,7 +199,7 @@ def scan_files(
     allowlist = _build_allowlist(config)
     detectors = _build_detectors(config)
     baseline = load_baseline(baseline_path) if baseline_path else set()
-    all_file_findings = {}  # type: Dict[str, List[Finding]]
+    all_file_findings = {}  # type: dict[str, list[Finding]]
     exit_code = 0
 
     for filepath in files:
@@ -216,7 +214,7 @@ def scan_files(
             continue
 
         fields = [ScanField(path=filepath, text=text, source_filename=filepath)]
-        all_findings = []  # type: List[Finding]
+        all_findings = []  # type: list[Finding]
         for det in detectors:
             all_findings.extend(det.scan(fields, allowlist))
 
@@ -275,16 +273,16 @@ _DIFF_FILE_RE = re.compile(r"^\+\+\+ b/(.+)$")
 _BINARY_FILE_RE = re.compile(r"^Binary files [^\n]+ and b/([^\n]+) differ$")
 
 
-def _parse_diff(diff_text: str) -> Dict[str, str]:
+def _parse_diff(diff_text: str) -> dict[str, str]:
     """Parse unified diff into {filename: added_lines_text}.
 
     Only collects added lines (lines starting with '+', excluding
     the '+++ b/...' header). Deleted lines are ignored since secrets
     in removed code are no longer a risk.
     """
-    files = {}  # type: Dict[str, str]
+    files = {}  # type: dict[str, str]
     current_file = None
-    lines = []  # type: List[str]
+    lines = []  # type: list[str]
 
     for line in diff_text.splitlines():
         m = _DIFF_FILE_RE.match(line)
@@ -308,10 +306,10 @@ def _parse_diff(diff_text: str) -> Dict[str, str]:
 
 
 def scan_diff(
-    ref: Optional[str] = None,
-    config_path: Optional[str] = None,
+    ref: str | None = None,
+    config_path: str | None = None,
     output_format: str = "text",
-    baseline_path: Optional[str] = None,
+    baseline_path: str | None = None,
 ) -> int:
     """Scan git diff for secrets/PII/proprietary content.
 
@@ -368,7 +366,7 @@ def scan_diff(
             continue
 
         fields = [ScanField(path=filepath, text=text, source_filename=filepath)]
-        all_findings = []  # type: List[Finding]
+        all_findings = []  # type: list[Finding]
         for det in detectors:
             all_findings.extend(det.scan(fields, allowlist))
 

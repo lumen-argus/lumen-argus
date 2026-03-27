@@ -7,10 +7,8 @@ Used by async_proxy.py which handles the WebSocket relay on the same port
 Binary frames pass through without scanning.
 """
 
-from __future__ import annotations
-
 import logging
-from typing import Any, List, Optional
+from typing import Any
 
 from lumen_argus.models import Finding, ScanField
 from lumen_argus.text_utils import sanitize_text
@@ -27,7 +25,7 @@ class WebSocketScanner:
 
     def __init__(
         self,
-        detectors: Optional[list[Any]] = None,
+        detectors: list[Any] | None = None,
         allowlist: Any = None,
         response_scanner: Any = None,
         scan_outbound: bool = True,
@@ -41,13 +39,13 @@ class WebSocketScanner:
         self._scan_inbound = scan_inbound
         self._max_frame_size = max_frame_size
 
-    def scan_outbound_frame(self, text: str) -> List[Finding]:
+    def scan_outbound_frame(self, text: str) -> list[Finding]:
         """Scan an outbound text frame (client -> server)."""
         if not self._scan_outbound or not text:
             return []
         return self._scan_text(text, "ws.outbound")
 
-    def scan_inbound_frame(self, text: str) -> List[Finding]:
+    def scan_inbound_frame(self, text: str) -> list[Finding]:
         """Scan an inbound text frame (server -> client)."""
         if not self._scan_inbound or not text:
             return []
@@ -66,7 +64,7 @@ class WebSocketScanner:
 
         return findings
 
-    def _scan_text(self, text: str, location_prefix: str) -> List[Finding]:
+    def _scan_text(self, text: str, location_prefix: str) -> list[Finding]:
         """Scan text with all detectors."""
         if len(text) > self._max_frame_size:
             log.debug("ws frame truncated: %d -> %d", len(text), self._max_frame_size)

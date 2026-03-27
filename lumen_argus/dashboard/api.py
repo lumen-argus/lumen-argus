@@ -5,8 +5,6 @@ POST /api/v1/license (activate). Known Pro endpoint paths return 402 instead
 of 404 when no Pro handler is registered, giving API consumers a clear upgrade signal.
 """
 
-from __future__ import annotations
-
 import fnmatch
 import json
 import logging

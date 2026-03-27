@@ -11,8 +11,6 @@ in the JS source code — these are hardcoded strings, never user data.
 No external dependencies, no build step, no CDN.
 """
 
-from __future__ import annotations
-
 import os
 
 _STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")

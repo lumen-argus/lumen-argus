@@ -1,12 +1,10 @@
 """Rules repository — extracted from AnalyticsStore."""
 
-from __future__ import annotations
-
 import json
 import logging
 import re
 import sqlite3
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from lumen_argus.analytics.store import AnalyticsStore
@@ -59,7 +57,7 @@ class RulesRepository:
             row = conn.execute("SELECT COUNT(*) FROM rules").fetchone()
             return row[0] if row else 0
 
-    def get_active(self, detector: Optional[str] = None, tier: Optional[str] = None) -> list[dict[str, Any]]:
+    def get_active(self, detector: str | None = None, tier: str | None = None) -> list[dict[str, Any]]:
         """Return enabled rules, optionally filtered by detector/tier."""
         query = "SELECT " + _RULES_COLUMNS + " FROM rules WHERE enabled = 1"
         params: list[Any] = []
@@ -88,12 +86,12 @@ class RulesRepository:
         self,
         limit: int = 50,
         offset: int = 0,
-        search: Optional[str] = None,
-        detector: Optional[str] = None,
-        tier: Optional[str] = None,
-        enabled: Optional[bool] = None,
-        severity: Optional[str] = None,
-        tag: Optional[str] = None,
+        search: str | None = None,
+        detector: str | None = None,
+        tier: str | None = None,
+        enabled: bool | None = None,
+        severity: str | None = None,
+        tag: str | None = None,
     ) -> tuple[list[dict[str, Any]], Any]:
         """Paginated rules for dashboard. Returns (rules_list, total_count)."""
         conditions: list[str] = []
@@ -147,7 +145,7 @@ class RulesRepository:
             result.append(d)
         return result, total
 
-    def get_by_name(self, name: str) -> Optional[dict[str, Any]]:
+    def get_by_name(self, name: str) -> dict[str, Any] | None:
         """Return a single rule by name."""
         with self._store._connect() as conn:
             row = conn.execute("SELECT " + _RULES_COLUMNS + " FROM rules WHERE name = ?", (name,)).fetchone()
@@ -162,7 +160,7 @@ class RulesRepository:
                 d["tags"] = []
         return d
 
-    def create(self, data: dict[str, Any]) -> Optional[dict[str, Any]]:
+    def create(self, data: dict[str, Any]) -> dict[str, Any] | None:
         """Create a custom rule. Validates pattern regex. Returns created rule."""
 
         name = data.get("name", "").strip()
@@ -238,7 +236,7 @@ class RulesRepository:
                 params.append(data["updated_by"])
         return fragments, params
 
-    def update(self, name: str, data: dict[str, Any]) -> Optional[dict[str, Any]]:
+    def update(self, name: str, data: dict[str, Any]) -> dict[str, Any] | None:
         """Update rule fields. Returns updated rule or None if not found."""
         fragments, params = self._build_set_clause(data)
         if not fragments:
@@ -304,7 +302,7 @@ class RulesRepository:
             self._store._notify_rules_changed("delete", rule_name=name)
         return deleted
 
-    def clone(self, name: str, new_name: str) -> Optional[dict[str, Any]]:
+    def clone(self, name: str, new_name: str) -> dict[str, Any] | None:
         """Clone a rule as source='dashboard', tier='custom'."""
         original = self.get_by_name(name)
         if not original:
@@ -433,7 +431,7 @@ class RulesRepository:
             self._store._notify_rules_changed("bulk")
         return result
 
-    def export(self, tier: Optional[str] = None, detector: Optional[str] = None) -> list[dict[str, Any]]:
+    def export(self, tier: str | None = None, detector: str | None = None) -> list[dict[str, Any]]:
         """Export rules as dicts for JSON serialization."""
         query = "SELECT " + _RULES_COLUMNS + " FROM rules"
         conditions: list[str] = []

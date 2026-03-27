@@ -7,15 +7,13 @@ for retention enforcement.
 sqlite3 is Python stdlib — zero external dependencies.
 """
 
-from __future__ import annotations
-
 import logging
 import os
 import sqlite3
 import threading
 import time
 from pathlib import Path
-from typing import Any, Callable, List, Optional
+from typing import Any, Callable
 
 from lumen_argus.analytics.allowlists import _ALLOWLIST_SCHEMA, AllowlistRepository
 from lumen_argus.analytics.channels import _NOTIFICATION_SCHEMA, ChannelsRepository
@@ -84,12 +82,12 @@ class AnalyticsStore:
     Write serialization: single Lock wraps all writes; reads don't acquire it.
     """
 
-    def __init__(self, db_path: str = "~/.lumen-argus/analytics.db", hmac_key: Optional[bytes] = None) -> None:
+    def __init__(self, db_path: str = "~/.lumen-argus/analytics.db", hmac_key: bytes | None = None) -> None:
         self._db_path = os.path.expanduser(db_path)
         self._hmac_key = hmac_key
         self._lock = threading.Lock()
         self._local = threading.local()
-        self._rules_change_callback: Optional[Callable[..., Any]] = None
+        self._rules_change_callback: Callable[..., Any] | None = None
         self._ensure_db()
         self.findings = FindingsRepository(self)
         self.rules = RulesRepository(self)
@@ -129,7 +127,7 @@ class AnalyticsStore:
         Each thread gets its own connection, reused across method calls.
         Health check after 60s of inactivity.
         """
-        conn: Optional[sqlite3.Connection] = getattr(self._local, "conn", None)
+        conn: sqlite3.Connection | None = getattr(self._local, "conn", None)
         if conn is not None:
             now = time.monotonic()
             last_used: float = getattr(self._local, "conn_last_used", 0)
@@ -152,7 +150,7 @@ class AnalyticsStore:
     def _now(self) -> str:
         return now_iso()
 
-    def set_rules_change_callback(self, callback: Optional[Callable[..., Any]]) -> None:
+    def set_rules_change_callback(self, callback: Callable[..., Any] | None) -> None:
         """Register callback for rule changes.
 
         callback(change_type, rule_name=None)
@@ -161,7 +159,7 @@ class AnalyticsStore:
         """
         self._rules_change_callback = callback
 
-    def _notify_rules_changed(self, change_type: str, rule_name: Optional[str] = None) -> None:
+    def _notify_rules_changed(self, change_type: str, rule_name: str | None = None) -> None:
         if self._rules_change_callback:
             try:
                 self._rules_change_callback(change_type, rule_name=rule_name)
@@ -187,10 +185,10 @@ class AnalyticsStore:
 
     def record_findings(
         self,
-        findings: List[Finding],
+        findings: list[Finding],
         provider: str = "",
         model: str = "",
-        session: Optional[SessionContext] = None,
+        session: SessionContext | None = None,
     ) -> None:
         return self.findings.record(findings, provider=provider, model=model, session=session)
 
@@ -198,15 +196,15 @@ class AnalyticsStore:
         self,
         limit: int = 50,
         offset: int = 0,
-        severity: Optional[str] = None,
-        detector: Optional[str] = None,
-        provider: Optional[str] = None,
-        session_id: Optional[str] = None,
-        account_id: Optional[str] = None,
-        action: Optional[str] = None,
-        finding_type: Optional[str] = None,
-        client_name: Optional[str] = None,
-        days: Optional[int] = None,
+        severity: str | None = None,
+        detector: str | None = None,
+        provider: str | None = None,
+        session_id: str | None = None,
+        account_id: str | None = None,
+        action: str | None = None,
+        finding_type: str | None = None,
+        client_name: str | None = None,
+        days: int | None = None,
     ) -> tuple[list[dict[str, Any]], Any]:
         return self.findings.get_page(
             limit=limit,
@@ -222,7 +220,7 @@ class AnalyticsStore:
             days=days,
         )
 
-    def get_finding_by_id(self, finding_id: int) -> Optional[dict[str, Any]]:
+    def get_finding_by_id(self, finding_id: int) -> dict[str, Any] | None:
         return self.findings.get_by_id(finding_id)
 
     def get_stats(self, days: int = 30) -> dict[str, Any]:
@@ -230,9 +228,9 @@ class AnalyticsStore:
 
     def get_total_count(
         self,
-        severity: Optional[str] = None,
-        detector: Optional[str] = None,
-        provider: Optional[str] = None,
+        severity: str | None = None,
+        detector: str | None = None,
+        provider: str | None = None,
     ) -> int:
         return self.findings.get_total_count(severity=severity, detector=detector, provider=provider)
 
@@ -273,8 +271,8 @@ class AnalyticsStore:
 
     def get_active_rules(
         self,
-        detector: Optional[str] = None,
-        tier: Optional[str] = None,
+        detector: str | None = None,
+        tier: str | None = None,
     ) -> list[dict[str, Any]]:
         return self.rules.get_active(detector=detector, tier=tier)
 
@@ -282,12 +280,12 @@ class AnalyticsStore:
         self,
         limit: int = 50,
         offset: int = 0,
-        search: Optional[str] = None,
-        detector: Optional[str] = None,
-        tier: Optional[str] = None,
-        enabled: Optional[bool] = None,
-        severity: Optional[str] = None,
-        tag: Optional[str] = None,
+        search: str | None = None,
+        detector: str | None = None,
+        tier: str | None = None,
+        enabled: bool | None = None,
+        severity: str | None = None,
+        tag: str | None = None,
     ) -> tuple[list[dict[str, Any]], Any]:
         return self.rules.get_page(
             limit=limit,
@@ -303,19 +301,19 @@ class AnalyticsStore:
     def get_rule_tag_stats(self) -> list[dict[str, Any]]:
         return self.rules.get_tag_stats()
 
-    def get_rule_by_name(self, name: str) -> Optional[dict[str, Any]]:
+    def get_rule_by_name(self, name: str) -> dict[str, Any] | None:
         return self.rules.get_by_name(name)
 
-    def create_rule(self, data: dict[str, Any]) -> Optional[dict[str, Any]]:
+    def create_rule(self, data: dict[str, Any]) -> dict[str, Any] | None:
         return self.rules.create(data)
 
-    def update_rule(self, name: str, data: dict[str, Any]) -> Optional[dict[str, Any]]:
+    def update_rule(self, name: str, data: dict[str, Any]) -> dict[str, Any] | None:
         return self.rules.update(name, data)
 
     def delete_rule(self, name: str) -> bool:
         return self.rules.delete(name)
 
-    def clone_rule(self, name: str, new_name: str) -> Optional[dict[str, Any]]:
+    def clone_rule(self, name: str, new_name: str) -> dict[str, Any] | None:
         return self.rules.clone(name, new_name)
 
     def import_rules(
@@ -328,8 +326,8 @@ class AnalyticsStore:
 
     def export_rules(
         self,
-        tier: Optional[str] = None,
-        detector: Optional[str] = None,
+        tier: str | None = None,
+        detector: str | None = None,
     ) -> list[dict[str, Any]]:
         return self.rules.export(tier=tier, detector=detector)
 
@@ -341,10 +339,10 @@ class AnalyticsStore:
 
     # --- Channels facade ---
 
-    def list_notification_channels(self, source: Optional[str] = None) -> list[dict[str, Any]]:
+    def list_notification_channels(self, source: str | None = None) -> list[dict[str, Any]]:
         return self.channels.list(source=source)
 
-    def get_notification_channel(self, channel_id: int) -> Optional[dict[str, Any]]:
+    def get_notification_channel(self, channel_id: int) -> dict[str, Any] | None:
         return self.channels.get(channel_id)
 
     def count_notification_channels(self) -> int:
@@ -353,11 +351,11 @@ class AnalyticsStore:
     def create_notification_channel(
         self,
         data: dict[str, Any],
-        channel_limit: Optional[int] = None,
-    ) -> Optional[dict[str, Any]]:
+        channel_limit: int | None = None,
+    ) -> dict[str, Any] | None:
         return self.channels.create(data, channel_limit=channel_limit)
 
-    def update_notification_channel(self, channel_id: int, data: dict[str, Any]) -> Optional[dict[str, Any]]:
+    def update_notification_channel(self, channel_id: int, data: dict[str, Any]) -> dict[str, Any] | None:
         return self.channels.update(channel_id, data)
 
     def delete_notification_channel(self, channel_id: int) -> bool:
@@ -369,7 +367,7 @@ class AnalyticsStore:
     def reconcile_yaml_channels(
         self,
         yaml_channels: list[Any],
-        channel_limit: Optional[int] = None,
+        channel_limit: int | None = None,
     ) -> dict[str, list[str]]:
         return self.channels.reconcile_yaml(yaml_channels, channel_limit=channel_limit)
 
@@ -392,7 +390,7 @@ class AnalyticsStore:
         frames_sent: int,
         frames_received: int,
         findings_count: int,
-        close_code: Optional[int],
+        close_code: int | None,
     ) -> None:
         return self.ws_connections.record_close(
             connection_id, timestamp, duration, frames_sent, frames_received, findings_count, close_code
@@ -421,19 +419,19 @@ class AnalyticsStore:
     ) -> dict[str, Any]:
         return self.allowlists.add(list_type, pattern, description=description, created_by=created_by)
 
-    def update_allowlist_entry(self, entry_id: int, data: dict[str, Any]) -> Optional[dict[str, Any]]:
+    def update_allowlist_entry(self, entry_id: int, data: dict[str, Any]) -> dict[str, Any] | None:
         return self.allowlists.update(entry_id, data)
 
-    def get_allowlist_entry(self, entry_id: int) -> Optional[dict[str, Any]]:
+    def get_allowlist_entry(self, entry_id: int) -> dict[str, Any] | None:
         return self.allowlists.get(entry_id)
 
     def delete_allowlist_entry(self, entry_id: int) -> bool:
         return self.allowlists.delete(entry_id)
 
-    def list_allowlist_entries(self, list_type: Optional[str] = None) -> list[dict[str, Any]]:
+    def list_allowlist_entries(self, list_type: str | None = None) -> list[dict[str, Any]]:
         return self.allowlists.list(list_type=list_type)
 
-    def list_enabled_allowlist_entries(self, list_type: Optional[str] = None) -> list[dict[str, Any]]:
+    def list_enabled_allowlist_entries(self, list_type: str | None = None) -> list[dict[str, Any]]:
         return self.allowlists.list_enabled(list_type=list_type)
 
     # --- Config overrides facade ---
@@ -452,7 +450,7 @@ class AnalyticsStore:
     def get_mcp_tool_lists(self) -> dict[str, list[dict[str, Any]]]:
         return self.mcp_tool_lists.get_lists()
 
-    def add_mcp_tool_entry(self, list_type: str, tool_name: str) -> Optional[int]:
+    def add_mcp_tool_entry(self, list_type: str, tool_name: str) -> int | None:
         return self.mcp_tool_lists.add_entry(list_type, tool_name)
 
     def delete_mcp_tool_entry(self, entry_id: int) -> bool:
@@ -460,8 +458,8 @@ class AnalyticsStore:
 
     def reconcile_mcp_tool_lists(
         self,
-        yaml_allowed: Optional[list[Any]],
-        yaml_blocked: Optional[list[Any]],
+        yaml_allowed: list[Any] | None,
+        yaml_blocked: list[Any] | None,
     ) -> dict[str, int]:
         return self.mcp_tool_lists.reconcile(yaml_allowed, yaml_blocked)
 
@@ -524,7 +522,7 @@ class AnalyticsStore:
 
     def get_mcp_tool_calls(
         self,
-        session_id: Optional[str] = None,
+        session_id: str | None = None,
         limit: int = 100,
     ) -> list[dict[str, Any]]:
         """Return recent MCP tool calls, optionally filtered by session."""
@@ -554,7 +552,7 @@ class AnalyticsStore:
 
     # --- MCP Tool Baselines (drift detection) ---
 
-    def get_mcp_tool_baseline(self, tool_name: str) -> Optional[dict[str, Any]]:
+    def get_mcp_tool_baseline(self, tool_name: str) -> dict[str, Any] | None:
         """Get stored baseline for a tool. Returns dict or None."""
         with self._connect() as conn:
             row = conn.execute(

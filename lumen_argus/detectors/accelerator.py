@@ -11,11 +11,9 @@ Graceful fallback: if pyahocorasick is not installed, all rules are
 returned as candidates (equivalent to no pre-filter).
 """
 
-from __future__ import annotations
-
 import logging
 import time
-from typing import Any, Dict, List, Optional, Set
+from typing import Any
 
 from lumen_argus.detectors.literal_extractor import extract_literals
 
@@ -40,8 +38,8 @@ class AhoCorasickAccelerator:
     """
 
     def __init__(self) -> None:
-        self._automaton: Optional[Any] = None  # ahocorasick.Automaton or None
-        self._fallback_indices = set()  # type: Set[int]
+        self._automaton: Any | None = None  # ahocorasick.Automaton or None
+        self._fallback_indices: set[int] = set()
         self._rule_count = 0
         self._literal_count = 0
         self._available = _HAS_AHOCORASICK
@@ -62,7 +60,7 @@ class AhoCorasickAccelerator:
             "available": self.available,
         }
 
-    def build(self, compiled_rules: List[dict[str, Any]]) -> None:
+    def build(self, compiled_rules: list[dict[str, Any]]) -> None:
         """Build automaton from compiled rules.
 
         Args:
@@ -86,7 +84,7 @@ class AhoCorasickAccelerator:
 
         # Extract literals from each rule's regex pattern
         # Map: literal -> set of rule indices
-        literal_to_rules: Dict[str, Set[int]] = {}
+        literal_to_rules: dict[str, set[int]] = {}
 
         for idx, rule in enumerate(compiled_rules):
             pattern_str = rule["compiled"].pattern
@@ -130,7 +128,7 @@ class AhoCorasickAccelerator:
             elapsed_ms,
         )
 
-    def filter(self, text: str) -> Set[int]:
+    def filter(self, text: str) -> set[int]:
         """Return set of candidate rule indices that could match the text.
 
         Performs a single O(n) Aho-Corasick scan plus adds all fallback rules.
@@ -156,7 +154,7 @@ class AhoCorasickAccelerator:
 
         return candidates
 
-    def filter_ratio(self, candidates: Set[int]) -> float:
+    def filter_ratio(self, candidates: set[int]) -> float:
         """Calculate the filter ratio (percentage of rules eliminated)."""
         if self._rule_count == 0:
             return 0.0

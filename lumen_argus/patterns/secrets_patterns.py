@@ -1,7 +1,5 @@
 """Built-in secret detection patterns (30+ compiled regexes)."""
 
-from __future__ import annotations
-
 import re
 from typing import NamedTuple
 

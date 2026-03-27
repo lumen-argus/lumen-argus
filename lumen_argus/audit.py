@@ -1,7 +1,5 @@
 """Audit logger: thread-safe JSONL writer with secure file permissions."""
 
-from __future__ import annotations
-
 import json
 import logging
 import os
@@ -9,7 +7,6 @@ import re
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
 
 from lumen_argus.models import AuditEntry
 
@@ -21,7 +18,7 @@ _LOG_FILENAME_RE = re.compile(r"^guard-(\d{8})-\d{6}\.jsonl$")
 class AuditLogger:
     """Thread-safe JSONL audit log writer."""
 
-    def __init__(self, log_dir: Optional[str] = None, retention_days: int = 90):
+    def __init__(self, log_dir: str | None = None, retention_days: int = 90):
         if log_dir:
             self._log_dir = Path(os.path.expanduser(log_dir))
         else:

@@ -4,13 +4,11 @@ Scans tool descriptions from tools/list responses for injection patterns
 and tracks tool definition changes (rug-pull detection) via SHA-256 hashes.
 """
 
-from __future__ import annotations
-
 import hashlib
 import json
 import logging
 import re
-from typing import TYPE_CHECKING, Any, List, Tuple
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from lumen_argus.analytics.store import AnalyticsStore
@@ -86,7 +84,7 @@ _POISON_PATTERNS = [
 ]
 
 
-def scan_tool_descriptions(tools: list[dict[str, Any]], action: str = "alert") -> List[Finding]:
+def scan_tool_descriptions(tools: list[dict[str, Any]], action: str = "alert") -> list[Finding]:
     """Scan tool descriptions for poisoning patterns.
 
     Args:
@@ -140,7 +138,7 @@ def hash_tool_definition(description: str, input_schema: dict[str, Any]) -> str:
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
 
-def extract_param_names(input_schema: dict[str, Any]) -> List[str]:
+def extract_param_names(input_schema: dict[str, Any]) -> list[str]:
     """Extract parameter names from a JSON Schema inputSchema."""
     props = input_schema.get("properties", {})
     if isinstance(props, dict):
@@ -151,9 +149,9 @@ def extract_param_names(input_schema: dict[str, Any]) -> List[str]:
 def diff_tool_definitions(
     tool_name: str,
     old_desc: str,
-    old_params: List[str],
+    old_params: list[str],
     new_desc: str,
-    new_params: List[str],
+    new_params: list[str],
 ) -> str:
     """Generate a human-readable diff summary for a changed tool definition."""
     parts = ['Tool "%s" definition changed:' % tool_name]
@@ -186,7 +184,7 @@ def diff_tool_definitions(
 def check_tool_drift(
     tools: list[dict[str, Any]],
     store: AnalyticsStore,
-) -> List[Tuple[str, str]]:
+) -> list[tuple[str, str]]:
     """Check tools against stored baselines and update.
 
     Args:

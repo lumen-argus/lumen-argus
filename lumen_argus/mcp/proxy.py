@@ -11,14 +11,12 @@ Modes:
 - run_ws_bridge: stdio client -> WebSocket upstream
 """
 
-from __future__ import annotations
-
 import asyncio
 import json
 import logging
 import sys
 import time
-from typing import Any, List, Optional
+from typing import Any
 
 from lumen_argus.mcp.scanner import MCPScanner
 from lumen_argus.mcp.transport import (
@@ -45,8 +43,8 @@ def _run_policy_engine(policy_engine: Any, tool_name: str, arguments: dict[str, 
 
 
 def _signal_escalation(
-    escalation_fn: Any, signal_type: str, session_id: str, details: Optional[dict[str, Any]] = None
-) -> Optional[str]:
+    escalation_fn: Any, signal_type: str, session_id: str, details: dict[str, Any] | None | None = None
+) -> str | None:
     """Feed a threat signal to Pro's adaptive enforcement. Returns enforcement level.
 
     Returns None if no escalation function registered or it raises.
@@ -82,7 +80,7 @@ def _check_tools_call(
     policy_engine: Any,
     escalation_fn: Any,
     session_id: str = "",
-) -> Optional[dict[str, Any]]:
+) -> dict[str, Any] | None:
     """Validate a tools/call request: session binding → policy engine → scanner.
 
     Returns a JSON-RPC error dict if the call should be blocked, or None if
@@ -174,9 +172,9 @@ _MAX_BODY_SIZE = 10 * 1024 * 1024
 
 
 async def run_stdio_proxy(
-    command: List[str],
+    command: list[str],
     scanner: MCPScanner,
-    env: Optional[dict[str, str]] = None,
+    env: dict[str, str] | None = None,
     policy_engine: Any = None,
     escalation_fn: Any = None,
 ) -> int:
@@ -312,13 +310,13 @@ async def run_stdio_proxy(
             sys.stderr.buffer.flush()
 
     try:
-        await asyncio.gather(
-            _relay_stdin(),
-            _relay_stdout(),
-            _relay_stderr(),
-        )
-    except Exception as e:
-        log.error("mcp relay error: %s", e)
+        async with asyncio.TaskGroup() as tg:
+            tg.create_task(_relay_stdin())
+            tg.create_task(_relay_stdout())
+            tg.create_task(_relay_stderr())
+    except* Exception as eg:
+        for exc in eg.exceptions:
+            log.error("mcp relay error: %s", exc)
 
     await proc.wait()
     exit_code = proc.returncode or 1

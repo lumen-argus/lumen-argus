@@ -5,15 +5,13 @@ with pagination and filtering. Includes a brief TTL cache to avoid
 re-reading files on every dashboard poll.
 """
 
-from __future__ import annotations
-
 import glob
 import json
 import logging
 import os
 import threading
 import time
-from typing import Any, List, Optional, Tuple
+from typing import Any
 
 log = logging.getLogger("argus.audit_reader")
 
@@ -26,7 +24,7 @@ class AuditReader:
 
     def __init__(self, log_dir: str = "~/.lumen-argus/audit"):
         self._log_dir = os.path.expanduser(log_dir)
-        self._cache: List[dict[str, Any]] = []
+        self._cache: list[dict[str, Any]] = []
         self._cache_time = 0.0
         self._lock = threading.Lock()
 
@@ -34,10 +32,10 @@ class AuditReader:
         self,
         limit: int = 50,
         offset: int = 0,
-        action: Optional[str] = None,
-        provider: Optional[str] = None,
-        search: Optional[str] = None,
-    ) -> Tuple[List[dict[str, Any]], int]:
+        action: str | None = None,
+        provider: str | None = None,
+        search: str | None = None,
+    ) -> tuple[list[dict[str, Any]], int]:
         """Read audit entries with pagination and filtering.
 
         Returns (entries, total_count).
@@ -63,7 +61,7 @@ class AuditReader:
         page = filtered[offset : offset + limit]
         return page, total
 
-    def get_providers(self) -> List[str]:
+    def get_providers(self) -> list[str]:
         """Return list of unique providers from cached entries."""
         entries = self._get_cached_entries()
         providers = set()
@@ -73,7 +71,7 @@ class AuditReader:
                 providers.add(p)
         return sorted(providers)
 
-    def _get_cached_entries(self) -> List[dict[str, Any]]:
+    def _get_cached_entries(self) -> list[dict[str, Any]]:
         """Return all parsed entries, using cache if fresh. Thread-safe."""
         with self._lock:
             now = time.monotonic()
@@ -88,7 +86,7 @@ class AuditReader:
 
     _MAX_ENTRIES = 10000
 
-    def _parse_all_files(self) -> List[dict[str, Any]]:
+    def _parse_all_files(self) -> list[dict[str, Any]]:
         """Parse JSONL files in the audit directory, newest entries first."""
         if not os.path.isdir(self._log_dir):
             return []
@@ -115,7 +113,7 @@ class AuditReader:
         return all_entries
 
     @staticmethod
-    def _parse_file(filepath: str) -> List[dict[str, Any]]:
+    def _parse_file(filepath: str) -> list[dict[str, Any]]:
         """Parse a single JSONL file. Skips malformed lines."""
         entries = []
         with open(filepath, "r", encoding="utf-8") as f:

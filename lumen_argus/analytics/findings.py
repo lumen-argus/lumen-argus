@@ -1,11 +1,9 @@
 """Findings repository — extracted from AnalyticsStore."""
 
-from __future__ import annotations
-
 import hashlib
 import hmac as hmac_mod
 import logging
-from typing import TYPE_CHECKING, Any, List, Optional
+from typing import TYPE_CHECKING, Any
 
 from lumen_argus.models import Finding, SessionContext
 from lumen_argus.time_utils import now_iso_ms
@@ -67,10 +65,10 @@ class FindingsRepository:
 
     def record(
         self,
-        findings: List[Finding],
+        findings: list[Finding],
         provider: str = "",
         model: str = "",
-        session: Optional[SessionContext] = None,
+        session: SessionContext | None = None,
     ) -> None:
         """Insert findings into the store. Thread-safe.
 
@@ -161,15 +159,15 @@ class FindingsRepository:
         self,
         limit: int = 50,
         offset: int = 0,
-        severity: Optional[str] = None,
-        detector: Optional[str] = None,
-        provider: Optional[str] = None,
-        session_id: Optional[str] = None,
-        account_id: Optional[str] = None,
-        action: Optional[str] = None,
-        finding_type: Optional[str] = None,
-        client_name: Optional[str] = None,
-        days: Optional[int] = None,
+        severity: str | None = None,
+        detector: str | None = None,
+        provider: str | None = None,
+        session_id: str | None = None,
+        account_id: str | None = None,
+        action: str | None = None,
+        finding_type: str | None = None,
+        client_name: str | None = None,
+        days: int | None = None,
     ) -> tuple[list[dict[str, Any]], Any]:
         """Return (findings_list, total_count) with optional filters."""
         where = ""
@@ -215,7 +213,7 @@ class FindingsRepository:
             ).fetchall()
         return [dict(r) for r in rows], total
 
-    def get_by_id(self, finding_id: int) -> Optional[dict[str, Any]]:
+    def get_by_id(self, finding_id: int) -> dict[str, Any] | None:
         """Return a single finding by ID."""
         with self._store._connect() as conn:
             row = conn.execute(
@@ -400,9 +398,9 @@ class FindingsRepository:
 
     def get_total_count(
         self,
-        severity: Optional[str] = None,
-        detector: Optional[str] = None,
-        provider: Optional[str] = None,
+        severity: str | None = None,
+        detector: str | None = None,
+        provider: str | None = None,
     ) -> int:
         """Return total number of findings, optionally filtered."""
         query = "SELECT COUNT(*) FROM findings"

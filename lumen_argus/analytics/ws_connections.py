@@ -1,10 +1,8 @@
 """WebSocket connections repository — extracted from AnalyticsStore."""
 
-from __future__ import annotations
-
 import logging
 import time
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from lumen_argus.analytics.store import AnalyticsStore
@@ -52,7 +50,7 @@ class WebSocketConnectionsRepository:
         frames_sent: int,
         frames_received: int,
         findings_count: int,
-        close_code: Optional[int],
+        close_code: int | None,
     ) -> None:
         """Update a WebSocket connection record on close."""
         with self._store._lock:

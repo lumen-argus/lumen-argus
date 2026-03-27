@@ -5,8 +5,6 @@ so it doesn't block the proxy. Supports optional password authentication
 with sessions and CSRF protection.
 """
 
-from __future__ import annotations
-
 import http.server
 import json
 import logging
@@ -16,7 +14,7 @@ import threading
 import time
 from datetime import datetime, timezone
 from http.cookies import SimpleCookie
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from lumen_argus.analytics.store import AnalyticsStore
@@ -85,7 +83,7 @@ if(nextVal)document.getElementById('next-field').value=nextVal;
 class DashboardHandler(http.server.BaseHTTPRequestHandler):
     """Handles dashboard HTTP requests with optional authentication."""
 
-    server: DashboardServer
+    server: "DashboardServer"
 
     def log_message(self, format: str, *args: Any) -> None:
         pass  # Suppress default access logging
@@ -679,7 +677,7 @@ def start_dashboard(
     audit_reader: Any = None,
     sse_broadcaster: Any = None,
     config: Config | None = None,
-) -> Optional[DashboardServer]:
+) -> DashboardServer | None:
     """Start the dashboard server in a daemon thread.
 
     Returns the server instance, or None if startup fails.

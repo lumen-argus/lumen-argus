@@ -12,15 +12,13 @@ License-aware: rules with tier='pro' are skipped when the license
 checker reports invalid/expired.
 """
 
-from __future__ import annotations
-
 import asyncio
 import logging
 import re
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from typing import TYPE_CHECKING, Any, Callable, List, Optional, Set
+from typing import TYPE_CHECKING, Any, Callable
 
 if TYPE_CHECKING:
     from lumen_argus.analytics.store import AnalyticsStore
@@ -76,16 +74,16 @@ class RulesDetector(BaseDetector):
         license_checker: Any = None,
         metrics_collector: Any = None,
         parallel: bool = False,
-        accelerator_factory: Optional[Callable[[], Any]] = None,
+        accelerator_factory: Callable[[], Any] | None = None,
         rebuild_delay: float = 2.0,
     ) -> None:
         self._store = store
         self._license = license_checker
         self._metrics = metrics_collector
         self._accelerator_factory = accelerator_factory
-        self._skip_list: Set[str] = set()
+        self._skip_list: set[str] = set()
         self._parallel = parallel
-        self._pool: Optional[ThreadPoolExecutor] = None
+        self._pool: ThreadPoolExecutor | None = None
         if parallel:
             self._pool = ThreadPoolExecutor(max_workers=4)
         self._compiled_rules: list[dict[str, Any]] = []
@@ -235,7 +233,7 @@ class RulesDetector(BaseDetector):
         self._skip_list = set(names) if names else set()
         log.info("rule skip list updated: %d rules", len(self._skip_list))
 
-    def on_rules_changed(self, change_type: str, rule_name: Optional[str] = None) -> None:
+    def on_rules_changed(self, change_type: str, rule_name: str | None = None) -> None:
         """Handle rule changes from store callback.
 
         Schedules a debounced async rebuild instead of rebuilding synchronously.
@@ -374,7 +372,7 @@ class RulesDetector(BaseDetector):
             group_findings.extend(self._eval_rule(compiled_rules[idx], field, allowlist, metrics))
         return group_findings
 
-    def scan(self, fields: List[ScanField], allowlist: AllowlistMatcher) -> List[Finding]:
+    def scan(self, fields: list[ScanField], allowlist: AllowlistMatcher) -> list[Finding]:
         """Scan fields against compiled rules with Aho-Corasick pre-filtering.
 
         Performance path:
@@ -445,12 +443,12 @@ class RulesDetector(BaseDetector):
 
     def _scan_field_parallel(
         self,
-        candidates: Set[int],
+        candidates: set[int],
         compiled_rules: list[dict[str, Any]],
         field: ScanField,
         allowlist: AllowlistMatcher,
         metrics: Any,
-        skip_list: Set[str],
+        skip_list: set[str],
     ) -> list[Finding]:
         """Evaluate candidate rules in parallel, grouped by detector category.
 

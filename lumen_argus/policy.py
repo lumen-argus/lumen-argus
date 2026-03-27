@@ -1,9 +1,6 @@
 """Policy engine: evaluate findings and determine action."""
 
-from __future__ import annotations
-
 from dataclasses import dataclass
-from typing import List, Optional
 
 from lumen_argus.models import Finding
 
@@ -16,13 +13,13 @@ class ActionDecision:
 
     action: str  # winning action
     reason: str  # which finding triggered it
-    findings: List[Finding]  # all findings
+    findings: list[Finding]  # all findings
 
 
 class PolicyEngine:
     """Evaluates detection findings against policy and returns the winning action."""
 
-    def __init__(self, default_action: str = "alert", action_overrides: Optional[dict[str, str]] = None):
+    def __init__(self, default_action: str = "alert", action_overrides: dict[str, str] | None = None):
         """
         Args:
             default_action: Default action when a finding has no specific action.
@@ -31,7 +28,7 @@ class PolicyEngine:
         self._default_action = default_action
         self._overrides = action_overrides or {}
 
-    def evaluate(self, findings: List[Finding]) -> ActionDecision:
+    def evaluate(self, findings: list[Finding]) -> ActionDecision:
         """Evaluate all findings and return the highest-priority action."""
         if not findings:
             return ActionDecision(action="pass", reason="", findings=[])

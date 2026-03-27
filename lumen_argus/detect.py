@@ -7,8 +7,6 @@ shell profiles and IDE settings.
 All detection is read-only — never modifies files. Setup is in setup_wizard.py.
 """
 
-from __future__ import annotations
-
 import enum
 import glob
 import json
@@ -19,7 +17,7 @@ import re
 import shutil
 import subprocess
 from dataclasses import asdict, dataclass, field
-from typing import Any, List, Optional
+from typing import Any
 
 from lumen_argus.clients import CLIENT_REGISTRY, ClientDef
 
@@ -152,7 +150,7 @@ class DetectedClient:
 class DetectionReport:
     """Aggregate detection results for all agents."""
 
-    clients: List[DetectedClient] = field(default_factory=list)
+    clients: list[DetectedClient] = field(default_factory=list)
     shell_env_vars: dict[str, tuple[str, str, int]] = field(default_factory=dict)  # {var_name: (value, file, line_num)}
     platform: str = ""
     total_detected: int = 0
@@ -173,7 +171,7 @@ class DetectionReport:
 # ---------------------------------------------------------------------------
 
 
-def _scan_binary(client: ClientDef) -> Optional[DetectedClient]:
+def _scan_binary(client: ClientDef) -> DetectedClient | None:
     """Check if a CLI binary exists in PATH."""
     for name in client.detect_binary:
         path = shutil.which(name)
@@ -192,7 +190,7 @@ def _scan_binary(client: ClientDef) -> Optional[DetectedClient]:
     return None
 
 
-def _scan_pip_package(client: ClientDef) -> Optional[DetectedClient]:
+def _scan_pip_package(client: ClientDef) -> DetectedClient | None:
     """Check if a pip package is installed (no subprocess — uses importlib.metadata)."""
     if not client.detect_pip:
         return None
@@ -225,7 +223,7 @@ def _scan_pip_package(client: ClientDef) -> Optional[DetectedClient]:
         return None
 
 
-def _scan_vscode_extension(client: ClientDef) -> Optional[DetectedClient]:
+def _scan_vscode_extension(client: ClientDef) -> DetectedClient | None:
     """Check if a VS Code extension is installed across all VS Code variants."""
     if not client.detect_vscode_ext:
         return None
@@ -263,7 +261,7 @@ def _scan_vscode_extension(client: ClientDef) -> Optional[DetectedClient]:
     return None
 
 
-def _scan_app_bundle(client: ClientDef) -> Optional[DetectedClient]:
+def _scan_app_bundle(client: ClientDef) -> DetectedClient | None:
     """Check for macOS .app bundle in /Applications."""
     if not client.detect_app_name or platform.system() != "Darwin":
         return None
@@ -297,7 +295,7 @@ def _scan_app_bundle(client: ClientDef) -> Optional[DetectedClient]:
     return None
 
 
-def _scan_jetbrains_plugin(client: ClientDef) -> Optional[DetectedClient]:
+def _scan_jetbrains_plugin(client: ClientDef) -> DetectedClient | None:
     """Check for JetBrains IDE plugins."""
     if not client.detect_jetbrains_plugin:
         return None
@@ -334,7 +332,7 @@ def _scan_jetbrains_plugin(client: ClientDef) -> Optional[DetectedClient]:
     return None
 
 
-def _scan_npm_package(client: ClientDef) -> Optional[DetectedClient]:
+def _scan_npm_package(client: ClientDef) -> DetectedClient | None:
     """Check if an npm global package is installed by reading package.json."""
     if not client.detect_npm:
         return None
@@ -394,7 +392,7 @@ _BREW_CELLAR_PATHS = [
 ]
 
 
-def _scan_brew_package(client: ClientDef) -> Optional[DetectedClient]:
+def _scan_brew_package(client: ClientDef) -> DetectedClient | None:
     """Check if a homebrew formula is installed (macOS only)."""
     if not client.detect_brew or platform.system() != "Darwin":
         return None
@@ -435,7 +433,7 @@ _NEOVIM_PLUGIN_DIRS = [
 ]
 
 
-def _scan_neovim_plugin(client: ClientDef) -> Optional[DetectedClient]:
+def _scan_neovim_plugin(client: ClientDef) -> DetectedClient | None:
     """Check if a Neovim plugin is installed across common plugin managers."""
     if not client.detect_neovim_plugin:
         return None
@@ -569,8 +567,8 @@ def _build_settings_cache() -> dict[str, tuple[dict[str, Any], str]]:
 
 
 def _check_ide_proxy_settings(
-    client: ClientDef, proxy_url: str = "", settings_cache: Optional[dict[str, tuple[dict[str, Any], str]]] = None
-) -> Optional[tuple[bool, str, str]]:
+    client: ClientDef, proxy_url: str = "", settings_cache: dict[str, tuple[dict[str, Any], str]] | None = None
+) -> tuple[bool, str, str] | None:
     """Check if IDE settings have proxy configured for this client.
 
     Returns (is_configured, proxy_value, settings_file) or None if no settings found.
@@ -604,7 +602,7 @@ def _check_ide_proxy_settings(
 def detect_installed_clients(
     proxy_url: str = "http://localhost:8080",
     include_versions: bool = False,
-    extra_clients: Optional[list[ClientDef]] = None,
+    extra_clients: list[ClientDef] | None = None,
 ) -> DetectionReport:
     """Scan the system for installed AI CLI agents and their proxy configuration status.
 
@@ -657,7 +655,7 @@ def _detect_single_client(
     shell_env: dict[str, tuple[str, str, int]],
     proxy_url: str,
     include_versions: bool,
-    settings_cache: Optional[dict[str, tuple[dict[str, Any], str]]] = None,
+    settings_cache: dict[str, tuple[dict[str, Any], str]] | None = None,
 ) -> DetectedClient:
     """Run all scanners for a single client, merge results."""
     # Try each scanner in order — first match wins for install detection

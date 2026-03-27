@@ -1,7 +1,5 @@
 """Shared text utilities — sanitization, normalization."""
 
-from __future__ import annotations
-
 import re
 import unicodedata
 

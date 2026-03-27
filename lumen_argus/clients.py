@@ -7,11 +7,9 @@ for setup guides, and CLI for listing supported tools.
 Pro extends via extensions.register_clients() to add enterprise clients.
 """
 
-from __future__ import annotations
-
 import logging
 from dataclasses import asdict, dataclass
-from typing import Any, List, Optional, Tuple
+from typing import Any
 
 log = logging.getLogger("argus.clients")
 
@@ -47,7 +45,7 @@ class ClientDef:
 # Ordered by specificity (longer/more-specific prefixes first)
 # ---------------------------------------------------------------------------
 
-CLIENT_REGISTRY: List[ClientDef] = [
+CLIENT_REGISTRY: list[ClientDef] = [
     ClientDef(
         id="claude_code",
         display_name="Claude Code",
@@ -254,7 +252,7 @@ CLIENT_REGISTRY: List[ClientDef] = [
 ]
 
 # Build prefix→client lookup for fast matching
-_PREFIX_INDEX: List[Tuple[str, ClientDef]] = [
+_PREFIX_INDEX: list[tuple[str, ClientDef]] = [
     (_prefix, _client) for _client in CLIENT_REGISTRY for _prefix in _client.ua_prefixes
 ]
 
@@ -271,7 +269,7 @@ def _parse_version(raw_token: str) -> str:
     return ""
 
 
-def identify_client(user_agent: str, headers: Optional[dict[str, str]] = None) -> Tuple[str, str, str, str]:
+def identify_client(user_agent: str, headers: dict[str, str] | None = None) -> tuple[str, str, str, str]:
     """Identify the AI CLI agent from request headers.
 
     Returns (client_id, display_name, version, raw_ua_token):
@@ -294,7 +292,7 @@ def identify_client(user_agent: str, headers: Optional[dict[str, str]] = None) -
     return raw_token, raw_token, _parse_version(raw_token), raw_token
 
 
-def get_client_by_id(client_id: str) -> Optional[ClientDef]:
+def get_client_by_id(client_id: str) -> ClientDef | None:
     """Look up a client definition by ID."""
     for client in CLIENT_REGISTRY:
         if client.id == client_id:
@@ -302,7 +300,7 @@ def get_client_by_id(client_id: str) -> Optional[ClientDef]:
     return None
 
 
-def get_all_clients(extra_clients: Optional[list[Any]] = None) -> List[dict[str, Any]]:
+def get_all_clients(extra_clients: list[Any] | None = None) -> list[dict[str, Any]]:
     """Return all clients as dicts for API responses.
 
     Merges built-in registry with Pro-registered extra clients.

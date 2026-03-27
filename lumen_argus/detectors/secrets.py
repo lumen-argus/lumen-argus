@@ -1,10 +1,7 @@
 """Secrets detector: regex pattern matching + Shannon entropy analysis."""
 
-from __future__ import annotations
-
 import math
 import re
-from typing import List, Tuple
 
 from lumen_argus.allowlist import AllowlistMatcher
 from lumen_argus.detectors import BaseDetector
@@ -37,7 +34,7 @@ _TOKEN_RE = re.compile(r"[A-Za-z0-9+/=_\-]{16,80}")
 _FIELD_SEP = "\x00\x00\x00"
 
 
-def _build_merged_text(fields: List[ScanField]) -> Tuple[str, List[Tuple[int, int, int]]]:
+def _build_merged_text(fields: list[ScanField]) -> tuple[str, list[tuple[int, int, int]]]:
     """Concatenate fields into single string for batch scanning.
 
     Returns:
@@ -45,7 +42,7 @@ def _build_merged_text(fields: List[ScanField]) -> Tuple[str, List[Tuple[int, in
         (start_offset, end_offset, field_index) tuples.
     """
     parts = []
-    boundaries = []  # type: List[Tuple[int, int, int]]
+    boundaries = []  # type: list[tuple[int, int, int]]
     offset = 0
     for i, field in enumerate(fields):
         if i > 0:
@@ -58,7 +55,7 @@ def _build_merged_text(fields: List[ScanField]) -> Tuple[str, List[Tuple[int, in
     return "".join(parts), boundaries
 
 
-def _find_field(pos: int, boundaries: List[Tuple[int, int, int]]) -> int:
+def _find_field(pos: int, boundaries: list[tuple[int, int, int]]) -> int:
     """Binary search for which field index contains position `pos`."""
     lo, hi = 0, len(boundaries) - 1
     while lo <= hi:
@@ -83,9 +80,9 @@ class SecretsDetector(BaseDetector):
 
     def scan(
         self,
-        fields: List[ScanField],
+        fields: list[ScanField],
         allowlist: AllowlistMatcher,
-    ) -> List[Finding]:
+    ) -> list[Finding]:
         if not fields:
             return []
 
@@ -94,7 +91,7 @@ class SecretsDetector(BaseDetector):
         if not merged:
             return []
 
-        findings = []  # type: List[Finding]
+        findings = []  # type: list[Finding]
         matched_spans = set()  # type: set[tuple[int, int]]
 
         # Pass 1: regex patterns — one finditer per pattern over merged text

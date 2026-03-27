@@ -13,11 +13,9 @@ Handles:
 - Character classes / quantifiers: [A-Z]{16} -> no literal (empty)
 """
 
-from __future__ import annotations
-
 import logging
 import sre_parse
-from typing import Any, List, Tuple
+from typing import Any
 
 log = logging.getLogger("argus.detectors.literal_extractor")
 
@@ -26,7 +24,7 @@ log = logging.getLogger("argus.detectors.literal_extractor")
 MIN_LITERAL_LENGTH = 3
 
 
-def extract_literals(pattern: str, flags: int = 0) -> List[Tuple[str, bool]]:
+def extract_literals(pattern: str, flags: int = 0) -> list[tuple[str, bool]]:
     """Extract fixed literal substrings from a regex pattern.
 
     Args:
@@ -59,7 +57,7 @@ def extract_literals(pattern: str, flags: int = 0) -> List[Tuple[str, bool]]:
     return result
 
 
-def _extract_from_items(items: list[Any], case_insensitive: bool) -> List[Tuple[str, bool]]:
+def _extract_from_items(items: list[Any], case_insensitive: bool) -> list[tuple[str, bool]]:
     """Extract literals from a sequence of sre_parse nodes.
 
     Walks the sequence collecting contiguous LITERAL runs. When a BRANCH
@@ -135,7 +133,7 @@ def _extract_from_items(items: list[Any], case_insensitive: bool) -> List[Tuple[
     return all_literals
 
 
-def _collect_longest_literal(items: list[Any], case_insensitive: bool) -> List[Tuple[str, bool]]:
+def _collect_longest_literal(items: list[Any], case_insensitive: bool) -> list[tuple[str, bool]]:
     """Walk a flat sequence of sre_parse nodes, return the single longest literal run."""
     best = ""
     current = ""

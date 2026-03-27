@@ -1,10 +1,8 @@
 """Allowlist entries repository — DB-backed allowlist patterns."""
 
-from __future__ import annotations
-
 import builtins
 import logging
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from lumen_argus.analytics.store import AnalyticsStore
@@ -75,7 +73,7 @@ class AllowlistRepository:
             "updated_by": created_by,
         }
 
-    def update(self, entry_id: int, data: dict[str, Any]) -> Optional[dict[str, Any]]:
+    def update(self, entry_id: int, data: dict[str, Any]) -> dict[str, Any] | None:
         """Update an API-managed allowlist entry. Returns updated entry or None."""
         updates: builtins.list[str] = []
         params: builtins.list[Any] = []
@@ -104,7 +102,7 @@ class AllowlistRepository:
                     return None
         return self.get(entry_id)
 
-    def get(self, entry_id: int) -> Optional[dict[str, Any]]:
+    def get(self, entry_id: int) -> dict[str, Any] | None:
         """Get a single entry by ID."""
         with self._store._connect() as conn:
             row = conn.execute(
@@ -125,7 +123,7 @@ class AllowlistRepository:
                 )
                 return cursor.rowcount > 0
 
-    def list(self, list_type: Optional[str] = None) -> builtins.list[dict[str, Any]]:
+    def list(self, list_type: str | None = None) -> builtins.list[dict[str, Any]]:
         """List allowlist entries, optionally filtered by type."""
         query = "SELECT " + _ALLOWLIST_COLUMNS + " FROM allowlist_entries"
         params: builtins.list[str] = []
@@ -137,7 +135,7 @@ class AllowlistRepository:
             rows = conn.execute(query, params).fetchall()
         return [self._row_to_dict(r) for r in rows]
 
-    def list_enabled(self, list_type: Optional[str] = None) -> builtins.list[dict[str, Any]]:
+    def list_enabled(self, list_type: str | None = None) -> builtins.list[dict[str, Any]]:
         """List only enabled entries (for scan-time integration)."""
         query = "SELECT " + _ALLOWLIST_COLUMNS + " FROM allowlist_entries WHERE enabled = 1"
         params: builtins.list[str] = []

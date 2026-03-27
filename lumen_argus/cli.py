@@ -1,7 +1,5 @@
 """CLI entry point: argument parsing, startup, and run loop."""
 
-from __future__ import annotations
-
 import argparse
 import json
 import logging
@@ -10,7 +8,7 @@ import platform
 import signal
 import sys
 import time
-from typing import TYPE_CHECKING, Any, Optional, Union
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from lumen_argus.analytics.store import AnalyticsStore
@@ -532,7 +530,7 @@ def main(argv: list[str] | None = None) -> None:
         action_overrides["proprietary"] = config.proprietary.action
 
     # Construct components
-    display: Union[JsonDisplay, TerminalDisplay]
+    display: JsonDisplay | TerminalDisplay
     if args.output_format == "json":
         display = JsonDisplay()
     else:
@@ -1185,7 +1183,7 @@ def _run_setup(args: argparse.Namespace) -> None:
     )
 
 
-def _load_rules_bundle(path: Optional[str] = None, pro: bool = False) -> tuple[list[Any], str, str]:
+def _load_rules_bundle(path: str | None = None, pro: bool = False) -> tuple[list[Any], str, str]:
     """Load a rules JSON bundle. Returns (rules_list, version, tier)."""
     if path:
         with open(path, encoding="utf-8") as f:

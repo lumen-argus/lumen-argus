@@ -1,9 +1,7 @@
 """Detection engine base class and exports."""
 
-from __future__ import annotations
-
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from lumen_argus.allowlist import AllowlistMatcher
@@ -16,8 +14,8 @@ class BaseDetector(ABC):
     @abstractmethod
     def scan(
         self,
-        fields: "List[ScanField]",
+        fields: "list[ScanField]",
         allowlist: "AllowlistMatcher",
-    ) -> "List[Finding]":
+    ) -> "list[Finding]":
         """Scan extracted fields and return findings."""
         ...

@@ -9,15 +9,12 @@ Interactive (or non-interactive) tool configuration:
 All modifications are tagged with '# lumen-argus:managed' for easy identification.
 """
 
-from __future__ import annotations
-
 import json
 import logging
 import os
 import re
 import shutil
 from dataclasses import asdict, dataclass
-from typing import List, Optional
 
 from lumen_argus.detect import _SHELL_PROFILES, InstallMethod, detect_installed_clients, load_jsonc
 from lumen_argus.time_utils import now_iso
@@ -81,7 +78,7 @@ def _backup_file(file_path: str) -> str:
     return backup_path
 
 
-def _save_manifest(changes: List[SetupChange]) -> None:
+def _save_manifest(changes: list[SetupChange]) -> None:
     """Save setup changes manifest to disk."""
     os.makedirs(_SETUP_DIR, exist_ok=True)
     existing = []
@@ -105,7 +102,7 @@ def add_env_to_shell_profile(
     client_id: str,
     profile_path: str = "",
     dry_run: bool = False,
-) -> Optional[SetupChange]:
+) -> SetupChange | None:
     """Add an export line to the user's shell profile.
 
     Returns SetupChange if successful, None if already present or failed.
@@ -185,7 +182,7 @@ def update_ide_settings(
     value: str,
     client_id: str,
     dry_run: bool = False,
-) -> Optional[SetupChange]:
+) -> SetupChange | None:
     """Add or update a key in a JSON settings file.
 
     Returns SetupChange if successful, None if already set or failed.
@@ -312,7 +309,7 @@ def run_setup(
     client_id: str = "",
     non_interactive: bool = False,
     dry_run: bool = False,
-) -> List[SetupChange]:
+) -> list[SetupChange]:
     """Run the setup wizard — detect tools and configure proxy routing.
 
     Args:
@@ -432,7 +429,7 @@ def _prompt_yes(message: str) -> bool:
         return False
 
 
-def _find_ide_settings(extension_path: str) -> Optional[str]:
+def _find_ide_settings(extension_path: str) -> str | None:
     """Find the IDE settings.json file that corresponds to an extension path."""
     from lumen_argus.detect import _VSCODE_VARIANTS
 

@@ -1,7 +1,5 @@
 """Basic webhook notifier — sends findings as JSON POST."""
 
-from __future__ import annotations
-
 import json
 import logging
 from typing import Any
@@ -34,7 +32,7 @@ WEBHOOK_CHANNEL_TYPE = {
 }
 
 
-def build_notifier(channel: dict[str, Any]) -> WebhookNotifier | None:
+def build_notifier(channel: dict[str, Any]) -> "WebhookNotifier | None":
     """Build a WebhookNotifier from a channel dict. Returns None if type unknown."""
     if channel.get("type") != "webhook":
         return None

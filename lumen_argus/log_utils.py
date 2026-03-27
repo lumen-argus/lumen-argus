@@ -1,7 +1,5 @@
 """Log utilities: file handler setup, sanitization, export, and config diffing."""
 
-from __future__ import annotations
-
 import io
 import logging
 import logging.handlers

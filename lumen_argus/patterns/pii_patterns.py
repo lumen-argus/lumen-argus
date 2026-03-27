@@ -1,9 +1,7 @@
 """Built-in PII detection patterns with validation."""
 
-from __future__ import annotations
-
 import re
-from typing import Callable, NamedTuple, Optional
+from typing import Callable, NamedTuple
 
 from lumen_argus.validators import validate_iban, validate_ip_not_private, validate_luhn, validate_ssn
 
@@ -12,7 +10,7 @@ class PIIPattern(NamedTuple):
     name: str
     pattern: "re.Pattern[str]"
     severity: str
-    validator: Optional[Callable[[str], bool]]  # None = match always counts
+    validator: Callable[[str], bool] | None  # None = match always counts
 
 
 PII_PATTERNS = (

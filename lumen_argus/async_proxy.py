@@ -10,8 +10,6 @@ Scanning logic is unchanged — CPU-bound scanning runs in a thread pool
 via asyncio.to_thread() to avoid blocking the event loop.
 """
 
-from __future__ import annotations
-
 import asyncio
 import itertools
 import json
@@ -21,7 +19,7 @@ import ssl
 import threading
 import time
 import uuid
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from lumen_argus.extensions import ExtensionRegistry
@@ -1145,7 +1143,7 @@ class AsyncArgusProxy:
         retries: int = 1,
         max_body_size: int = 50 * 1024 * 1024,
         redact_hook: Any = None,
-        ssl_context: Optional[ssl.SSLContext] = None,
+        ssl_context: ssl.SSLContext | None = None,
         max_connections: int = 10,
     ):
         if bind not in ("127.0.0.1", "localhost"):

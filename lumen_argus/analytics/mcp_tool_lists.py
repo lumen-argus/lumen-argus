@@ -1,9 +1,7 @@
 """MCP tool lists repository — extracted from AnalyticsStore."""
 
-from __future__ import annotations
-
 import logging
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from lumen_argus.analytics.store import AnalyticsStore
@@ -49,7 +47,7 @@ class MCPToolListsRepository:
                 result[lt].append(entry)
         return result
 
-    def add_entry(self, list_type: str, tool_name: str) -> Optional[int]:
+    def add_entry(self, list_type: str, tool_name: str) -> int | None:
         """Add a tool to the allowed or blocked list. Returns the new entry ID."""
         if list_type not in ("allowed", "blocked"):
             raise ValueError("list_type must be 'allowed' or 'blocked'")
@@ -84,7 +82,7 @@ class MCPToolListsRepository:
             log.info("mcp tool list: deleted entry %d", entry_id)
         return deleted
 
-    def reconcile(self, yaml_allowed: Optional[list[Any]], yaml_blocked: Optional[list[Any]]) -> dict[str, int]:
+    def reconcile(self, yaml_allowed: list[Any] | None, yaml_blocked: list[Any] | None) -> dict[str, int]:
         """Reconcile YAML tool lists with DB entries.
 
         YAML entries are authoritative for source='config'. API entries untouched.
