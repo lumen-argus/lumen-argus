@@ -87,7 +87,7 @@ class TestCommunityOnly(unittest.TestCase):
         store1.record_findings(_make_findings(5), provider="anthropic")
 
         store2 = AnalyticsStore(db_path=self.db_path)
-        page, total = store2.get_findings_page(limit=100)
+        _page, total = store2.get_findings_page(limit=100)
         self.assertEqual(total, 5)
 
     def test_pro_tables_on_disk_are_harmless(self):
@@ -103,7 +103,7 @@ class TestCommunityOnly(unittest.TestCase):
         # Community store still works fine
         store2 = AnalyticsStore(db_path=self.db_path)
         store2.record_findings(_make_findings(3), provider="anthropic")
-        page, total = store2.get_findings_page()
+        _page, total = store2.get_findings_page()
         self.assertEqual(total, 3)
 
 

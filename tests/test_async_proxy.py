@@ -201,7 +201,7 @@ class TestAsyncProxy(unittest.TestCase):
 
         async def _test():
             async def _inner():
-                status, data = await self._post(
+                status, _data = await self._post(
                     port,
                     {
                         "model": "claude-opus-4-6",
@@ -417,7 +417,7 @@ class TestAsyncProxy(unittest.TestCase):
         async def _test():
             async def _inner():
                 # Build a body larger than 100 bytes
-                status, data = await self._post(
+                status, _data = await self._post(
                     port,
                     {
                         "model": "claude-opus-4-6",
@@ -432,7 +432,7 @@ class TestAsyncProxy(unittest.TestCase):
 
     def test_update_timeout(self):
         """update_timeout should update the timeout value."""
-        proxy, port = self._create_proxy()
+        proxy, _port = self._create_proxy()
         self.assertEqual(proxy.timeout, 30)
         proxy.update_timeout(60)
         self.assertEqual(proxy.timeout, 60)

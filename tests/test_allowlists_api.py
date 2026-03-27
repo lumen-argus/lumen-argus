@@ -138,15 +138,15 @@ class TestAllowlistAPI(StoreTestCase):
         self.assertEqual(data["source"], "api")
 
     def test_add_invalid_type(self):
-        status, body = self._api("/api/v1/allowlists", "POST", json.dumps({"type": "bad", "pattern": "test"}).encode())
+        status, _body = self._api("/api/v1/allowlists", "POST", json.dumps({"type": "bad", "pattern": "test"}).encode())
         self.assertEqual(status, 400)
 
     def test_add_empty_pattern(self):
-        status, body = self._api("/api/v1/allowlists", "POST", json.dumps({"type": "secrets", "pattern": ""}).encode())
+        status, _body = self._api("/api/v1/allowlists", "POST", json.dumps({"type": "secrets", "pattern": ""}).encode())
         self.assertEqual(status, 400)
 
     def test_add_no_store(self):
-        status, body = handle_community_api(
+        status, _body = handle_community_api(
             "/api/v1/allowlists", "POST", json.dumps({"type": "secrets", "pattern": "x"}).encode(), None
         )
         self.assertEqual(status, 500)
@@ -155,15 +155,15 @@ class TestAllowlistAPI(StoreTestCase):
 
     def test_delete_entry(self):
         entry = self.store.add_allowlist_entry("pii", "*@test.com")
-        status, body = self._api("/api/v1/allowlists/%d" % entry["id"], "DELETE")
+        status, _body = self._api("/api/v1/allowlists/%d" % entry["id"], "DELETE")
         self.assertEqual(status, 200)
 
     def test_delete_nonexistent(self):
-        status, body = self._api("/api/v1/allowlists/999", "DELETE")
+        status, _body = self._api("/api/v1/allowlists/999", "DELETE")
         self.assertEqual(status, 404)
 
     def test_delete_invalid_id(self):
-        status, body = self._api("/api/v1/allowlists/abc", "DELETE")
+        status, _body = self._api("/api/v1/allowlists/abc", "DELETE")
         self.assertEqual(status, 400)
 
     # --- POST /api/v1/allowlists/test ---
@@ -179,7 +179,7 @@ class TestAllowlistAPI(StoreTestCase):
         self.assertTrue(data["value_match"])
 
     def test_pattern_no_match(self):
-        status, body = self._api(
+        _status, body = self._api(
             "/api/v1/allowlists/test",
             "POST",
             json.dumps({"pattern": "sk-ant-*", "value": "ghp_something"}).encode(),
@@ -188,7 +188,7 @@ class TestAllowlistAPI(StoreTestCase):
         self.assertFalse(data["value_match"])
 
     def test_pattern_empty(self):
-        status, body = self._api("/api/v1/allowlists/test", "POST", json.dumps({"pattern": ""}).encode())
+        status, _body = self._api("/api/v1/allowlists/test", "POST", json.dumps({"pattern": ""}).encode())
         self.assertEqual(status, 400)
 
 

@@ -223,10 +223,10 @@ class TestAnalyticsStore(unittest.TestCase):
         """Filtering by days should return only recent findings."""
         self._seed_findings()
         # All seeded findings are from today, so days=1 should return all
-        rows, total = self.store.get_findings_page(days=1)
+        _rows, total = self.store.get_findings_page(days=1)
         self.assertEqual(total, 5)
         # days=0 should be ignored (no filter applied)
-        rows2, total2 = self.store.get_findings_page(days=0)
+        _rows2, total2 = self.store.get_findings_page(days=0)
         self.assertEqual(total2, 5)
 
     def test_get_findings_page_filter_by_client_name(self):

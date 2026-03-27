@@ -120,7 +120,7 @@ class TestMCPToolListAPI(StoreTestCase):
 
     def test_post_invalid_list_type(self):
         payload = json.dumps({"list_type": "invalid", "tool_name": "tool"}).encode()
-        status, body = handle_community_api("/api/v1/mcp/tools", "POST", payload, self.store, config=self.config)
+        status, _body = handle_community_api("/api/v1/mcp/tools", "POST", payload, self.store, config=self.config)
         self.assertEqual(status, 400)
 
     def test_delete_tool(self):
@@ -129,19 +129,19 @@ class TestMCPToolListAPI(StoreTestCase):
         _, add_body = handle_community_api("/api/v1/mcp/tools", "POST", payload, self.store, config=self.config)
         entry_id = json.loads(add_body)["id"]
 
-        status, body = handle_community_api(
+        status, _body = handle_community_api(
             "/api/v1/mcp/tools/%d" % entry_id, "DELETE", b"", self.store, config=self.config
         )
         self.assertEqual(status, 200)
 
     def test_delete_nonexistent(self):
-        status, body = handle_community_api("/api/v1/mcp/tools/999", "DELETE", b"", self.store, config=self.config)
+        status, _body = handle_community_api("/api/v1/mcp/tools/999", "DELETE", b"", self.store, config=self.config)
         self.assertEqual(status, 404)
 
     def test_get_includes_config_entries(self):
         """GET should include config-sourced entries from Config object."""
         self.config.mcp.blocked_tools = ["config_blocked"]
-        status, body = handle_community_api("/api/v1/mcp/tools", "GET", b"", self.store, config=self.config)
+        _status, body = handle_community_api("/api/v1/mcp/tools", "GET", b"", self.store, config=self.config)
         data = json.loads(body)
         blocked_names = [e["tool_name"] for e in data["blocked"]]
         self.assertIn("config_blocked", blocked_names)
@@ -152,7 +152,7 @@ class TestMCPToolListAPI(StoreTestCase):
         self.store.add_mcp_tool_entry("blocked", "tool_b")
         self.store.add_mcp_tool_entry("blocked", "tool_c")
 
-        status, body = handle_community_api("/api/v1/pipeline", "GET", b"", self.store, config=self.config)
+        _status, body = handle_community_api("/api/v1/pipeline", "GET", b"", self.store, config=self.config)
         data = json.loads(body)
         mcp_stage = next(s for s in data["stages"] if s["name"] == "mcp_arguments")
         self.assertIn("mcp_tools", mcp_stage)

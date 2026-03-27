@@ -219,7 +219,7 @@ class TestRulesToCrossfire(unittest.TestCase):
             {"name": "bad", "pattern": "[invalid(", "tier": "community"},
             {"name": "good", "pattern": "abc", "tier": "community", "detector": "secrets"},
         ]
-        cf_rules, lookup = _rules_to_crossfire(db_rules)
+        cf_rules, _lookup = _rules_to_crossfire(db_rules)
         self.assertEqual(len(cf_rules), 1)
         self.assertEqual(cf_rules[0].name, "good")
 
@@ -314,7 +314,7 @@ class TestAPIEndpoints(StoreTestCase):
     def test_dismiss_missing_fields(self):
         from lumen_argus.dashboard.api import _handle_rule_analysis_dismiss
 
-        status, body = _handle_rule_analysis_dismiss(json.dumps({"rule_a": "a"}).encode(), self.store)
+        status, _body = _handle_rule_analysis_dismiss(json.dumps({"rule_a": "a"}).encode(), self.store)
         self.assertEqual(status, 400)
 
     def test_dismiss_success(self):
@@ -330,7 +330,7 @@ class TestAPIEndpoints(StoreTestCase):
         from lumen_argus.dashboard.api import handle_community_api
 
         with patch("lumen_argus.rule_analysis.HAS_CROSSFIRE", True):
-            status, body = handle_community_api("/api/v1/rules/analysis", "GET", b"", None)
+            status, _body = handle_community_api("/api/v1/rules/analysis", "GET", b"", None)
         self.assertEqual(status, 500)
 
 

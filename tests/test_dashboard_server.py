@@ -279,13 +279,13 @@ class TestDashboardServer(unittest.TestCase):
             self.assertIn("/login", headers.get("location", ""))
 
             # Session should be invalid now
-            status, _, body = _get(port, "/api/v1/status", headers={"Cookie": cookie})
+            status, _, _body = _get(port, "/api/v1/status", headers={"Cookie": cookie})
             self.assertEqual(status, 401)
         finally:
             server.shutdown()
 
     def test_session_expiry(self):
-        server, port = _start_server(password="hunter2", store=self.store)
+        server, _port = _start_server(password="hunter2", store=self.store)
         try:
             session_id = server.create_session()
             self.assertTrue(server.validate_session(session_id))
@@ -306,7 +306,7 @@ class TestDashboardServer(unittest.TestCase):
 
             # POST with matching CSRF header and cookie -> should pass CSRF check
             license_body = json.dumps({"key": "test-key"}).encode()
-            status, _, body = _post(
+            status, _, _body = _post(
                 port,
                 "/api/v1/license",
                 body=license_body,
@@ -350,7 +350,7 @@ class TestDashboardServer(unittest.TestCase):
             cookie = "argus_session=%s; csrf_token=%s" % (session, csrf)
 
             # POST with wrong X-CSRF-Token -> 403
-            status, _, body = _post(
+            status, _, _body = _post(
                 port,
                 "/api/v1/license",
                 body=b'{"key":"x"}',
@@ -368,10 +368,10 @@ class TestDashboardServer(unittest.TestCase):
         """GET requests should not require CSRF validation."""
         server, port = _start_server(password="hunter2", store=self.store)
         try:
-            _, _, session, csrf = _login(port, "hunter2")
+            _, _, session, _csrf = _login(port, "hunter2")
             cookie = "argus_session=%s" % session  # No csrf_token cookie
 
-            status, _, body = _get(port, "/api/v1/status", headers={"Cookie": cookie})
+            status, _, _body = _get(port, "/api/v1/status", headers={"Cookie": cookie})
             self.assertEqual(status, 200)
         finally:
             server.shutdown()
@@ -476,11 +476,11 @@ class TestAPIEndpoints(unittest.TestCase):
         self.assertEqual(detail["detector"], "secrets")
 
     def test_finding_detail_not_found(self):
-        status, _, body = _get(self.port, "/api/v1/findings/99999")
+        status, _, _body = _get(self.port, "/api/v1/findings/99999")
         self.assertEqual(status, 404)
 
     def test_finding_detail_invalid_id(self):
-        status, _, body = _get(self.port, "/api/v1/findings/abc")
+        status, _, _body = _get(self.port, "/api/v1/findings/abc")
         self.assertEqual(status, 400)
 
     def test_stats(self):
@@ -546,7 +546,7 @@ class TestAPIEndpoints(unittest.TestCase):
 
     def test_license_post_empty_key(self):
         license_body = json.dumps({"key": ""}).encode()
-        status, _, body = _post(
+        status, _, _body = _post(
             self.port,
             "/api/v1/license",
             body=license_body,
@@ -558,7 +558,7 @@ class TestAPIEndpoints(unittest.TestCase):
         self.assertEqual(status, 400)
 
     def test_license_post_invalid_json(self):
-        status, _, body = _post(
+        status, _, _body = _post(
             self.port,
             "/api/v1/license",
             body=b"not-json",
@@ -588,18 +588,18 @@ class TestTierGating(unittest.TestCase):
 
     def test_post_notifications_channels_without_pro(self):
         """POST to notifications/channels without Pro returns 404 (no types registered)."""
-        status, _, body = _post(self.port, "/api/v1/notifications/channels", body=b'{"type":"webhook","name":"test"}')
+        status, _, _body = _post(self.port, "/api/v1/notifications/channels", body=b'{"type":"webhook","name":"test"}')
         # Without Pro, no channel types registered — falls through to 404
         self.assertIn(status, (400, 404))
 
     def test_put_rules_is_community(self):
         """Rules are community-owned — PUT returns 200 or 404, not 402."""
-        status, _, body = _put(self.port, "/api/v1/rules/nonexistent", body=b"{}")
+        status, _, _body = _put(self.port, "/api/v1/rules/nonexistent", body=b"{}")
         self.assertIn(status, (200, 404))
 
     def test_post_allowlist_is_community(self):
         """Allowlists are community-owned — POST validates input, not 402."""
-        status, _, body = _post(self.port, "/api/v1/allowlists", body=b"{}")
+        status, _, _body = _post(self.port, "/api/v1/allowlists", body=b"{}")
         self.assertIn(status, (400, 500))  # invalid type or no store
 
     def test_put_config_empty_returns_400(self):
@@ -944,12 +944,12 @@ class TestAuditReader(unittest.TestCase):
     def test_cache_ttl(self):
         """Reading twice within TTL should return cached data."""
         reader = AuditReader(self.audit_dir)
-        entries1, _ = reader.read_entries()
+        _entries1, _ = reader.read_entries()
         # Access internal cache time
         cache_time_1 = reader._cache_time
         self.assertGreater(cache_time_1, 0)
 
-        entries2, _ = reader.read_entries()
+        _entries2, _ = reader.read_entries()
         cache_time_2 = reader._cache_time
         # Cache time should not have changed (data served from cache)
         self.assertEqual(cache_time_1, cache_time_2)
@@ -964,7 +964,7 @@ class TestAuditReader(unittest.TestCase):
 
     def test_nonexistent_directory(self):
         reader = AuditReader(os.path.join(self.tmpdir, "no_such_dir"))
-        entries, total = reader.read_entries()
+        _entries, total = reader.read_entries()
         self.assertEqual(total, 0)
 
 
@@ -1039,7 +1039,7 @@ class TestCommunityAPIDirect(unittest.TestCase):
 
     def test_allowlist_post_validates_input(self):
         # Allowlists are now community-handled — POST validates type
-        status, body = handle_community_api("/api/v1/allowlists", "POST", b"{}", None)
+        status, _body = handle_community_api("/api/v1/allowlists", "POST", b"{}", None)
         self.assertEqual(status, 500)  # no store available
 
     def test_put_config_empty_returns_400(self):
@@ -1050,7 +1050,7 @@ class TestCommunityAPIDirect(unittest.TestCase):
 
     def test_allowlist_delete_no_store(self):
         # Allowlists are community-owned — DELETE without store returns 500
-        status, body = handle_community_api("/api/v1/allowlists/1", "DELETE", b"", None)
+        status, _body = handle_community_api("/api/v1/allowlists/1", "DELETE", b"", None)
         self.assertEqual(status, 500)
 
 

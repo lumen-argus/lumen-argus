@@ -148,7 +148,7 @@ class TestRulesStoreQueries(StoreTestCase):
         self.assertEqual(len(rules), 2)
 
     def test_get_rules_page_search(self):
-        rules, total = self.store.get_rules_page(search="r1")
+        _rules, total = self.store.get_rules_page(search="r1")
         self.assertEqual(total, 1)
 
     def test_get_rule_by_name(self):

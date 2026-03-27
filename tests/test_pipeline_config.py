@@ -196,7 +196,7 @@ class TestPipelineAPI(StoreTestCase):
         self.assertEqual(len(data["stages"]), 8)
 
     def test_get_pipeline_stage_structure(self):
-        status, body = handle_community_api("/api/v1/pipeline", "GET", b"", self.store, config=self.config)
+        _status, body = handle_community_api("/api/v1/pipeline", "GET", b"", self.store, config=self.config)
         data = json.loads(body)
         dlp = next(s for s in data["stages"] if s["name"] == "outbound_dlp")
         self.assertTrue(dlp["enabled"])
@@ -206,20 +206,20 @@ class TestPipelineAPI(StoreTestCase):
         self.assertEqual(len(dlp["sub_detectors"]), 3)
 
     def test_all_stages_available(self):
-        status, body = handle_community_api("/api/v1/pipeline", "GET", b"", self.store, config=self.config)
+        _status, body = handle_community_api("/api/v1/pipeline", "GET", b"", self.store, config=self.config)
         data = json.loads(body)
         for stage in data["stages"]:
             self.assertTrue(stage["available"], "%s should be available" % stage["name"])
 
     def test_get_pipeline_mcp_stages_available(self):
-        status, body = handle_community_api("/api/v1/pipeline", "GET", b"", self.store, config=self.config)
+        _status, body = handle_community_api("/api/v1/pipeline", "GET", b"", self.store, config=self.config)
         data = json.loads(body)
         mcp_args = next(s for s in data["stages"] if s["name"] == "mcp_arguments")
         self.assertTrue(mcp_args["available"])
         self.assertTrue(mcp_args["enabled"])  # enabled by default
 
     def test_get_pipeline_response_stages_available(self):
-        status, body = handle_community_api("/api/v1/pipeline", "GET", b"", self.store, config=self.config)
+        _status, body = handle_community_api("/api/v1/pipeline", "GET", b"", self.store, config=self.config)
         data = json.loads(body)
         resp_secrets = next(s for s in data["stages"] if s["name"] == "response_secrets")
         self.assertTrue(resp_secrets["available"])
@@ -257,20 +257,20 @@ class TestPipelineAPI(StoreTestCase):
         self.assertEqual(data["applied"]["default_action"], "block")
 
     def test_put_pipeline_invalid_json(self):
-        status, body = handle_community_api("/api/v1/pipeline", "PUT", b"not json", self.store, config=self.config)
+        status, _body = handle_community_api("/api/v1/pipeline", "PUT", b"not json", self.store, config=self.config)
         self.assertEqual(status, 400)
 
     def test_get_pipeline_reflects_db_overrides(self):
         """GET should show DB-overridden values, not just YAML defaults."""
         self.store.set_config_override("pipeline.stages.outbound_dlp.enabled", "false")
-        status, body = handle_community_api("/api/v1/pipeline", "GET", b"", self.store, config=self.config)
+        _status, body = handle_community_api("/api/v1/pipeline", "GET", b"", self.store, config=self.config)
         data = json.loads(body)
         dlp = next(s for s in data["stages"] if s["name"] == "outbound_dlp")
         self.assertFalse(dlp["enabled"])
 
     def test_get_pipeline_reflects_detector_overrides(self):
         self.store.set_config_override("detectors.secrets.enabled", "false")
-        status, body = handle_community_api("/api/v1/pipeline", "GET", b"", self.store, config=self.config)
+        _status, body = handle_community_api("/api/v1/pipeline", "GET", b"", self.store, config=self.config)
         data = json.loads(body)
         dlp = next(s for s in data["stages"] if s["name"] == "outbound_dlp")
         secrets = next(d for d in dlp["sub_detectors"] if d["name"] == "secrets")
@@ -309,7 +309,7 @@ class TestPipelineAPI(StoreTestCase):
         self.assertEqual(pii["action"], "default")
 
     def test_get_pipeline_encoding_settings(self):
-        status, body = handle_community_api("/api/v1/pipeline", "GET", b"", self.store, config=self.config)
+        _status, body = handle_community_api("/api/v1/pipeline", "GET", b"", self.store, config=self.config)
         data = json.loads(body)
         enc = next(s for s in data["stages"] if s["name"] == "encoding_decode")
         self.assertIn("encoding_settings", enc)
@@ -340,7 +340,7 @@ class TestPipelineAPI(StoreTestCase):
 
     def test_put_pipeline_encoding_numeric(self):
         changes = {"encoding_settings": {"max_depth": 3, "min_decoded_length": 16}}
-        status, body = handle_community_api(
+        status, _body = handle_community_api(
             "/api/v1/pipeline", "PUT", json.dumps(changes).encode(), self.store, config=self.config
         )
         self.assertEqual(status, 200)

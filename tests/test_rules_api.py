@@ -54,7 +54,7 @@ class TestRulesAPI(StoreTestCase):
         self.assertEqual(len(data["rules"]), 3)
 
     def test_list_pagination(self):
-        status, body = self._api("/api/v1/rules?limit=2&offset=0")
+        _status, body = self._api("/api/v1/rules?limit=2&offset=0")
         data = json.loads(body)
         self.assertEqual(len(data["rules"]), 2)
         self.assertEqual(data["total"], 3)
@@ -62,40 +62,40 @@ class TestRulesAPI(StoreTestCase):
         self.assertEqual(data["offset"], 0)
 
     def test_list_search(self):
-        status, body = self._api("/api/v1/rules?search=aws")
+        _status, body = self._api("/api/v1/rules?search=aws")
         data = json.loads(body)
         self.assertEqual(data["total"], 1)
         self.assertEqual(data["rules"][0]["name"], "aws_key")
 
     def test_list_filter_detector(self):
-        status, body = self._api("/api/v1/rules?detector=pii")
+        _status, body = self._api("/api/v1/rules?detector=pii")
         data = json.loads(body)
         self.assertEqual(data["total"], 1)
         self.assertEqual(data["rules"][0]["name"], "email_addr")
 
     def test_list_filter_severity(self):
-        status, body = self._api("/api/v1/rules?severity=critical")
+        _status, body = self._api("/api/v1/rules?severity=critical")
         data = json.loads(body)
         self.assertEqual(data["total"], 1)
 
     def test_list_filter_tier(self):
-        status, body = self._api("/api/v1/rules?tier=community")
+        _status, body = self._api("/api/v1/rules?tier=community")
         data = json.loads(body)
         self.assertEqual(data["total"], 3)
 
     def test_list_filter_enabled(self):
         self.store.update_rule("aws_key", {"enabled": False})
-        status, body = self._api("/api/v1/rules?enabled=true")
+        _status, body = self._api("/api/v1/rules?enabled=true")
         data = json.loads(body)
         self.assertEqual(data["total"], 2)
 
     def test_list_filter_tag(self):
-        status, body = self._api("/api/v1/rules?tag=cloud")
+        _status, body = self._api("/api/v1/rules?tag=cloud")
         data = json.loads(body)
         self.assertEqual(data["total"], 2)
 
     def test_list_no_store(self):
-        status, body = handle_community_api("/api/v1/rules", "GET", b"", None)
+        _status, body = handle_community_api("/api/v1/rules", "GET", b"", None)
         data = json.loads(body)
         self.assertEqual(data["rules"], [])
         self.assertEqual(data["total"], 0)
@@ -124,13 +124,13 @@ class TestRulesAPI(StoreTestCase):
         self.assertIsInstance(data["tags"], list)
 
     def test_detail_not_found(self):
-        status, body = self._api("/api/v1/rules/nonexistent")
+        status, _body = self._api("/api/v1/rules/nonexistent")
         self.assertEqual(status, 404)
 
     def test_detail_url_encoded(self):
         # Create rule with special chars
         self.store.create_rule({"name": "test rule", "pattern": "test"})
-        status, body = self._api("/api/v1/rules/test+rule")
+        status, _body = self._api("/api/v1/rules/test+rule")
         self.assertEqual(status, 200)
 
     # --- POST /api/v1/rules ---
@@ -147,11 +147,11 @@ class TestRulesAPI(StoreTestCase):
         self.assertEqual(data["tier"], "custom")
 
     def test_create_missing_name(self):
-        status, body = self._api("/api/v1/rules", "POST", json.dumps({"pattern": "test"}).encode())
+        status, _body = self._api("/api/v1/rules", "POST", json.dumps({"pattern": "test"}).encode())
         self.assertEqual(status, 400)
 
     def test_create_missing_pattern(self):
-        status, body = self._api("/api/v1/rules", "POST", json.dumps({"name": "x"}).encode())
+        status, _body = self._api("/api/v1/rules", "POST", json.dumps({"name": "x"}).encode())
         self.assertEqual(status, 400)
 
     def test_create_invalid_regex(self):
@@ -161,7 +161,7 @@ class TestRulesAPI(StoreTestCase):
 
     def test_create_duplicate(self):
         rule_data = json.dumps({"name": "aws_key", "pattern": "test"}).encode()
-        status, body = self._api("/api/v1/rules", "POST", rule_data)
+        status, _body = self._api("/api/v1/rules", "POST", rule_data)
         self.assertEqual(status, 409)
 
     def test_create_rejects_redact_action(self):
@@ -172,17 +172,17 @@ class TestRulesAPI(StoreTestCase):
 
     def test_create_allows_alert_action(self):
         rule_data = json.dumps({"name": "x", "pattern": "test", "action": "alert"}).encode()
-        status, body = self._api("/api/v1/rules", "POST", rule_data)
+        status, _body = self._api("/api/v1/rules", "POST", rule_data)
         self.assertEqual(status, 201)
 
     def test_create_allows_block_action(self):
         rule_data = json.dumps({"name": "y", "pattern": "test", "action": "block"}).encode()
-        status, body = self._api("/api/v1/rules", "POST", rule_data)
+        status, _body = self._api("/api/v1/rules", "POST", rule_data)
         self.assertEqual(status, 201)
 
     def test_create_allows_default_action(self):
         rule_data = json.dumps({"name": "z", "pattern": "test", "action": ""}).encode()
-        status, body = self._api("/api/v1/rules", "POST", rule_data)
+        status, _body = self._api("/api/v1/rules", "POST", rule_data)
         self.assertEqual(status, 201)
 
     # --- PUT /api/v1/rules/:name ---
@@ -196,7 +196,7 @@ class TestRulesAPI(StoreTestCase):
         self.assertFalse(updated["enabled"])
 
     def test_update_not_found(self):
-        status, body = self._api("/api/v1/rules/nonexistent", "PUT", json.dumps({"enabled": False}).encode())
+        status, _body = self._api("/api/v1/rules/nonexistent", "PUT", json.dumps({"enabled": False}).encode())
         self.assertEqual(status, 404)
 
     def test_update_rejects_redact_action(self):
@@ -222,11 +222,11 @@ class TestRulesAPI(StoreTestCase):
 
     def test_delete_import_rule_fails(self):
         # Import rules have source='import', delete should fail
-        status, body = self._api("/api/v1/rules/aws_key", "DELETE")
+        status, _body = self._api("/api/v1/rules/aws_key", "DELETE")
         self.assertEqual(status, 404)
 
     def test_delete_nonexistent(self):
-        status, body = self._api("/api/v1/rules/nonexistent", "DELETE")
+        status, _body = self._api("/api/v1/rules/nonexistent", "DELETE")
         self.assertEqual(status, 404)
 
     # --- POST /api/v1/rules/:name/clone ---
@@ -251,11 +251,11 @@ class TestRulesAPI(StoreTestCase):
         # Clone once
         self._api("/api/v1/rules/aws_key/clone", "POST", b"")
         # Clone again — same default name should conflict
-        status, body = self._api("/api/v1/rules/aws_key/clone", "POST", b"")
+        status, _body = self._api("/api/v1/rules/aws_key/clone", "POST", b"")
         self.assertEqual(status, 409)
 
     def test_clone_nonexistent(self):
-        status, body = self._api("/api/v1/rules/nonexistent/clone", "POST", json.dumps({"new_name": "x"}).encode())
+        status, _body = self._api("/api/v1/rules/nonexistent/clone", "POST", json.dumps({"new_name": "x"}).encode())
         self.assertEqual(status, 409)
 
 
@@ -317,11 +317,11 @@ class TestBulkUpdateAPI(StoreTestCase):
         self.assertIn("max 500", data["error"])
 
     def test_names_not_list(self):
-        status, body = self._bulk({"names": "rule_a", "update": {"enabled": False}})
+        status, _body = self._bulk({"names": "rule_a", "update": {"enabled": False}})
         self.assertEqual(status, 400)
 
     def test_update_missing(self):
-        status, body = self._bulk({"names": ["rule_a"]})
+        status, _body = self._bulk({"names": ["rule_a"]})
         self.assertEqual(status, 400)
 
     def test_invalid_action(self):

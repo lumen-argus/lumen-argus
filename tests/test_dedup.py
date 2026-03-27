@@ -117,7 +117,7 @@ class TestContentFingerprint(unittest.TestCase):
         fields = [ScanField(path="m[0]", text="secret key", source_filename="")]
 
         # Filter but do NOT commit (simulates block)
-        new_fields, pending = self.fp.filter_new_fields("conv-1", fields)
+        new_fields, _pending = self.fp.filter_new_fields("conv-1", fields)
         self.assertEqual(len(new_fields), 1)
         # Don't call commit_hashes — request was blocked
 
@@ -237,7 +237,7 @@ class TestContentFingerprint(unittest.TestCase):
         self.assertEqual(len(h1), 16)
 
     def test_empty_fields_list(self):
-        result, pending = self.fp.filter_new_fields("conv-1", [])
+        result, _pending = self.fp.filter_new_fields("conv-1", [])
         self.assertEqual(result, [])
 
 
@@ -370,7 +370,7 @@ class TestStoreLevelDedup(StoreTestCase):
         self.store.record_findings([f], provider="anthropic", session=SessionContext(session_id="sess-1"))
         self.store.record_findings([f], provider="anthropic", session=SessionContext(session_id="sess-2"))
 
-        findings, total = self.store.get_findings_page()
+        _findings, total = self.store.get_findings_page()
         self.assertEqual(total, 2)
 
     def test_empty_content_hash_is_not_constrained(self):
@@ -390,7 +390,7 @@ class TestStoreLevelDedup(StoreTestCase):
         conn.commit()
         conn.close()
 
-        findings, total = self.store.get_findings_page()
+        _findings, total = self.store.get_findings_page()
         self.assertEqual(total, 3)
 
     def test_content_hash_is_deterministic(self):
@@ -441,7 +441,7 @@ class TestStoreLevelDedup(StoreTestCase):
         self.store.record_findings([f1], provider="anthropic", session=session)
         self.store.record_findings([f2], provider="anthropic", session=session)
 
-        findings, total = self.store.get_findings_page()
+        _findings, total = self.store.get_findings_page()
         self.assertEqual(total, 2)  # Two separate rows, not collapsed
 
     def test_process_restart_layer3_catches_duplicates(self):

@@ -9,7 +9,6 @@ import shutil
 import socket
 import tempfile
 import unittest
-from typing import Optional
 
 from lumen_argus.analytics.store import AnalyticsStore
 from lumen_argus.models import Finding
@@ -22,7 +21,7 @@ def free_port() -> int:
         return s.getsockname()[1]
 
 
-def make_store(tmpdir: Optional[str] = None, hmac_key: Optional[bytes] = None):
+def make_store(tmpdir: str | None = None, hmac_key: bytes | None = None) -> tuple[AnalyticsStore, str]:
     """Create an AnalyticsStore in a temp directory.
 
     Returns (store, tmpdir). If tmpdir is None, creates a new one — caller
@@ -36,13 +35,13 @@ def make_store(tmpdir: Optional[str] = None, hmac_key: Optional[bytes] = None):
 
 
 def make_finding(
-    detector="secrets",
-    type_="aws_access_key",
-    severity="critical",
-    location="messages[0].content",
-    value_preview="AKIA****",
-    matched_value="AKIAIOSFODNN7EXAMPLE",
-    action="block",
+    detector: str = "secrets",
+    type_: str = "aws_access_key",
+    severity: str = "critical",
+    location: str = "messages[0].content",
+    value_preview: str = "AKIA****",
+    matched_value: str = "AKIAIOSFODNN7EXAMPLE",
+    action: str = "block",
 ) -> Finding:
     """Create a Finding with sensible test defaults."""
     return Finding(
@@ -56,21 +55,20 @@ def make_finding(
     )
 
 
-def seed_findings(store: AnalyticsStore, count: int = 5) -> list:
+def seed_findings(store: AnalyticsStore, count: int = 5) -> list[Finding]:
     """Insert sample findings into the store. Returns the finding list."""
-    findings = []
-    for i in range(count):
-        findings.append(
-            Finding(
-                detector="secrets",
-                type="aws_access_key_%d" % i,
-                severity="critical",
-                location="user_message[%d]" % i,
-                matched_value="AKIA" + "X" * 16,
-                value_preview="AKIA****%d" % i,
-                action="alert",
-            )
+    findings = [
+        Finding(
+            detector="secrets",
+            type="aws_access_key_%d" % i,
+            severity="critical",
+            location="user_message[%d]" % i,
+            matched_value="AKIA" + "X" * 16,
+            value_preview="AKIA****%d" % i,
+            action="alert",
         )
+        for i in range(count)
+    ]
     store.record_findings(findings, provider="anthropic", model="claude-opus-4-6")
     return findings
 
@@ -83,10 +81,14 @@ class StoreTestCase(unittest.TestCase):
         _tmpdir / tmpdir: Path to temp directory (both names for compat).
     """
 
-    def setUp(self):
+    store: AnalyticsStore
+    _tmpdir: str
+    tmpdir: str
+
+    def setUp(self) -> None:
         self._tmpdir = tempfile.mkdtemp()
         self.tmpdir = self._tmpdir
         self.store = AnalyticsStore(db_path=os.path.join(self._tmpdir, "test.db"))
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         shutil.rmtree(self._tmpdir, ignore_errors=True)

@@ -130,12 +130,12 @@ class TestIdentifyClient(unittest.TestCase):
         self.assertEqual(raw, "my-custom-tool/1.0")
 
     def test_empty_ua(self):
-        cid, name, ver, raw = identify_client("")
+        cid, _name, ver, _raw = identify_client("")
         self.assertEqual(cid, "")
         self.assertEqual(ver, "")
 
     def test_none_ua(self):
-        cid, name, ver, raw = identify_client(None)
+        cid, _name, ver, _raw = identify_client(None)
         self.assertEqual(cid, "")
         self.assertEqual(ver, "")
 

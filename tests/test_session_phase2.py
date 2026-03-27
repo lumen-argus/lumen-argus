@@ -108,21 +108,21 @@ class TestSessionsAPI(StoreTestCase):
         self.assertEqual(s["finding_count"], 2)
 
     def test_sessions_no_store(self):
-        status, body = handle_community_api("/api/v1/sessions", "GET", b"", None)
+        _status, body = handle_community_api("/api/v1/sessions", "GET", b"", None)
         self.assertEqual(json.loads(body)["sessions"], [])
 
     def test_findings_filtered_by_session(self):
-        status, body = self._api("/api/v1/findings?session_id=fp%3Aabc")
+        _status, body = self._api("/api/v1/findings?session_id=fp%3Aabc")
         data = json.loads(body)
         self.assertEqual(data["total"], 2)
 
     def test_findings_filtered_by_account(self):
-        status, body = self._api("/api/v1/findings?account_id=acct-1")
+        _status, body = self._api("/api/v1/findings?account_id=acct-1")
         data = json.loads(body)
         self.assertEqual(data["total"], 2)
 
     def test_findings_include_all_session_columns(self):
-        status, body = self._api("/api/v1/findings")
+        _status, body = self._api("/api/v1/findings")
         data = json.loads(body)
         f = data["findings"][0]
         for col in (
@@ -153,13 +153,13 @@ class TestSessionsAPI(StoreTestCase):
         self.assertIn("info_count", s)
 
     def test_dashboard_sessions_no_store(self):
-        status, body = handle_community_api("/api/v1/sessions/dashboard", "GET", b"", None)
+        _status, body = handle_community_api("/api/v1/sessions/dashboard", "GET", b"", None)
         data = json.loads(body)
         self.assertEqual(data["sessions"], [])
         self.assertEqual(data["total"], 0)
 
     def test_stats_includes_today_and_last_finding(self):
-        status, body = self._api("/api/v1/stats")
+        _status, body = self._api("/api/v1/stats")
         data = json.loads(body)
         self.assertIn("today_count", data)
         self.assertIn("last_finding_time", data)

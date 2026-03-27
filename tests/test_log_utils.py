@@ -178,7 +178,7 @@ class TestSetupFileLogging(unittest.TestCase):
     def test_file_permissions(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             lc = LoggingConfig(log_dir=tmpdir, file_level="warning")
-            handler, path, level = setup_file_logging(lc)
+            handler, path, _level = setup_file_logging(lc)
             try:
                 mode = stat.S_IMODE(os.stat(path).st_mode)
                 self.assertEqual(mode, 0o600)
@@ -189,7 +189,7 @@ class TestSetupFileLogging(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             log_dir = os.path.join(tmpdir, "newlogs")
             lc = LoggingConfig(log_dir=log_dir)
-            handler, path, level = setup_file_logging(lc)
+            handler, _path, _level = setup_file_logging(lc)
             try:
                 mode = stat.S_IMODE(os.stat(log_dir).st_mode)
                 self.assertEqual(mode, 0o700)
@@ -199,7 +199,7 @@ class TestSetupFileLogging(unittest.TestCase):
     def test_file_level_parsed(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             lc = LoggingConfig(log_dir=tmpdir, file_level="debug")
-            handler, path, level = setup_file_logging(lc)
+            handler, _path, level = setup_file_logging(lc)
             try:
                 self.assertEqual(level, logging.DEBUG)
                 self.assertEqual(handler.level, logging.DEBUG)

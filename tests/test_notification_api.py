@@ -52,7 +52,7 @@ class TestNotificationAPI(StoreTestCase):
 
     def test_get_types_with_limit(self):
         self.ext.set_channel_limit(1)
-        status, body = self._api("/api/v1/notifications/types")
+        _status, body = self._api("/api/v1/notifications/types")
         data = json.loads(body)
         self.assertEqual(data["channel_limit"], 1)
         self.assertEqual(data["channel_count"], 0)
@@ -270,9 +270,9 @@ class TestNotificationAPI(StoreTestCase):
                 "config": {"url": "https://secret-webhook-url.example.com/hook"},
             }
         ).encode()
-        _, create_body = self._api("/api/v1/notifications/channels", "POST", create_payload)
+        _, _create_body = self._api("/api/v1/notifications/channels", "POST", create_payload)
 
-        status, body = self._api("/api/v1/notifications/channels")
+        _status, body = self._api("/api/v1/notifications/channels")
         data = json.loads(body)
         ch = data["channels"][0]
         self.assertIn("config_masked", ch)
