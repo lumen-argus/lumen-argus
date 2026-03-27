@@ -15,7 +15,7 @@ If you discover a security vulnerability in lumen-argus, please report it respon
 ### How to Report
 
 1. Email: **security@lumen-argus.com** (preferred)
-2. GitHub: Use [private vulnerability reporting](https://github.com/slima4/lumen-argus/security/advisories/new)
+2. GitHub: Use [private vulnerability reporting](https://github.com/lumen-argus/lumen-argus/security/advisories/new)
 
 ### What to Include
 

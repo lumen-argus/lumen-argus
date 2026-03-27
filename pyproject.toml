@@ -42,7 +42,7 @@ rules-analysis = ["crossfire>=0.1.0"]
 lumen-argus = "lumen_argus.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/slima4/lumen-argus"
+Homepage = "https://github.com/lumen-argus/lumen-argus"
 
 [tool.setuptools.packages.find]
 include = ["lumen_argus*"]

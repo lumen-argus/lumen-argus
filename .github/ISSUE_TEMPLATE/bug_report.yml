@@ -7,7 +7,7 @@ body:
       value: |
         Thanks for reporting a bug. Please fill out the sections below.
 
-        **Security vulnerabilities**: Do NOT use this form. See [SECURITY.md](https://github.com/slima4/lumen-argus/blob/main/SECURITY.md).
+        **Security vulnerabilities**: Do NOT use this form. See [SECURITY.md](https://github.com/lumen-argus/lumen-argus/blob/main/SECURITY.md).
 
   - type: textarea
     id: description

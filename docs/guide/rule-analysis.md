@@ -1,6 +1,6 @@
 # Rule Analysis
 
-The Rule Analysis page detects duplicate, subset, and overlapping detection rules in your ruleset. It uses [Crossfire](https://github.com/slima4/crossfire), an optional corpus-based analysis engine, to generate test strings for each rule and measure how much they overlap.
+The Rule Analysis page detects duplicate, subset, and overlapping detection rules in your ruleset. It uses [Crossfire](https://github.com/lumen-argus/crossfire), an optional corpus-based analysis engine, to generate test strings for each rule and measure how much they overlap.
 
 This helps SecOps/admins clean up redundant rules — reducing scan time, eliminating duplicate alerts, and keeping the ruleset maintainable as it grows.
 
@@ -13,7 +13,7 @@ Crossfire is an optional dependency. Without it, the Rule Analysis tab shows ins
 pip install lumen-argus[rules-analysis]
 
 # Or directly from GitHub (until PyPI release)
-pip install git+https://github.com/slima4/crossfire.git
+pip install git+https://github.com/lumen-argus/crossfire.git
 ```
 
 The Docker image includes crossfire by default.

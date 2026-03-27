@@ -1,9 +1,9 @@
 <p align="center">
   <img src="https://img.shields.io/badge/python-3.9+-blue?logo=python&logoColor=white" alt="Python 3.9+">
-  <a href="https://github.com/slima4/lumen-argus/actions/workflows/test.yml"><img src="https://github.com/slima4/lumen-argus/actions/workflows/test.yml/badge.svg" alt="tests"></a>
+  <a href="https://github.com/lumen-argus/lumen-argus/actions/workflows/test.yml"><img src="https://github.com/lumen-argus/lumen-argus/actions/workflows/test.yml/badge.svg" alt="tests"></a>
   <img src="https://img.shields.io/badge/dependencies-minimal-brightgreen" alt="Minimal dependencies">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License">
-  <a href="https://slima4.github.io/lumen-argus/docs/"><img src="https://img.shields.io/badge/docs-mkdocs-blue" alt="Documentation"></a>
+  <a href="https://lumen-argus.github.io/lumen-argus/docs/"><img src="https://img.shields.io/badge/docs-mkdocs-blue" alt="Documentation"></a>
 </p>
 
 # lumen-argus
@@ -296,7 +296,7 @@ Built-in web dashboard at `http://localhost:8081`:
 | `GET /api/v1/notifications/channels` | List notification channels |
 | `POST /api/v1/notifications/channels` | Create channel (limit enforced) |
 
-[Full API reference](https://slima4.github.io/lumen-argus/docs/reference/api-endpoints/)
+[Full API reference](https://lumen-argus.github.io/lumen-argus/docs/reference/api-endpoints/)
 
 ## Notification Channels
 
@@ -497,4 +497,4 @@ lumen-argus serve
 
 ## License
 
-MIT — [Artem Senenko](https://github.com/slima4)
+MIT — [Artem Senenko](https://github.com/lumen-argus)

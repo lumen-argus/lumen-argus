@@ -193,8 +193,8 @@ All notable changes to lumen-argus are documented here.
 
 ### Documentation
 
-- MkDocs Material site at slima4.github.io/lumen-argus/docs/
-- Landing page at slima4.github.io/lumen-argus/ with comparison table
+- MkDocs Material site at lumen-argus.github.io/lumen-argus/docs/
+- Landing page at lumen-argus.github.io/lumen-argus/ with comparison table
 - GitHub Pages auto-deploy via Actions
 
 ### Open Source

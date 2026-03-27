@@ -11,15 +11,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev g
 # Copy source and install (only re-runs on code changes, gcc is cached)
 COPY lumen_argus/ lumen_argus/
 RUN pip install --no-cache-dir --prefix=/install . \
-    && pip install --no-cache-dir --prefix=/install git+https://github.com/slima4/crossfire.git
+    && pip install --no-cache-dir --prefix=/install git+https://github.com/lumen-argus/crossfire.git
 
 # ---- runtime stage ----
 FROM python:3.12-slim
 
 LABEL org.opencontainers.image.title="lumen-argus" \
       org.opencontainers.image.description="Transparent DLP proxy for AI coding tools" \
-      org.opencontainers.image.url="https://github.com/slima4/lumen-argus" \
-      org.opencontainers.image.source="https://github.com/slima4/lumen-argus" \
+      org.opencontainers.image.url="https://github.com/lumen-argus/lumen-argus" \
+      org.opencontainers.image.source="https://github.com/lumen-argus/lumen-argus" \
       org.opencontainers.image.licenses="MIT"
 
 # Copy only installed packages from builder — no pip, setuptools, or source

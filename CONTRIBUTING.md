@@ -5,7 +5,7 @@ Thank you for your interest in contributing! Here's everything you need to get s
 ## Quick Setup
 
 ```bash
-git clone https://github.com/slima4/lumen-argus.git
+git clone https://github.com/lumen-argus/lumen-argus.git
 cd lumen-argus
 pip install -e .
 python3 -m unittest discover -v tests/
@@ -38,8 +38,8 @@ Before writing code, know these rules:
 
 ## What to Work On
 
-- Issues labeled [`good first issue`](https://github.com/slima4/lumen-argus/labels/good%20first%20issue) are a great starting point
-- Check [open issues](https://github.com/slima4/lumen-argus/issues) for feature requests and bugs
+- Issues labeled [`good first issue`](https://github.com/lumen-argus/lumen-argus/labels/good%20first%20issue) are a great starting point
+- Check [open issues](https://github.com/lumen-argus/lumen-argus/issues) for feature requests and bugs
 
 ## Security Vulnerabilities
 
@@ -47,4 +47,4 @@ Before writing code, know these rules:
 
 ## Full Guide
 
-See the [Contributing Guide](https://slima4.github.io/lumen-argus/docs/development/contributing/) for detailed instructions on code style, project structure, testing, and documentation.
+See the [Contributing Guide](https://lumen-argus.github.io/lumen-argus/docs/development/contributing/) for detailed instructions on code style, project structure, testing, and documentation.

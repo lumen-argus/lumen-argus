@@ -720,7 +720,7 @@ def _validate_config(data: dict, source: str) -> List[str]:
 
 _DEFAULT_CONFIG = """\
 # lumen-argus configuration
-# Docs: https://github.com/slima4/lumen-argus
+# Docs: https://github.com/lumen-argus/lumen-argus
 version: "1"
 
 proxy:

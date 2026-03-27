@@ -225,7 +225,7 @@ analytics:
 
 ## `rule_analysis`
 
-Configuration for rule overlap analysis via [Crossfire](https://github.com/slima4/crossfire) (optional dependency).
+Configuration for rule overlap analysis via [Crossfire](https://github.com/lumen-argus/crossfire) (optional dependency).
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
@@ -242,7 +242,7 @@ rule_analysis:
   auto_on_import: true
 ```
 
-Install crossfire: `pip install lumen-argus[rules-analysis]` or `pip install git+https://github.com/slima4/crossfire.git`. Docker image includes it by default.
+Install crossfire: `pip install lumen-argus[rules-analysis]` or `pip install git+https://github.com/lumen-argus/crossfire.git`. Docker image includes it by default.
 
 ---
 

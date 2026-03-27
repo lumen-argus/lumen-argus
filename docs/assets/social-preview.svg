@@ -103,7 +103,7 @@
 
   <!-- Bottom -->
   <rect x="0" y="570" width="1280" height="70" fill="#0a0e14" opacity="0.6"/>
-  <text x="640" y="612" text-anchor="middle" fill="#3d4f63" font-family="monospace" font-size="14">github.com/slima4/lumen-argus</text>
+  <text x="640" y="612" text-anchor="middle" fill="#3d4f63" font-family="monospace" font-size="14">github.com/lumen-argus/lumen-argus</text>
 
   <!-- Open source badge -->
   <rect x="530" y="530" width="220" height="28" rx="14" fill="#111820" stroke="#1e2a3a" stroke-width="1"/>

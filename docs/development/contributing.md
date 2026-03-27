@@ -3,7 +3,7 @@
 ## Development Setup
 
 ```bash
-git clone https://github.com/slima4/lumen-argus.git
+git clone https://github.com/lumen-argus/lumen-argus.git
 cd lumen-argus
 pip install -e .
 ```
