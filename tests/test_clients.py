@@ -14,8 +14,8 @@ from lumen_argus.clients import (
 class TestRegistryIntegrity(unittest.TestCase):
     """Verify the built-in registry is well-formed."""
 
-    def test_has_16_clients(self):
-        self.assertEqual(len(CLIENT_REGISTRY), 16)
+    def test_has_17_clients(self):
+        self.assertEqual(len(CLIENT_REGISTRY), 17)
 
     def test_no_duplicate_ids(self):
         ids = [c.id for c in CLIENT_REGISTRY]
@@ -70,6 +70,19 @@ class TestIdentifyClient(unittest.TestCase):
         cid, _, ver, _ = identify_client("github-copilot/1.0")
         self.assertEqual(cid, "copilot")
         self.assertEqual(ver, "1.0")
+
+    def test_copilot_cli(self):
+        cid, name, ver, _ = identify_client("copilot/1.0.12")
+        self.assertEqual(cid, "copilot_cli")
+        self.assertEqual(name, "GitHub Copilot CLI")
+        self.assertEqual(ver, "1.0.12")
+
+    def test_copilot_prefix_disambiguation(self):
+        """copilot/ matches CLI, copilot- matches IDE extension."""
+        cid_cli, _, _, _ = identify_client("copilot/2.0")
+        cid_ide, _, _, _ = identify_client("copilot-chat/1.0")
+        self.assertEqual(cid_cli, "copilot_cli")
+        self.assertEqual(cid_ide, "copilot")
 
     def test_continue(self):
         cid, _, ver, _ = identify_client("continue/0.8.1")
@@ -173,9 +186,9 @@ class TestGetClientById(unittest.TestCase):
 
 
 class TestGetAllClients(unittest.TestCase):
-    def test_returns_16_clients(self):
+    def test_returns_17_clients(self):
         clients = get_all_clients()
-        self.assertEqual(len(clients), 16)
+        self.assertEqual(len(clients), 17)
         self.assertIsInstance(clients[0], dict)
         self.assertIn("id", clients[0])
 
@@ -191,13 +204,13 @@ class TestGetAllClients(unittest.TestCase):
             website="https://example.com",
         )
         clients = get_all_clients(extra_clients=[extra])
-        self.assertEqual(len(clients), 17)
+        self.assertEqual(len(clients), 18)
         self.assertEqual(clients[-1]["id"], "enterprise_tool")
 
     def test_with_extra_dict(self):
         extra = {"id": "custom", "display_name": "Custom Tool"}
         clients = get_all_clients(extra_clients=[extra])
-        self.assertEqual(len(clients), 17)
+        self.assertEqual(len(clients), 18)
         self.assertEqual(clients[-1]["id"], "custom")
 
 

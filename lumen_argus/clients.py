@@ -41,7 +41,7 @@ class ClientDef:
 
 
 # ---------------------------------------------------------------------------
-# Built-in registry — 16 popular AI CLI agents
+# Built-in registry — 17 popular AI CLI agents
 # Ordered by specificity (longer/more-specific prefixes first)
 # ---------------------------------------------------------------------------
 
@@ -84,6 +84,19 @@ CLIENT_REGISTRY: list[ClientDef] = [
         detect_jetbrains_plugin="github-copilot-intellij",
         detect_neovim_plugin="copilot.vim",
         proxy_settings_key="http.proxy",
+    ),
+    ClientDef(
+        id="copilot_cli",
+        display_name="GitHub Copilot CLI",
+        category="cli",
+        provider="multi",
+        ua_prefixes=("copilot/",),
+        env_var="COPILOT_PROVIDER_BASE_URL",
+        setup_cmd="COPILOT_PROVIDER_BASE_URL=http://localhost:8080 copilot",
+        website="https://github.com/features/copilot/cli",
+        detect_binary=("copilot",),
+        detect_brew="copilot",
+        version_command=("copilot", "--version"),
     ),
     ClientDef(
         id="aider",

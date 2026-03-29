@@ -308,7 +308,7 @@ lumen-argus watch --uninstall
 
 ## `clients`
 
-List all 16 supported AI CLI agents with setup instructions.
+List all 17 supported AI CLI agents with setup instructions.
 
 ```bash
 lumen-argus clients [--json]

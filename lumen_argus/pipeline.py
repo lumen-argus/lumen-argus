@@ -672,6 +672,10 @@ class ScannerPipeline:
                 except Exception:
                     log.warning("notification dispatch failed", exc_info=True)
 
+        # Broadcast SSE events for real-time dashboard/tray updates
+        if self._extensions:
+            self._broadcast_sse(result, new_findings, provider, session)
+
         # Fire post-scan hook for plugins (analytics, SSE, etc.)
         if self._extensions:
             hook = self._extensions.get_post_scan_hook()
@@ -679,9 +683,61 @@ class ScannerPipeline:
                 try:
                     hook(result, body, provider, session=session)
                 except Exception:
-                    pass  # Never let plugin errors break the proxy
+                    log.debug("post_scan_hook failed, suppressing", exc_info=True)
 
         return result
+
+    def _broadcast_sse(
+        self,
+        result: ScanResult,
+        new_findings: list[Finding],
+        provider: str,
+        session: SessionContext | None,
+    ) -> None:
+        """Broadcast scan and finding events to SSE clients."""
+        broadcaster = self._extensions.get_sse_broadcaster() if self._extensions else None
+        if not broadcaster:
+            return
+
+        from lumen_argus.time_utils import now_iso
+
+        timestamp = now_iso()
+        client = session.client_name if session else ""
+
+        # Broadcast scan event for every scanned request
+        try:
+            broadcaster.broadcast(
+                "scan",
+                {
+                    "action": result.action,
+                    "client": client,
+                    "provider": provider,
+                    "findings_count": len(result.findings),
+                    "timestamp": timestamp,
+                },
+            )
+        except Exception:
+            log.debug("SSE scan broadcast failed", exc_info=True)
+
+        # Broadcast individual finding events (new findings only, no matched_value)
+        for f in new_findings:
+            try:
+                broadcaster.broadcast(
+                    "finding",
+                    {
+                        "detector": f.detector,
+                        "type": f.type,
+                        "severity": f.severity,
+                        "location": f.location,
+                        "value_preview": f.value_preview,
+                        "action": f.action,
+                        "client": client,
+                        "provider": provider,
+                        "timestamp": timestamp,
+                    },
+                )
+            except Exception:
+                log.debug("SSE finding broadcast failed", exc_info=True)
 
     @staticmethod
     def _deduplicate(findings: list[Finding]) -> list[Finding]:

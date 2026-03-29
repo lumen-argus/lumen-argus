@@ -12,7 +12,7 @@ The detection and setup workflow has three layers:
 2. **Setup** — interactive (or non-interactive) wizard that configures tools
 3. **Watch** — background daemon that detects newly installed tools over time
 
-All three share the same detection engine and client registry of 16 supported agents.
+All three share the same detection engine and client registry of 17 supported agents.
 
 ---
 
@@ -299,13 +299,14 @@ Logs go to `~/.lumen-argus/logs/watch.log` (launchd) or the journal (systemd).
 
 ## Supported Agents
 
-All 16 agents in the built-in registry, with their detection methods:
+All 17 agents in the built-in registry, with their detection methods:
 
 | Agent | Binary | pip | npm | Brew | VS Code | JetBrains | Neovim | macOS App |
 |-------|--------|-----|-----|------|---------|-----------|--------|-----------|
 | Claude Code | `claude` | | `@anthropic-ai/claude-code` | | | | | |
 | Cursor | `cursor` | | | | | | | `Cursor.app` |
 | GitHub Copilot | | | | | `github.copilot` | `github-copilot-intellij` | `copilot.vim` | |
+| GitHub Copilot CLI | `copilot` | | | `copilot` | | | | |
 | Aider | `aider` | `aider-chat` | | `aider` | | | | |
 | Continue | | | | | `continue.continue` | | `continue.nvim` | |
 | Cody | | | | | `sourcegraph.cody-ai` | `sourcegraph` | `sg.nvim` | |

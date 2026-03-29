@@ -50,6 +50,18 @@ _COMMUNITY_ACTIONS = ("log", "alert", "block")
 _start_time = time.monotonic()
 
 
+def _broadcast_sse(extensions: ExtensionRegistry | None, event_type: str, data: dict[str, Any] | None = None) -> None:
+    """Broadcast an SSE event if a broadcaster is available."""
+    if not extensions:
+        return
+    broadcaster = extensions.get_sse_broadcaster()
+    if broadcaster:
+        try:
+            broadcaster.broadcast(event_type, data or {})
+        except Exception:
+            log.debug("SSE %s broadcast failed", event_type, exc_info=True)
+
+
 def _parse_query(path: str) -> tuple[str, dict[str, str]]:
     """Split path and query string, return (path, params_dict)."""
     query = ""
@@ -299,22 +311,22 @@ def _dispatch_api(
     # --- Rules mutation endpoints ---
 
     if path == "/api/v1/rules/bulk-update" and method == "POST":
-        return _handle_rules_bulk_update(body, store)
+        return _handle_rules_bulk_update(body, store, extensions)
 
     if path == "/api/v1/rules" and method == "POST":
-        return _handle_rule_create(body, store)
+        return _handle_rule_create(body, store, extensions)
 
     if path.startswith("/api/v1/rules/") and path.endswith("/clone") and method == "POST":
         rule_name = path[len("/api/v1/rules/") : -len("/clone")]
-        return _handle_rule_clone(rule_name, body, store)
+        return _handle_rule_clone(rule_name, body, store, extensions)
 
     if path.startswith("/api/v1/rules/") and method == "PUT":
         rule_name = path[len("/api/v1/rules/") :]
-        return _handle_rule_update(rule_name, body, store)
+        return _handle_rule_update(rule_name, body, store, extensions)
 
     if path.startswith("/api/v1/rules/") and method == "DELETE":
         rule_name = path[len("/api/v1/rules/") :]
-        return _handle_rule_delete(rule_name, store)
+        return _handle_rule_delete(rule_name, store, extensions)
 
     # --- MCP tool list endpoints ---
 
@@ -335,10 +347,10 @@ def _dispatch_api(
     # --- PUT config (community settings) ---
 
     if path == "/api/v1/config" and method == "PUT":
-        return _handle_config_update(body, config, store)
+        return _handle_config_update(body, config, store, extensions)
 
     if path == "/api/v1/pipeline" and method == "PUT":
-        return _handle_pipeline_update(body, config, store)
+        return _handle_pipeline_update(body, config, store, extensions)
 
     # --- Tier gating: known Pro paths return 402 ---
 
@@ -360,7 +372,9 @@ def _dispatch_api(
 # --- Handler implementations ---
 
 
-def _handle_config_update(body: bytes, config: Config | None, store: AnalyticsStore | None) -> tuple[int, bytes]:
+def _handle_config_update(
+    body: bytes, config: Config | None, store: AnalyticsStore | None, extensions: ExtensionRegistry | None = None
+) -> tuple[int, bytes]:
     """Handle PUT /api/v1/config — save community-editable settings to DB.
 
     Uses the same config_overrides SQLite table as Pro, so settings
@@ -391,6 +405,7 @@ def _handle_config_update(body: bytes, config: Config | None, store: AnalyticsSt
         summary = ", ".join("%s=%s" % (k, v) for k, v in applied.items())
         log.info("config update [settings]: %s", summary)
         _send_sighup()
+        _broadcast_sse(extensions, "config")
 
     if errors and not applied:
         return _json_response(400, {"error": "; ".join(e["error"] for e in errors)})
@@ -750,7 +765,9 @@ def _handle_rule_detail(rule_name: str, store: AnalyticsStore | None) -> tuple[i
     return _json_response(200, rule)
 
 
-def _handle_rule_create(body: bytes, store: AnalyticsStore | None) -> tuple[int, bytes]:
+def _handle_rule_create(
+    body: bytes, store: AnalyticsStore | None, extensions: ExtensionRegistry | None = None
+) -> tuple[int, bytes]:
     store = _require_store(store, "POST /api/v1/rules")
     data = _parse_json_body(body, "POST /api/v1/rules")
     if isinstance(data, tuple):
@@ -781,13 +798,16 @@ def _handle_rule_create(body: bytes, store: AnalyticsStore | None) -> tuple[int,
             data.get("detector", "custom"),
             data.get("severity", "high"),
         )
+        _broadcast_sse(extensions, "rules")
         return _json_response(201, rule)
     except ValueError as e:
         log.warning("POST /api/v1/rules: conflict for '%s': %s", data.get("name"), e)
         return _json_response(409, {"error": str(e)})
 
 
-def _handle_rule_update(rule_name: str, body: bytes, store: AnalyticsStore | None) -> tuple[int, bytes]:
+def _handle_rule_update(
+    rule_name: str, body: bytes, store: AnalyticsStore | None, extensions: ExtensionRegistry | None = None
+) -> tuple[int, bytes]:
     rule_name = sanitize_user_input(unquote_plus(rule_name))
     store = _require_store(store, "PUT /api/v1/rules/%s" % rule_name)
     data = _parse_json_body(body, "PUT /api/v1/rules/%s" % rule_name)
@@ -805,10 +825,13 @@ def _handle_rule_update(rule_name: str, body: bytes, store: AnalyticsStore | Non
         return _json_response(404, {"error": "rule not found"})
     changes = ", ".join("%s=%s" % (k, v) for k, v in data.items() if k != "updated_by")
     log.info("rule updated [dashboard]: %s (%s)", rule_name, changes)
+    _broadcast_sse(extensions, "rules")
     return _json_response(200, result)
 
 
-def _handle_rules_bulk_update(body: bytes, store: AnalyticsStore | None) -> tuple[int, bytes]:
+def _handle_rules_bulk_update(
+    body: bytes, store: AnalyticsStore | None, extensions: ExtensionRegistry | None = None
+) -> tuple[int, bytes]:
     log.debug("POST /api/v1/rules/bulk-update")
     store = _require_store(store, "POST /api/v1/rules/bulk-update")
     data = _parse_json_body(body, "POST /api/v1/rules/bulk-update")
@@ -839,6 +862,8 @@ def _handle_rules_bulk_update(body: bytes, store: AnalyticsStore | None) -> tupl
         len(result["failed"]),
         update,
     )
+    if result["updated"] > 0:
+        _broadcast_sse(extensions, "rules")
     return _json_response(
         200,
         {
@@ -849,16 +874,21 @@ def _handle_rules_bulk_update(body: bytes, store: AnalyticsStore | None) -> tupl
     )
 
 
-def _handle_rule_delete(rule_name: str, store: AnalyticsStore | None) -> tuple[int, bytes]:
+def _handle_rule_delete(
+    rule_name: str, store: AnalyticsStore | None, extensions: ExtensionRegistry | None = None
+) -> tuple[int, bytes]:
     rule_name = sanitize_user_input(unquote_plus(rule_name))
     store = _require_store(store, "DELETE /api/v1/rules")
     if store.delete_rule(rule_name):
         log.info("rule deleted [dashboard]: %s", rule_name)
+        _broadcast_sse(extensions, "rules")
         return _json_response(200, {"deleted": rule_name})
     return _json_response(404, {"error": "rule not found"})
 
 
-def _handle_rule_clone(rule_name: str, body: bytes, store: AnalyticsStore | None) -> tuple[int, bytes]:
+def _handle_rule_clone(
+    rule_name: str, body: bytes, store: AnalyticsStore | None, extensions: ExtensionRegistry | None = None
+) -> tuple[int, bytes]:
     rule_name = sanitize_user_input(unquote_plus(rule_name))
     store = _require_store(store, "POST /api/v1/rules/%s/clone" % rule_name)
     if body:
@@ -871,6 +901,7 @@ def _handle_rule_clone(rule_name: str, body: bytes, store: AnalyticsStore | None
     try:
         rule = store.clone_rule(rule_name, new_name)
         log.info("rule cloned [dashboard]: %s -> %s", rule_name, new_name)
+        _broadcast_sse(extensions, "rules")
         return _json_response(201, rule)
     except ValueError as e:
         log.warning("POST /api/v1/rules/%s/clone: %s", rule_name, e)
@@ -1431,7 +1462,9 @@ def _handle_pipeline_get(config: Config | None, store: AnalyticsStore | None = N
     )
 
 
-def _handle_pipeline_update(body: bytes, config: Config | None, store: AnalyticsStore | None) -> tuple[int, bytes]:
+def _handle_pipeline_update(
+    body: bytes, config: Config | None, store: AnalyticsStore | None, extensions: ExtensionRegistry | None = None
+) -> tuple[int, bytes]:
     """Save pipeline configuration changes."""
     store = _require_store(store, "PUT /api/v1/pipeline")
 
@@ -1524,6 +1557,7 @@ def _handle_pipeline_update(body: bytes, config: Config | None, store: Analytics
 
     if applied:
         _send_sighup()
+        _broadcast_sse(extensions, "config")
         summary = ", ".join("%s=%s" % (k, v) for k, v in applied.items())
         if errors:
             log.info("pipeline update [dashboard]: %d applied, %d errors: %s", len(applied), len(errors), summary)
