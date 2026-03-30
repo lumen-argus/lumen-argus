@@ -423,6 +423,13 @@ def _handle_status(store: AnalyticsStore | None, extensions: ExtensionRegistry |
     for name, ver in plugins:
         if name == "pro":
             pro_version = ver
+    proxy_server = extensions.get_proxy_server() if extensions else None
+    proxy_info = {}
+    if proxy_server is not None:
+        proxy_info = {
+            "proxy_port": proxy_server.port,
+            "proxy_bind": proxy_server.bind,
+        }
     data = {
         "status": "operational",
         "version": __version__,
@@ -430,6 +437,7 @@ def _handle_status(store: AnalyticsStore | None, extensions: ExtensionRegistry |
         "total_findings": store.get_total_count() if store else 0,
         "tier": "pro" if pro_active else "community",
         "pro_version": pro_version,
+        **proxy_info,
     }
     return _json_response(200, data)
 

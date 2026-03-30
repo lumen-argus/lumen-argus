@@ -760,7 +760,7 @@ def main(argv: list[str] | None = None) -> None:
         await shutdown_event.wait()
 
         # Graceful drain — wait for in-flight requests to finish
-        drain_timeout = config.proxy.drain_timeout
+        drain_timeout = current_config[0].proxy.drain_timeout
         remaining = await server.drain(timeout=drain_timeout)
         if remaining and drain_timeout > 0:
             log.warning("shutdown: %d requests force-closed after %ds drain timeout", remaining, drain_timeout)
@@ -912,6 +912,43 @@ def _do_reload(
         server.timeout = new_config.proxy.timeout
         server.retries = new_config.proxy.retries
 
+        # Hot-reload max_body_size — used for scan decisions and aiohttp rejection limit
+        if old.proxy.max_body_size != new_config.proxy.max_body_size:
+            server.max_body_size = new_config.proxy.max_body_size
+            if server._app is not None:
+                # Private aiohttp attr — the real enforcement is server.max_body_size
+                # in _handle_request(); this just updates aiohttp's safety net.
+                server._app._client_max_size = new_config.proxy.max_body_size + 1024
+            log.info(
+                "proxy.max_body_size changed (%d -> %d)",
+                old.proxy.max_body_size,
+                new_config.proxy.max_body_size,
+            )
+
+        # Hot-reload port/bind via async rebind on the event loop
+        port_changed = old.proxy.port != new_config.proxy.port
+        bind_changed = old.proxy.bind != new_config.proxy.bind
+        if port_changed or bind_changed:
+            loop = getattr(server, "_loop", None)
+            if loop is not None and not loop.is_closed():
+                import asyncio
+
+                future = asyncio.run_coroutine_threadsafe(
+                    server.rebind(
+                        new_port=new_config.proxy.port if port_changed else None,
+                        new_bind=new_config.proxy.bind if bind_changed else None,
+                    ),
+                    loop,
+                )
+                try:
+                    future.result(timeout=10)
+                except OSError as e:
+                    log.error("proxy rebind failed: %s", e)
+                except Exception:
+                    log.error("proxy rebind failed", exc_info=True)
+            else:
+                log.warning("proxy.port/bind changed but event loop not available — requires restart")
+
         # Apply parallel batching toggle on reload.
         if server.pipeline._rules_detector:
             server.pipeline._rules_detector.set_parallel(new_config.pipeline.parallel_batching)
@@ -996,6 +1033,13 @@ def _do_reload(
                 "proxy.max_connections changed (%d -> %d) — requires restart to take effect",
                 old.proxy.max_connections,
                 new_config.proxy.max_connections,
+            )
+
+        if old.proxy.drain_timeout != new_config.proxy.drain_timeout:
+            log.warning(
+                "proxy.drain_timeout changed (%d -> %d) — takes effect on next shutdown",
+                old.proxy.drain_timeout,
+                new_config.proxy.drain_timeout,
             )
 
         # SSL context changes require restart — aiohttp.TCPConnector holds

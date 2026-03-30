@@ -484,6 +484,207 @@ class TestAsyncProxy(unittest.TestCase):
         asyncio.run(_test())
 
 
+class TestAsyncProxyRebind(unittest.TestCase):
+    """Tests for runtime port rebinding."""
+
+    @classmethod
+    def setUpClass(cls):
+        import tempfile
+
+        cls.upstream = http.server.ThreadingHTTPServer(("127.0.0.1", 0), MockUpstreamHandler)
+        cls.upstream.daemon_threads = True
+        cls.upstream_port = cls.upstream.server_address[1]
+        cls.upstream_thread = threading.Thread(target=cls.upstream.serve_forever, daemon=True)
+        cls.upstream_thread.start()
+        cls.tmpdir = tempfile.mkdtemp()
+        cls.upstreams = {"anthropic": "http://127.0.0.1:%d" % cls.upstream_port}
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.upstream.shutdown()
+
+    def _create_proxy(self):
+        pipeline = ScannerPipeline(default_action="alert")
+        port = _get_free_port()
+        proxy = AsyncArgusProxy(
+            bind="127.0.0.1",
+            port=port,
+            pipeline=pipeline,
+            router=ProviderRouter(upstreams=self.upstreams),
+            audit=AuditLogger(log_dir=self.tmpdir),
+            display=TerminalDisplay(no_color=True),
+        )
+        return proxy, port
+
+    def test_rebind_to_new_port(self):
+        """Rebind should move the proxy to a new port."""
+        proxy, old_port = self._create_proxy()
+        new_port = _get_free_port()
+
+        async def _test():
+            await proxy.start()
+            try:
+                # Verify old port works
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(
+                        "http://127.0.0.1:%d/v1/messages" % old_port,
+                        data=b'{"model":"claude-opus-4-6","messages":[{"role":"user","content":"hi"}],"max_tokens":10}',
+                        headers={
+                            "Content-Type": "application/json",
+                            "x-api-key": "k",
+                            "anthropic-version": "2024-01-01",
+                        },
+                    ) as resp:
+                        self.assertEqual(resp.status, 200)
+
+                # Rebind
+                await proxy.rebind(new_port=new_port)
+                self.assertEqual(proxy.port, new_port)
+
+                # Verify new port works
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(
+                        "http://127.0.0.1:%d/v1/messages" % new_port,
+                        data=b'{"model":"claude-opus-4-6","messages":[{"role":"user","content":"hi"}],"max_tokens":10}',
+                        headers={
+                            "Content-Type": "application/json",
+                            "x-api-key": "k",
+                            "anthropic-version": "2024-01-01",
+                        },
+                    ) as resp:
+                        self.assertEqual(resp.status, 200)
+
+                # Old port should be closed
+                async with aiohttp.ClientSession() as session:
+                    with self.assertRaises(aiohttp.ClientConnectorError):
+                        async with session.post(
+                            "http://127.0.0.1:%d/v1/messages" % old_port,
+                            data=b"{}",
+                            headers={"Content-Type": "application/json"},
+                        ):
+                            pass
+            finally:
+                await proxy.stop()
+
+        asyncio.run(_test())
+
+    def test_rebind_noop_same_port(self):
+        """Rebind with same port should be a no-op."""
+        proxy, port = self._create_proxy()
+
+        async def _test():
+            await proxy.start()
+            try:
+                await proxy.rebind(new_port=port)
+                self.assertEqual(proxy.port, port)
+
+                # Still works
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(
+                        "http://127.0.0.1:%d/v1/messages" % port,
+                        data=b'{"model":"claude-opus-4-6","messages":[{"role":"user","content":"hi"}],"max_tokens":10}',
+                        headers={
+                            "Content-Type": "application/json",
+                            "x-api-key": "k",
+                            "anthropic-version": "2024-01-01",
+                        },
+                    ) as resp:
+                        self.assertEqual(resp.status, 200)
+            finally:
+                await proxy.stop()
+
+        asyncio.run(_test())
+
+    def test_rebind_rollback_on_port_conflict(self):
+        """Rebind to an occupied port should rollback to original."""
+        proxy, port = self._create_proxy()
+
+        # Occupy a port
+        blocker = http.server.ThreadingHTTPServer(("127.0.0.1", 0), MockUpstreamHandler)
+        blocker.daemon_threads = True
+        occupied_port = blocker.server_address[1]
+        blocker_thread = threading.Thread(target=blocker.serve_forever, daemon=True)
+        blocker_thread.start()
+
+        async def _test():
+            await proxy.start()
+            try:
+                with self.assertRaises(OSError):
+                    await proxy.rebind(new_port=occupied_port)
+
+                # Should have rolled back
+                self.assertEqual(proxy.port, port)
+
+                # Original port should still work
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(
+                        "http://127.0.0.1:%d/v1/messages" % port,
+                        data=b'{"model":"claude-opus-4-6","messages":[{"role":"user","content":"hi"}],"max_tokens":10}',
+                        headers={
+                            "Content-Type": "application/json",
+                            "x-api-key": "k",
+                            "anthropic-version": "2024-01-01",
+                        },
+                    ) as resp:
+                        self.assertEqual(resp.status, 200)
+            finally:
+                await proxy.stop()
+                blocker.shutdown()
+
+        asyncio.run(_test())
+
+    def test_rebind_updates_server_address(self):
+        """server_address property should reflect new port after rebind."""
+        proxy, old_port = self._create_proxy()
+        new_port = _get_free_port()
+
+        async def _test():
+            await proxy.start()
+            try:
+                self.assertEqual(proxy.server_address, ("127.0.0.1", old_port))
+                await proxy.rebind(new_port=new_port)
+                self.assertEqual(proxy.server_address, ("127.0.0.1", new_port))
+            finally:
+                await proxy.stop()
+
+        asyncio.run(_test())
+
+    def test_max_body_size_hot_reload(self):
+        """max_body_size and aiohttp client_max_size should be updatable at runtime."""
+        proxy, port = self._create_proxy()
+
+        async def _test():
+            await proxy.start()
+            try:
+                original = proxy.max_body_size
+                self.assertGreater(original, 0)
+
+                # Update max_body_size (simulates what _do_reload does)
+                new_size = 1024
+                proxy.max_body_size = new_size
+                proxy._app._client_max_size = new_size + 1024
+
+                self.assertEqual(proxy.max_body_size, new_size)
+                self.assertEqual(proxy._app._client_max_size, new_size + 1024)
+
+                # Small request should still work
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(
+                        "http://127.0.0.1:%d/v1/messages" % port,
+                        data=b'{"model":"claude-opus-4-6","messages":[{"role":"user","content":"hi"}],"max_tokens":10}',
+                        headers={
+                            "Content-Type": "application/json",
+                            "x-api-key": "k",
+                            "anthropic-version": "2024-01-01",
+                        },
+                    ) as resp:
+                        self.assertEqual(resp.status, 200)
+            finally:
+                await proxy.stop()
+
+        asyncio.run(_test())
+
+
 class TestAsyncProxyWebSocket(unittest.TestCase):
     """Integration tests for WebSocket relay on same port."""
 

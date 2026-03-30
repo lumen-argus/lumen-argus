@@ -992,6 +992,24 @@ class TestCommunityAPIDirect(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(data["total_findings"], 0)
 
+    def test_status_includes_proxy_address(self):
+        """Status endpoint should include proxy port/bind when proxy server is available."""
+        from unittest.mock import MagicMock
+
+        from lumen_argus.extensions import ExtensionRegistry
+
+        ext = ExtensionRegistry()
+        mock_proxy = MagicMock()
+        mock_proxy.port = 9090
+        mock_proxy.bind = "127.0.0.1"
+        ext.set_proxy_server(mock_proxy)
+
+        status, body = handle_community_api("/api/v1/status", "GET", b"", self.store, extensions=ext)
+        data = json.loads(body)
+        self.assertEqual(status, 200)
+        self.assertEqual(data["proxy_port"], 9090)
+        self.assertEqual(data["proxy_bind"], "127.0.0.1")
+
     def test_findings_no_store(self):
         status, body = handle_community_api("/api/v1/findings", "GET", b"", None)
         data = json.loads(body)
@@ -1109,6 +1127,38 @@ class TestConfigOverrides(StoreTestCase):
         overrides = self.store.get_config_overrides()
         self.assertEqual(overrides["detectors.secrets.action"], "block")
         self.assertEqual(overrides["detectors.pii.action"], "alert")
+
+    def test_port_override_valid(self):
+        self.store.set_config_override("proxy.port", "9090")
+        self.assertEqual(self.store.get_config_overrides()["proxy.port"], "9090")
+
+    def test_port_override_rejects_zero(self):
+        with self.assertRaises(ValueError):
+            self.store.set_config_override("proxy.port", "0")
+
+    def test_port_override_rejects_over_max(self):
+        with self.assertRaises(ValueError):
+            self.store.set_config_override("proxy.port", "70000")
+
+    def test_port_override_rejects_non_integer(self):
+        with self.assertRaises(ValueError):
+            self.store.set_config_override("proxy.port", "abc")
+
+    def test_bind_override_valid_loopback(self):
+        self.store.set_config_override("proxy.bind", "127.0.0.1")
+        self.assertEqual(self.store.get_config_overrides()["proxy.bind"], "127.0.0.1")
+
+    def test_bind_override_valid_all_interfaces(self):
+        self.store.set_config_override("proxy.bind", "0.0.0.0")
+        self.assertEqual(self.store.get_config_overrides()["proxy.bind"], "0.0.0.0")
+
+    def test_bind_override_valid_localhost(self):
+        self.store.set_config_override("proxy.bind", "localhost")
+        self.assertEqual(self.store.get_config_overrides()["proxy.bind"], "localhost")
+
+    def test_bind_override_rejects_hostname(self):
+        with self.assertRaises(ValueError):
+            self.store.set_config_override("proxy.bind", "my-host.local")
 
     def test_put_config_api_success(self):
         body = json.dumps({"proxy.timeout": 60, "default_action": "block"}).encode()

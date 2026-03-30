@@ -330,7 +330,7 @@ CLI flags override values from the config file. The full precedence order (highe
 | Signal | Behavior |
 |--------|----------|
 | `SIGINT` / `SIGTERM` | Graceful shutdown: stop accepting connections, drain in-flight requests (up to `proxy.drain_timeout` seconds), then exit. |
-| `SIGHUP` | Reload config from disk without restarting. Updates allowlists, detector actions, custom rules, SSL context, and log levels. |
+| `SIGHUP` | Reload config from disk without restarting. Updates allowlists, detector actions, custom rules, timeouts, log levels, port/bind (graceful rebind), and max body size. |
 
 !!! tip "Second SIGINT forces exit"
     If the proxy is stuck during graceful shutdown, sending a second `SIGINT` (Ctrl+C) forces an immediate exit.

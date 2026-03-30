@@ -422,7 +422,7 @@ custom_rules:
 
 **Pipeline page:** Configure scanning stages from the dashboard — toggle stages on/off, enable/disable individual detectors, set per-detector actions, configure encoding decode settings. Only changed settings are saved to DB and applied via hot-reload. Dispatches `pipeline-rendered` event for Pro extensions.
 
-**Hot-reload:** `kill -HUP $(pgrep -f lumen_argus)` — updates allowlists, actions, timeouts. No downtime.
+**Hot-reload:** `kill -HUP $(pgrep -f lumen_argus)` — updates allowlists, actions, timeouts, port/bind, and max body size. No downtime.
 
 **Project overrides:** Commit `.lumen-argus.yaml` to your repo root. Project config can only be **more restrictive** than global.
 

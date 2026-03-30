@@ -267,13 +267,18 @@ Reloadable settings include:
 - Allowlists (secrets, PII, paths)
 - Custom rules (recompiled on reload)
 - Timeout and retry counts
-- TLS settings (`ca_bundle`, `verify_ssl`)
+- `port` and `bind` (graceful rebind — in-flight requests complete on the old address)
+- `max_body_size` (scan limit and aiohttp rejection limit)
 - File log level
 
 Settings that require a restart:
 
-- `port` and `bind`
-- `max_connections`
+- `max_connections` (aiohttp connector is initialized at startup)
+- `ca_bundle` and `verify_ssl` (SSL context is baked into the connector)
+
+Settings that take effect on next shutdown:
+
+- `drain_timeout`
 
 ---
 

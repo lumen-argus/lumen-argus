@@ -1242,7 +1242,57 @@ class AsyncArgusProxy:
         await self._runner.setup()
         self._site = web.TCPSite(self._runner, self.bind, self.port)
         await self._site.start()
+        self._loop = asyncio.get_running_loop()
         log.info("async proxy listening on http://%s:%d", self.bind, self.port)
+
+    async def rebind(self, new_port: int | None = None, new_bind: str | None = None) -> None:
+        """Rebind the proxy to a new address without full restart.
+
+        Stops the listening socket and starts a new one on the target
+        address.  In-flight requests on existing connections continue
+        uninterrupted.  If the new port is unavailable, rolls back to the
+        previous address and raises ``OSError``.
+        """
+        target_port = new_port if new_port is not None else self.port
+        target_bind = new_bind if new_bind is not None else self.bind
+
+        if target_port == self.port and target_bind == self.bind:
+            log.debug("rebind: no change (already on %s:%d)", self.bind, self.port)
+            return
+
+        if self._runner is None:
+            raise RuntimeError("cannot rebind: server not started")
+
+        old_port, old_bind = self.port, self.bind
+        log.info("rebind: %s:%d -> %s:%d", old_bind, old_port, target_bind, target_port)
+
+        # Stop accepting new connections on the old address
+        if self._site:
+            await self._site.stop()
+
+        # Try to bind to the new address
+        self.port = target_port
+        self.bind = target_bind
+        try:
+            self._site = web.TCPSite(self._runner, self.bind, self.port)
+            await self._site.start()
+            if self.bind not in ("127.0.0.1", "localhost"):
+                log.warning("binding to %s — proxy is accessible on the network", self.bind)
+            log.info("rebind complete: listening on http://%s:%d", self.bind, self.port)
+        except OSError:
+            # Rollback — restore the old address
+            log.error(
+                "rebind failed: could not bind to %s:%d, rolling back to %s:%d",
+                target_bind,
+                target_port,
+                old_bind,
+                old_port,
+            )
+            self.port = old_port
+            self.bind = old_bind
+            self._site = web.TCPSite(self._runner, self.bind, self.port)
+            await self._site.start()
+            raise
 
     async def stop(self) -> None:
         """Stop the async proxy server gracefully."""

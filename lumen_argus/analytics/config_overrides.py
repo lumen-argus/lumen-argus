@@ -45,6 +45,8 @@ _VALID_CONFIG_KEYS = {
     "pipeline.stages.websocket_outbound.enabled",
     "pipeline.stages.websocket_inbound.enabled",
     "pipeline.parallel_batching",
+    "proxy.port",
+    "proxy.bind",
 }
 
 _VALID_ACTIONS = {"log", "alert", "block"}
@@ -77,6 +79,23 @@ class ConfigOverridesRepository:
                 raise ValueError("timeout must be an integer (1-300)")
             if v < 1 or v > 300:
                 raise ValueError("timeout must be 1-300")
+        elif key == "proxy.port":
+            try:
+                v = int(value)
+            except (ValueError, TypeError):
+                raise ValueError("port must be an integer (1-65535)")
+            if v < 1 or v > 65535:
+                raise ValueError("port must be 1-65535")
+        elif key == "proxy.bind":
+            import ipaddress
+
+            addr = value.strip()
+            if addr not in ("localhost",):
+                try:
+                    ipaddress.ip_address(addr)
+                except ValueError:
+                    raise ValueError("bind must be a valid IP address or 'localhost'")
+            value = addr
         elif key == "proxy.retries":
             try:
                 v = int(value)

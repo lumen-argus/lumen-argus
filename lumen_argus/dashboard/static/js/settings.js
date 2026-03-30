@@ -19,8 +19,10 @@ function loadSettings(){
     _addEditRow(proxyGrp,'Timeout (seconds)','proxy.timeout','number',timeout,{min:1,max:300});
     _addEditRow(proxyGrp,'Retries','proxy.retries','number',retries,{min:0,max:10});
     if(community.proxy){
-      _addReadRow(proxyGrp,'Port',community.proxy.port+' (requires restart)');
-      _addReadRow(proxyGrp,'Bind',community.proxy.bind+' (requires restart)');
+      var port=community.proxy.port||8080;
+      var bind=community.proxy.bind||'127.0.0.1';
+      _addEditRow(proxyGrp,'Port','proxy.port','number',port,{min:1,max:65535});
+      _addEditRow(proxyGrp,'Bind','proxy.bind','text',bind);
     }
     el.appendChild(proxyGrp);
 
