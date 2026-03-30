@@ -1120,9 +1120,19 @@ def _run_clients(args: argparse.Namespace) -> None:
         provider = c["provider"]
         if provider == "multi":
             provider = "anthropic/openai"
-        print("  %-20s %-5s %-18s %s" % (c["display_name"], c["category"], provider, c["env_var"]))
-    print("\nSetup: set the env var to http://localhost:<proxy_port> before launching your tool.")
-    print("Example: %s" % clients[0]["setup_cmd"])
+        pc = c["proxy_config"]
+        config_type = pc["config_type"]
+        if config_type == "env_var":
+            config_info = pc["env_var"]
+        elif config_type == "ide_settings":
+            config_info = "IDE: %s" % pc["ide_settings_key"]
+        elif config_type == "config_file":
+            config_info = "File: %s" % pc["config_file_path"]
+        elif config_type == "manual":
+            config_info = "Manual setup"
+        else:
+            config_info = "Not supported"
+        print("  %-20s %-5s %-18s %s" % (c["display_name"], c["category"], provider, config_info))
     print("\nRun 'lumen-argus detect' to scan for installed tools.")
     print("Run 'lumen-argus setup' to auto-configure detected tools.")
 
@@ -1163,8 +1173,10 @@ def _run_detect(args: argparse.Namespace) -> None:
             ver = " %s" % c.version if c.version else ""
             if c.proxy_configured:
                 print("  [OK]   %-20s%s  Proxied (%s)" % (c.display_name, ver, c.proxy_config_location))
+            elif c.proxy_config_type == "unsupported":
+                print("  [N/A]  %-20s%s  No reverse proxy support" % (c.display_name, ver))
             else:
-                print("  [FAIL] %-20s%s  NOT PROXIED — %s not configured" % (c.display_name, ver, c.env_var))
+                print("  [FAIL] %-20s%s  NOT PROXIED — %s" % (c.display_name, ver, c.setup_instructions))
         print("\nSummary: %d/%d tools routed through proxy" % (report.total_configured, report.total_detected))
         if report.total_configured < report.total_detected:
             print("Action required: run 'lumen-argus setup' to configure uncovered tools.")

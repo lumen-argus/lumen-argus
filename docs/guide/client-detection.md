@@ -299,29 +299,29 @@ Logs go to `~/.lumen-argus/logs/watch.log` (launchd) or the journal (systemd).
 
 ## Supported Agents
 
-All 17 agents in the built-in registry, with their detection methods:
+All 17 agents in the built-in registry, with their proxy configuration and detection methods:
 
-| Agent | Binary | pip | npm | Brew | VS Code | JetBrains | Neovim | macOS App |
-|-------|--------|-----|-----|------|---------|-----------|--------|-----------|
-| Claude Code | `claude` | | `@anthropic-ai/claude-code` | | | | | |
-| Cursor | `cursor` | | | | | | | `Cursor.app` |
-| GitHub Copilot | | | | | `github.copilot` | `github-copilot-intellij` | `copilot.vim` | |
-| GitHub Copilot CLI | `copilot` | | | `copilot` | | | | |
-| Aider | `aider` | `aider-chat` | | `aider` | | | | |
-| Continue | | | | | `continue.continue` | | `continue.nvim` | |
-| Cody | | | | | `sourcegraph.cody-ai` | `sourcegraph` | `sg.nvim` | |
-| Windsurf | `windsurf` | | | | | | | `Windsurf.app` |
-| Amazon Q | `q` | | | | `aws-toolkit-vscode` | `aws-toolkit-jetbrains` | | |
-| Tabnine | | | | | `tabnine.tabnine-vscode` | `tabnine-intellij` | | |
-| Cline | | | | | `saoudrizwan.claude-dev` | | | |
-| Roo Code | | | | | `rooveterinaryinc.roo-cline` | | | |
-| Augment Code | | | | | `augment.augment-vscode` | | | |
-| Gemini Code Assist | | | | | `google.gemini-code-assist` | | | |
-| Codex CLI | `codex` | | `@openai/codex` | | | | | |
-| Aide | `aide` | | | | | | | `Aide.app` |
-| OpenCode | `opencode` | | `opencode` | | | | | |
+| Agent | Proxy Config | Setup Mechanism | Detection |
+|-------|-------------|-----------------|-----------|
+| Claude Code | `ANTHROPIC_BASE_URL` | env var | binary, npm |
+| GitHub Copilot CLI | `COPILOT_PROVIDER_BASE_URL` | env var | binary, brew |
+| Aider | `OPENAI_BASE_URL` | env var | binary, pip, brew |
+| Codex CLI | `OPENAI_BASE_URL` | env var | binary, npm |
+| OpenCode | `OPENAI_BASE_URL` | env var | binary, npm |
+| Cursor | Manual (IDE settings UI) | manual | binary, app bundle |
+| GitHub Copilot | `http.proxy` (forward proxy) | IDE settings | VS Code, JetBrains, Neovim |
+| Continue | `~/.continue/config.json` | config file | VS Code, Neovim |
+| Cody | `cody.serverEndpoint` | IDE settings | VS Code, JetBrains, Neovim |
+| Cline | Manual (extension UI) | manual | VS Code |
+| Roo Code | Manual (extension UI) | manual | VS Code |
+| Aide | Manual (IDE settings UI) | manual | binary, app bundle |
+| Windsurf | Not supported | — | binary, app bundle |
+| Amazon Q | Not supported | — | binary, VS Code, JetBrains |
+| Tabnine | Not supported | — | VS Code, JetBrains |
+| Augment Code | Not supported | — | VS Code |
+| Gemini Code Assist | Not supported | — | VS Code |
 
-Run `lumen-argus clients` to see the full list with env vars and setup commands.
+Run `lumen-argus clients` to see the full list with setup instructions.
 
 ---
 

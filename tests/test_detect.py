@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from lumen_argus.clients import CLIENT_REGISTRY, ClientDef
+from lumen_argus.clients import CLIENT_REGISTRY, ClientDef, ProxyConfig, ProxyConfigType
 from lumen_argus.detect import (
     DetectedClient,
     DetectionReport,
@@ -72,8 +72,12 @@ class TestScanBinary(unittest.TestCase):
             category="cli",
             provider="openai",
             ua_prefixes=("test/",),
-            env_var="OPENAI_BASE_URL",
-            setup_cmd="test",
+            proxy_config=ProxyConfig(
+                config_type=ProxyConfigType.ENV_VAR,
+                env_var="OPENAI_BASE_URL",
+                setup_cmd="test",
+                setup_instructions="Set OPENAI_BASE_URL.",
+            ),
             website="https://test.com",
             detect_binary=("python3",),
         )
@@ -90,8 +94,12 @@ class TestScanBinary(unittest.TestCase):
             category="cli",
             provider="openai",
             ua_prefixes=("test/",),
-            env_var="OPENAI_BASE_URL",
-            setup_cmd="test",
+            proxy_config=ProxyConfig(
+                config_type=ProxyConfigType.ENV_VAR,
+                env_var="OPENAI_BASE_URL",
+                setup_cmd="test",
+                setup_instructions="Set OPENAI_BASE_URL.",
+            ),
             website="https://test.com",
             detect_binary=("nonexistent_binary_12345",),
         )
@@ -105,8 +113,12 @@ class TestScanBinary(unittest.TestCase):
             category="cli",
             provider="openai",
             ua_prefixes=("test/",),
-            env_var="OPENAI_BASE_URL",
-            setup_cmd="test",
+            proxy_config=ProxyConfig(
+                config_type=ProxyConfigType.ENV_VAR,
+                env_var="OPENAI_BASE_URL",
+                setup_cmd="test",
+                setup_instructions="Set OPENAI_BASE_URL.",
+            ),
             website="https://test.com",
         )
         result = _scan_binary(client)
@@ -132,8 +144,12 @@ class TestScanVSCodeExtension(unittest.TestCase):
             category="ide",
             provider="openai",
             ua_prefixes=("copilot/",),
-            env_var="OPENAI_BASE_URL",
-            setup_cmd="test",
+            proxy_config=ProxyConfig(
+                config_type=ProxyConfigType.ENV_VAR,
+                env_var="OPENAI_BASE_URL",
+                setup_cmd="test",
+                setup_instructions="Set OPENAI_BASE_URL.",
+            ),
             website="https://test.com",
             detect_vscode_ext="github.copilot",
         )
@@ -155,8 +171,12 @@ class TestScanVSCodeExtension(unittest.TestCase):
             category="ide",
             provider="openai",
             ua_prefixes=("copilot/",),
-            env_var="OPENAI_BASE_URL",
-            setup_cmd="test",
+            proxy_config=ProxyConfig(
+                config_type=ProxyConfigType.ENV_VAR,
+                env_var="OPENAI_BASE_URL",
+                setup_cmd="test",
+                setup_instructions="Set OPENAI_BASE_URL.",
+            ),
             website="https://test.com",
             detect_vscode_ext="github.copilot",
         )
@@ -177,8 +197,12 @@ class TestScanVSCodeExtension(unittest.TestCase):
             category="ide",
             provider="openai",
             ua_prefixes=("copilot/",),
-            env_var="OPENAI_BASE_URL",
-            setup_cmd="test",
+            proxy_config=ProxyConfig(
+                config_type=ProxyConfigType.ENV_VAR,
+                env_var="OPENAI_BASE_URL",
+                setup_cmd="test",
+                setup_instructions="Set OPENAI_BASE_URL.",
+            ),
             website="https://test.com",
             detect_vscode_ext="github.copilot",
         )
@@ -207,7 +231,8 @@ class TestScanShellProfiles(unittest.TestCase):
             with patch.dict(os.environ, {"SHELL": "/bin/zsh"}):
                 result = _scan_shell_profiles("http://localhost:8080")
         self.assertIn("OPENAI_BASE_URL", result)
-        self.assertEqual(result["OPENAI_BASE_URL"][0], "http://localhost:8080")
+        self.assertEqual(result["OPENAI_BASE_URL"][0][0], "http://localhost:8080")
+        self.assertEqual(result["OPENAI_BASE_URL"][0][3], "")  # no client tag
 
     def test_skips_comments(self):
         with open(self.zshrc, "w") as f:
@@ -227,6 +252,88 @@ class TestScanShellProfiles(unittest.TestCase):
                 result = _scan_shell_profiles()
         self.assertEqual(len(result), 0)
 
+    def test_extracts_client_tag(self):
+        with open(self.zshrc, "w") as f:
+            f.write("export OPENAI_BASE_URL=http://localhost:8080  # lumen-argus:managed client=opencode\n")
+        mock_profiles = {"zsh": (self.zshrc,)}
+        with patch("lumen_argus.detect._SHELL_PROFILES", mock_profiles):
+            with patch.dict(os.environ, {"SHELL": "/bin/zsh"}):
+                result = _scan_shell_profiles("http://localhost:8080")
+        entries = result["OPENAI_BASE_URL"]
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0][0], "http://localhost:8080")
+        self.assertEqual(entries[0][3], "opencode")
+
+    def test_multiple_tagged_lines(self):
+        """Multiple managed lines for the same var produce separate entries."""
+        with open(self.zshrc, "w") as f:
+            f.write(
+                "export OPENAI_BASE_URL=http://localhost:8080"
+                "  # lumen-argus:managed client=opencode\n"
+                "export OPENAI_BASE_URL=http://localhost:8080"
+                "  # lumen-argus:managed client=aider\n"
+            )
+        mock_profiles = {"zsh": (self.zshrc,)}
+        with patch("lumen_argus.detect._SHELL_PROFILES", mock_profiles):
+            with patch.dict(os.environ, {"SHELL": "/bin/zsh"}):
+                result = _scan_shell_profiles("http://localhost:8080")
+        entries = result["OPENAI_BASE_URL"]
+        self.assertEqual(len(entries), 2)
+        tags = {e[3] for e in entries}
+        self.assertEqual(tags, {"opencode", "aider"})
+
+
+class TestMatchShellEntry(unittest.TestCase):
+    """Test _match_shell_entry client tag filtering."""
+
+    def test_exact_tag_match(self):
+        from lumen_argus.detect import _match_shell_entry
+
+        entries = [
+            ("http://localhost:8080", "~/.zshrc", 1, "opencode"),
+            ("http://localhost:8080", "~/.zshrc", 2, "aider"),
+        ]
+        result = _match_shell_entry(entries, "opencode")
+        self.assertIsNotNone(result)
+        self.assertEqual(result[3], "opencode")
+
+    def test_untagged_matches_any_client(self):
+        from lumen_argus.detect import _match_shell_entry
+
+        entries = [("http://localhost:8080", "~/.zshrc", 1, "")]
+        result = _match_shell_entry(entries, "copilot")
+        self.assertIsNotNone(result)
+
+    def test_other_client_tag_rejected(self):
+        from lumen_argus.detect import _match_shell_entry
+
+        entries = [("http://localhost:8080", "~/.zshrc", 1, "opencode")]
+        result = _match_shell_entry(entries, "copilot")
+        self.assertIsNone(result)
+
+    def test_last_applicable_wins(self):
+        """Shell semantics: last assignment wins at runtime."""
+        from lumen_argus.detect import _match_shell_entry
+
+        # Tagged line first, then untagged override — untagged wins (last)
+        entries = [
+            ("http://localhost:8080", "~/.zshrc", 1, "aider"),
+            ("http://corp-proxy:9090", "~/.zshrc", 5, ""),
+        ]
+        result = _match_shell_entry(entries, "aider")
+        self.assertEqual(result[0], "http://corp-proxy:9090")
+
+    def test_tagged_after_untagged_wins(self):
+        """Tagged line after untagged — tagged wins (it's last)."""
+        from lumen_argus.detect import _match_shell_entry
+
+        entries = [
+            ("http://corp-proxy:9090", "~/.zshrc", 1, ""),
+            ("http://localhost:8080", "~/.zshrc", 5, "aider"),
+        ]
+        result = _match_shell_entry(entries, "aider")
+        self.assertEqual(result[0], "http://localhost:8080")
+
 
 class TestScanNpmPackage(unittest.TestCase):
     """Test npm global package detection with mock filesystem."""
@@ -244,8 +351,12 @@ class TestScanNpmPackage(unittest.TestCase):
             category="cli",
             provider="openai",
             ua_prefixes=("codex/",),
-            env_var="OPENAI_BASE_URL",
-            setup_cmd="test",
+            proxy_config=ProxyConfig(
+                config_type=ProxyConfigType.ENV_VAR,
+                env_var="OPENAI_BASE_URL",
+                setup_cmd="test",
+                setup_instructions="Set OPENAI_BASE_URL.",
+            ),
             website="https://test.com",
             detect_npm="@openai/codex",
         )
@@ -268,8 +379,12 @@ class TestScanNpmPackage(unittest.TestCase):
             category="cli",
             provider="openai",
             ua_prefixes=("codex/",),
-            env_var="OPENAI_BASE_URL",
-            setup_cmd="test",
+            proxy_config=ProxyConfig(
+                config_type=ProxyConfigType.ENV_VAR,
+                env_var="OPENAI_BASE_URL",
+                setup_cmd="test",
+                setup_instructions="Set OPENAI_BASE_URL.",
+            ),
             website="https://test.com",
             detect_npm="@openai/codex",
         )
@@ -284,8 +399,12 @@ class TestScanNpmPackage(unittest.TestCase):
             category="cli",
             provider="openai",
             ua_prefixes=("test/",),
-            env_var="OPENAI_BASE_URL",
-            setup_cmd="test",
+            proxy_config=ProxyConfig(
+                config_type=ProxyConfigType.ENV_VAR,
+                env_var="OPENAI_BASE_URL",
+                setup_cmd="test",
+                setup_instructions="Set OPENAI_BASE_URL.",
+            ),
             website="https://test.com",
         )
         result = _scan_npm_package(client)
@@ -312,8 +431,12 @@ class TestScanBrewPackage(unittest.TestCase):
             category="cli",
             provider="multi",
             ua_prefixes=("aider/",),
-            env_var="OPENAI_BASE_URL",
-            setup_cmd="test",
+            proxy_config=ProxyConfig(
+                config_type=ProxyConfigType.ENV_VAR,
+                env_var="OPENAI_BASE_URL",
+                setup_cmd="test",
+                setup_instructions="Set OPENAI_BASE_URL.",
+            ),
             website="https://test.com",
             detect_brew="aider",
         )
@@ -330,8 +453,12 @@ class TestScanBrewPackage(unittest.TestCase):
             category="cli",
             provider="multi",
             ua_prefixes=("aider/",),
-            env_var="OPENAI_BASE_URL",
-            setup_cmd="test",
+            proxy_config=ProxyConfig(
+                config_type=ProxyConfigType.ENV_VAR,
+                env_var="OPENAI_BASE_URL",
+                setup_cmd="test",
+                setup_instructions="Set OPENAI_BASE_URL.",
+            ),
             website="https://test.com",
             detect_brew="aider",
         )
@@ -346,8 +473,12 @@ class TestScanBrewPackage(unittest.TestCase):
             category="cli",
             provider="openai",
             ua_prefixes=("test/",),
-            env_var="OPENAI_BASE_URL",
-            setup_cmd="test",
+            proxy_config=ProxyConfig(
+                config_type=ProxyConfigType.ENV_VAR,
+                env_var="OPENAI_BASE_URL",
+                setup_cmd="test",
+                setup_instructions="Set OPENAI_BASE_URL.",
+            ),
             website="https://test.com",
         )
         result = _scan_brew_package(client)
@@ -373,8 +504,12 @@ class TestScanNeovimPlugin(unittest.TestCase):
             category="ide",
             provider="openai",
             ua_prefixes=("copilot/",),
-            env_var="OPENAI_BASE_URL",
-            setup_cmd="test",
+            proxy_config=ProxyConfig(
+                config_type=ProxyConfigType.ENV_VAR,
+                env_var="OPENAI_BASE_URL",
+                setup_cmd="test",
+                setup_instructions="Set OPENAI_BASE_URL.",
+            ),
             website="https://test.com",
             detect_neovim_plugin="copilot.vim",
         )
@@ -394,8 +529,12 @@ class TestScanNeovimPlugin(unittest.TestCase):
             category="ide",
             provider="openai",
             ua_prefixes=("copilot/",),
-            env_var="OPENAI_BASE_URL",
-            setup_cmd="test",
+            proxy_config=ProxyConfig(
+                config_type=ProxyConfigType.ENV_VAR,
+                env_var="OPENAI_BASE_URL",
+                setup_cmd="test",
+                setup_instructions="Set OPENAI_BASE_URL.",
+            ),
             website="https://test.com",
             detect_neovim_plugin="copilot.vim",
         )
@@ -410,8 +549,12 @@ class TestScanNeovimPlugin(unittest.TestCase):
             category="cli",
             provider="openai",
             ua_prefixes=("test/",),
-            env_var="OPENAI_BASE_URL",
-            setup_cmd="test",
+            proxy_config=ProxyConfig(
+                config_type=ProxyConfigType.ENV_VAR,
+                env_var="OPENAI_BASE_URL",
+                setup_cmd="test",
+                setup_instructions="Set OPENAI_BASE_URL.",
+            ),
             website="https://test.com",
         )
         result = _scan_neovim_plugin(client)
@@ -631,8 +774,12 @@ class TestNpmFnmVolta(unittest.TestCase):
             category="cli",
             provider="openai",
             ua_prefixes=("codex/",),
-            env_var="OPENAI_BASE_URL",
-            setup_cmd="test",
+            proxy_config=ProxyConfig(
+                config_type=ProxyConfigType.ENV_VAR,
+                env_var="OPENAI_BASE_URL",
+                setup_cmd="test",
+                setup_instructions="Set OPENAI_BASE_URL.",
+            ),
             website="https://test.com",
             detect_npm="@openai/codex",
         )
@@ -660,8 +807,12 @@ class TestNpmFnmVolta(unittest.TestCase):
             category="cli",
             provider="openai",
             ua_prefixes=("codex/",),
-            env_var="OPENAI_BASE_URL",
-            setup_cmd="test",
+            proxy_config=ProxyConfig(
+                config_type=ProxyConfigType.ENV_VAR,
+                env_var="OPENAI_BASE_URL",
+                setup_cmd="test",
+                setup_instructions="Set OPENAI_BASE_URL.",
+            ),
             website="https://test.com",
             detect_npm="@openai/codex",
         )

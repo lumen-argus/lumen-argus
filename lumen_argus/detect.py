@@ -19,12 +19,9 @@ import subprocess
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-from lumen_argus.clients import CLIENT_REGISTRY, ClientDef
+from lumen_argus.clients import CLIENT_REGISTRY, PROXY_ENV_VARS, ClientDef, ProxyConfigType
 
 log = logging.getLogger("argus.detect")
-
-# Env vars that route AI tools through the proxy
-PROXY_ENV_VARS = ("ANTHROPIC_BASE_URL", "OPENAI_BASE_URL", "GEMINI_BASE_URL")
 
 # Shell profile files to scan (in priority order per shell)
 _SHELL_PROFILES = {
@@ -291,8 +288,8 @@ class DetectedClient:
     proxy_configured: bool = False
     proxy_url: str = ""
     proxy_config_location: str = ""
-    env_var: str = ""
-    setup_cmd: str = ""
+    proxy_config_type: str = ""  # ProxyConfigType value
+    setup_instructions: str = ""
     website: str = ""
 
     def to_dict(self) -> dict[str, Any]:
@@ -304,7 +301,8 @@ class DetectionReport:
     """Aggregate detection results for all agents."""
 
     clients: list[DetectedClient] = field(default_factory=list)
-    shell_env_vars: dict[str, tuple[str, str, int]] = field(default_factory=dict)  # {var_name: (value, file, line_num)}
+    # {var_name: [(value, file, line_num, client_tag), ...]}
+    shell_env_vars: dict[str, list[tuple[str, str, int, str]]] = field(default_factory=dict)
     platform: str = ""
     total_detected: int = 0
     total_configured: int = 0
@@ -316,7 +314,10 @@ class DetectionReport:
             "total_detected": self.total_detected,
             "total_configured": self.total_configured,
             "clients": [c.to_dict() for c in self.clients],
-            "shell_env_vars": {k: {"value": v[0], "file": v[1], "line": v[2]} for k, v in self.shell_env_vars.items()},
+            "shell_env_vars": {
+                k: [{"value": e[0], "file": e[1], "line": e[2], "client": e[3]} for e in entries]
+                for k, entries in self.shell_env_vars.items()
+            },
         }
         if self.ci_environment:
             result["ci_environment"] = self.ci_environment.to_dict()
@@ -340,8 +341,8 @@ def _scan_binary(client: ClientDef) -> DetectedClient | None:
                 installed=True,
                 install_method=InstallMethod.BINARY,
                 install_path=path,
-                env_var=client.env_var,
-                setup_cmd=client.setup_cmd,
+                proxy_config_type=client.proxy_config.config_type.value,
+                setup_instructions=client.proxy_config.setup_instructions,
                 website=client.website,
             )
     return None
@@ -363,8 +364,8 @@ def _scan_pip_package(client: ClientDef) -> DetectedClient | None:
             version=ver,
             install_method=InstallMethod.PIP,
             install_path="pip:%s" % client.detect_pip,
-            env_var=client.env_var,
-            setup_cmd=client.setup_cmd,
+            proxy_config_type=client.proxy_config.config_type.value,
+            setup_instructions=client.proxy_config.setup_instructions,
             website=client.website,
         )
     except ImportError:
@@ -411,8 +412,8 @@ def _scan_vscode_extension(client: ClientDef) -> DetectedClient | None:
                     version=version,
                     install_method=InstallMethod.VSCODE_EXT,
                     install_path=match_path,
-                    env_var=client.env_var,
-                    setup_cmd=client.setup_cmd,
+                    proxy_config_type=client.proxy_config.config_type.value,
+                    setup_instructions=client.proxy_config.setup_instructions,
                     website=client.website,
                 )
     return None
@@ -445,8 +446,8 @@ def _scan_app_bundle(client: ClientDef) -> DetectedClient | None:
             version=version,
             install_method=InstallMethod.APP_BUNDLE,
             install_path=app_path,
-            env_var=client.env_var,
-            setup_cmd=client.setup_cmd,
+            proxy_config_type=client.proxy_config.config_type.value,
+            setup_instructions=client.proxy_config.setup_instructions,
             website=client.website,
         )
     return None
@@ -486,8 +487,8 @@ def _scan_jetbrains_plugin(client: ClientDef) -> DetectedClient | None:
                 installed=True,
                 install_method=InstallMethod.JETBRAINS_PLUGIN,
                 install_path=plugin_dir,
-                env_var=client.env_var,
-                setup_cmd=client.setup_cmd,
+                proxy_config_type=client.proxy_config.config_type.value,
+                setup_instructions=client.proxy_config.setup_instructions,
                 website=client.website,
             )
     return None
@@ -586,8 +587,8 @@ def _scan_npm_package(client: ClientDef) -> DetectedClient | None:
             version=version,
             install_method=InstallMethod.NPM,
             install_path=pkg_dir,
-            env_var=client.env_var,
-            setup_cmd=client.setup_cmd,
+            proxy_config_type=client.proxy_config.config_type.value,
+            setup_instructions=client.proxy_config.setup_instructions,
             website=client.website,
         )
     return None
@@ -621,8 +622,8 @@ def _scan_brew_package(client: ClientDef) -> DetectedClient | None:
                 version=version,
                 install_method=InstallMethod.BREW,
                 install_path=formula_dir,
-                env_var=client.env_var,
-                setup_cmd=client.setup_cmd,
+                proxy_config_type=client.proxy_config.config_type.value,
+                setup_instructions=client.proxy_config.setup_instructions,
                 website=client.website,
             )
         except OSError as e:
@@ -663,8 +664,8 @@ def _scan_neovim_plugin(client: ClientDef) -> DetectedClient | None:
                     installed=True,
                     install_method=InstallMethod.NEOVIM_PLUGIN,
                     install_path=plugin_dir,
-                    env_var=client.env_var,
-                    setup_cmd=client.setup_cmd,
+                    proxy_config_type=client.proxy_config.config_type.value,
+                    setup_instructions=client.proxy_config.setup_instructions,
                     website=client.website,
                 )
     return None
@@ -702,12 +703,15 @@ def _detect_version(client: ClientDef, detected: DetectedClient) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _scan_shell_profiles(proxy_url: str = "") -> dict[str, tuple[str, str, int]]:
+def _scan_shell_profiles(proxy_url: str = "") -> dict[str, list[tuple[str, str, int, str]]]:
     """Scan shell profile files for proxy env vars.
 
-    Returns {var_name: (value, file_path, line_number)} for each found var.
+    Returns {var_name: [(value, file_path, line_number, client_tag), ...]}
+    for each found var.  ``client_tag`` is the ``client=<id>`` value from
+    a ``# lumen-argus:managed client=<id>`` comment, or ``""`` for
+    manually-set lines.
     """
-    found: dict[str, tuple[str, str, int]] = {}
+    found: dict[str, list[tuple[str, str, int, str]]] = {}
     current_shell = os.path.basename(os.environ.get("SHELL", ""))
 
     # Determine which profiles to scan (current shell first, then others)
@@ -734,14 +738,46 @@ def _scan_shell_profiles(proxy_url: str = "") -> dict[str, tuple[str, str, int]]
                     for var in PROXY_ENV_VARS:
                         # Match: export VAR=value, VAR=value, set -x VAR value (fish)
                         if var in stripped:
-                            # Extract value
                             value = _extract_env_value(stripped, var)
-                            if value and var not in found:
-                                found[var] = (value, profile_path, line_num)
-                                log.debug("shell env found: %s=%s in %s:%d", var, value, profile_path, line_num)
+                            if value:
+                                client_tag = _extract_client_tag(stripped)
+                                found.setdefault(var, []).append((value, profile_path, line_num, client_tag))
+                                log.debug(
+                                    "shell env found: %s=%s in %s:%d (client=%s)",
+                                    var,
+                                    value,
+                                    profile_path,
+                                    line_num,
+                                    client_tag or "<untagged>",
+                                )
         except OSError as e:
             log.warning("could not read shell profile %s: %s", profile_path, e)
     return found
+
+
+_CLIENT_TAG_RE = re.compile(r"#\s*lumen-argus:managed\b.*?\bclient=(\S+)")
+
+
+def _extract_client_tag(line: str) -> str:
+    """Extract the client=<id> value from a lumen-argus:managed comment."""
+    m = _CLIENT_TAG_RE.search(line)
+    return m.group(1) if m else ""
+
+
+def _match_shell_entry(entries: list[tuple[str, str, int, str]], client_id: str) -> tuple[str, str, int, str] | None:
+    """Pick the shell env entry that applies to *client_id*.
+
+    Shells evaluate top-to-bottom, so the *last* assignment wins at
+    runtime.  We honour that: the last entry that is either tagged for
+    this client or untagged is the effective one.  Lines tagged for a
+    *different* client are skipped entirely.
+    """
+    best: tuple[str, str, int, str] | None = None
+    for entry in entries:
+        tag = entry[3]
+        if tag == client_id or not tag:
+            best = entry  # keep updating — last applicable line wins
+    return best
 
 
 def _extract_env_value(line: str, var_name: str) -> str:
@@ -777,25 +813,25 @@ def _build_settings_cache() -> dict[str, tuple[dict[str, Any], str]]:
 
 
 def _check_ide_proxy_settings(
-    client: ClientDef, proxy_url: str = "", settings_cache: dict[str, tuple[dict[str, Any], str]] | None = None
+    settings_key: str, proxy_url: str = "", settings_cache: dict[str, tuple[dict[str, Any], str]] | None = None
 ) -> tuple[bool, str, str] | None:
-    """Check if IDE settings have proxy configured for this client.
+    """Check if IDE settings have proxy configured for the given key.
 
     Returns (is_configured, proxy_value, settings_file) or None if no settings found.
     """
-    if not client.proxy_settings_key:
+    if not settings_key:
         return None
 
     if settings_cache is None:
         settings_cache = _build_settings_cache()
 
     for settings, settings_path in settings_cache.values():
-        value: str = str(settings.get(client.proxy_settings_key, ""))
+        value: str = str(settings.get(settings_key, ""))
         if value:
             is_match = bool(proxy_url and proxy_url in value)
             log.debug(
                 "IDE setting found: %s=%s in %s (match=%s)",
-                client.proxy_settings_key,
+                settings_key,
                 value,
                 settings_path,
                 is_match,
@@ -866,7 +902,7 @@ def detect_installed_clients(
 
 def _detect_single_client(
     client: ClientDef,
-    shell_env: dict[str, tuple[str, str, int]],
+    shell_env: dict[str, list[tuple[str, str, int, str]]],
     proxy_url: str,
     include_versions: bool,
     settings_cache: dict[str, tuple[dict[str, Any], str]] | None = None,
@@ -897,8 +933,8 @@ def _detect_single_client(
         return DetectedClient(
             client_id=client.id,
             display_name=client.display_name,
-            env_var=client.env_var,
-            setup_cmd=client.setup_cmd,
+            proxy_config_type=client.proxy_config.config_type.value,
+            setup_instructions=client.proxy_config.setup_instructions,
             website=client.website,
         )
 
@@ -906,21 +942,67 @@ def _detect_single_client(
     if include_versions:
         detected.version = _detect_version(client, detected)
 
-    # Check proxy configuration from shell env vars
-    env_var = client.env_var
-    if env_var in shell_env:
-        value, file_path, line_num = shell_env[env_var]
-        detected.proxy_url = value
-        detected.proxy_config_location = "%s:%d" % (file_path, line_num)
-        detected.proxy_configured = bool(proxy_url and proxy_url in value)
+    # Check proxy configuration based on proxy_config type
+    pc = client.proxy_config
 
-    # Check IDE proxy settings (for extension-based tools)
-    if not detected.proxy_configured and client.proxy_settings_key:
-        ide_result = _check_ide_proxy_settings(client, proxy_url, settings_cache)
+    if pc.config_type == ProxyConfigType.ENV_VAR:
+        # Check shell env for this specific env var (with client tag filtering)
+        _check_env_var_config(pc.env_var, client.id, shell_env, proxy_url, detected)
+        # Also check alt_config env var (e.g., Aider's ANTHROPIC_BASE_URL)
+        if not detected.proxy_configured and pc.alt_config and pc.alt_config.config_type == ProxyConfigType.ENV_VAR:
+            _check_env_var_config(pc.alt_config.env_var, client.id, shell_env, proxy_url, detected)
+
+    elif pc.config_type == ProxyConfigType.IDE_SETTINGS:
+        ide_result = _check_ide_proxy_settings(pc.ide_settings_key, proxy_url, settings_cache)
         if ide_result:
             is_configured, value, settings_file = ide_result
             detected.proxy_url = value
             detected.proxy_config_location = settings_file
             detected.proxy_configured = is_configured
 
+    elif pc.config_type == ProxyConfigType.CONFIG_FILE:
+        cfg_result = _check_config_file(pc.config_file_path, pc.config_key, proxy_url)
+        if cfg_result:
+            is_configured, value, file_path = cfg_result
+            detected.proxy_url = value
+            detected.proxy_config_location = file_path
+            detected.proxy_configured = is_configured
+
+    # MANUAL and UNSUPPORTED: proxy_configured stays False
+
     return detected
+
+
+def _check_env_var_config(
+    env_var: str,
+    client_id: str,
+    shell_env: dict[str, list[tuple[str, str, int, str]]],
+    proxy_url: str,
+    detected: DetectedClient,
+) -> None:
+    """Check shell env for a specific env var, respecting client tags."""
+    if env_var in shell_env:
+        entry = _match_shell_entry(shell_env[env_var], client_id)
+        if entry:
+            value, file_path, line_num, _tag = entry
+            detected.proxy_url = value
+            detected.proxy_config_location = "%s:%d" % (file_path, line_num)
+            detected.proxy_configured = bool(proxy_url and proxy_url in value)
+
+
+def _check_config_file(config_path: str, config_key: str, proxy_url: str) -> tuple[bool, str, str] | None:
+    """Check a tool-specific config file for proxy URL configuration."""
+    expanded = os.path.expanduser(config_path)
+    if not os.path.isfile(expanded):
+        return None
+    try:
+        with open(expanded, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        # Simple top-level key lookup
+        value = data.get(config_key, "")
+        if isinstance(value, str) and value:
+            is_configured = bool(proxy_url and proxy_url in value)
+            return is_configured, value, expanded
+    except (json.JSONDecodeError, OSError) as e:
+        log.debug("could not read config file %s: %s", expanded, e)
+    return None

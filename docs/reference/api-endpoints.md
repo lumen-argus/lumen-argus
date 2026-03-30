@@ -356,8 +356,12 @@ When `dashboard.password` is set (or `LUMEN_ARGUS_DASHBOARD_PASSWORD` env var), 
       "category": "cli",
       "provider": "anthropic",
       "ua_prefixes": ["claude-code/"],
-      "env_var": "ANTHROPIC_BASE_URL",
-      "setup_cmd": "ANTHROPIC_BASE_URL=http://localhost:8080 claude",
+      "proxy_config": {
+        "config_type": "env_var",
+        "setup_instructions": "Set ANTHROPIC_BASE_URL to the proxy URL.",
+        "env_var": "ANTHROPIC_BASE_URL",
+        "setup_cmd": "ANTHROPIC_BASE_URL=http://localhost:8080 claude"
+      },
       "website": "https://claude.ai/code"
     }
   ]

@@ -4,7 +4,10 @@ import unittest
 
 from lumen_argus.clients import (
     CLIENT_REGISTRY,
+    PROXY_ENV_VARS,
     ClientDef,
+    ProxyConfig,
+    ProxyConfigType,
     get_all_clients,
     get_client_by_id,
     identify_client,
@@ -34,9 +37,40 @@ class TestRegistryIntegrity(unittest.TestCase):
             self.assertIn(c.category, ("cli", "ide"), "bad category for %s" % c.id)
             self.assertIn(c.provider, ("anthropic", "openai", "gemini", "multi"), "bad provider for %s" % c.id)
             self.assertTrue(c.ua_prefixes, "missing ua_prefixes for %s" % c.id)
-            self.assertTrue(c.env_var, "missing env_var for %s" % c.id)
-            self.assertTrue(c.setup_cmd, "missing setup_cmd for %s" % c.id)
+            self.assertIsNotNone(c.proxy_config, "missing proxy_config for %s" % c.id)
+            self.assertIsInstance(c.proxy_config.config_type, ProxyConfigType)
+            self.assertTrue(c.proxy_config.setup_instructions, "missing setup_instructions for %s" % c.id)
             self.assertTrue(c.website, "missing website for %s" % c.id)
+
+    def test_env_var_clients_have_env_var(self):
+        """ENV_VAR type clients must have env_var and setup_cmd."""
+        for c in CLIENT_REGISTRY:
+            if c.proxy_config.config_type == ProxyConfigType.ENV_VAR:
+                self.assertTrue(c.proxy_config.env_var, "ENV_VAR type but no env_var for %s" % c.id)
+                self.assertTrue(c.proxy_config.setup_cmd, "ENV_VAR type but no setup_cmd for %s" % c.id)
+
+    def test_unsupported_have_no_env_var(self):
+        """UNSUPPORTED clients must not have env_var set."""
+        for c in CLIENT_REGISTRY:
+            if c.proxy_config.config_type == ProxyConfigType.UNSUPPORTED:
+                self.assertEqual(c.proxy_config.env_var, "", "UNSUPPORTED client %s should not have env_var" % c.id)
+
+    def test_proxy_config_type_distribution(self):
+        """Verify expected count of each proxy config type."""
+        counts: dict[ProxyConfigType, int] = {}
+        for c in CLIENT_REGISTRY:
+            counts[c.proxy_config.config_type] = counts.get(c.proxy_config.config_type, 0) + 1
+        self.assertEqual(counts[ProxyConfigType.ENV_VAR], 5)
+        self.assertEqual(counts[ProxyConfigType.IDE_SETTINGS], 2)
+        self.assertEqual(counts[ProxyConfigType.CONFIG_FILE], 1)
+        self.assertEqual(counts[ProxyConfigType.MANUAL], 4)
+        self.assertEqual(counts[ProxyConfigType.UNSUPPORTED], 5)
+
+    def test_proxy_env_vars_derived(self):
+        """PROXY_ENV_VARS should be derived from registry, not hardcoded."""
+        self.assertIn("ANTHROPIC_BASE_URL", PROXY_ENV_VARS)
+        self.assertIn("OPENAI_BASE_URL", PROXY_ENV_VARS)
+        self.assertIn("COPILOT_PROVIDER_BASE_URL", PROXY_ENV_VARS)
 
     def test_prefixes_are_lowercase(self):
         for c in CLIENT_REGISTRY:
@@ -199,8 +233,12 @@ class TestGetAllClients(unittest.TestCase):
             category="ide",
             provider="openai",
             ua_prefixes=("enterprise-tool/",),
-            env_var="OPENAI_BASE_URL",
-            setup_cmd="OPENAI_BASE_URL=http://localhost:8080",
+            proxy_config=ProxyConfig(
+                config_type=ProxyConfigType.ENV_VAR,
+                env_var="OPENAI_BASE_URL",
+                setup_cmd="OPENAI_BASE_URL=http://localhost:8080",
+                setup_instructions="Set OPENAI_BASE_URL.",
+            ),
             website="https://example.com",
         )
         clients = get_all_clients(extra_clients=[extra])

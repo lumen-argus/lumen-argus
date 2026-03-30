@@ -7,11 +7,60 @@ for setup guides, and CLI for listing supported tools.
 Pro extends via extensions.register_clients() to add enterprise clients.
 """
 
+from __future__ import annotations
+
+import enum
 import logging
 from dataclasses import asdict, dataclass
 from typing import Any
 
 log = logging.getLogger("argus.clients")
+
+
+# ---------------------------------------------------------------------------
+# Proxy configuration types
+# ---------------------------------------------------------------------------
+
+
+class ProxyConfigType(str, enum.Enum):
+    """How a client can be configured to route through a reverse proxy."""
+
+    ENV_VAR = "env_var"  # CLI tools: set a shell environment variable
+    CONFIG_FILE = "config_file"  # Tool-specific config file (e.g., ~/.continue/config.json)
+    IDE_SETTINGS = "ide_settings"  # VS Code / JetBrains settings.json key
+    MANUAL = "manual"  # Requires manual UI interaction (no full automation)
+    UNSUPPORTED = "unsupported"  # Tool has NO reverse proxy support
+
+
+@dataclass(frozen=True)
+class ProxyConfig:
+    """Describes how a client is configured to route through the proxy.
+
+    Fields are type-specific — only the fields relevant to ``config_type``
+    are populated.  Consumers branch on ``config_type`` and read the
+    appropriate fields.
+    """
+
+    config_type: ProxyConfigType
+    # Human-readable setup instructions (always present for all types)
+    setup_instructions: str
+    # ENV_VAR: the environment variable name (e.g., "ANTHROPIC_BASE_URL")
+    env_var: str = ""
+    # ENV_VAR: one-liner shell command example
+    setup_cmd: str = ""
+    # CONFIG_FILE: path to config file (with ~ expansion)
+    config_file_path: str = ""
+    # CONFIG_FILE: JSON key to set
+    config_key: str = ""
+    # IDE_SETTINGS: VS Code/JetBrains settings key
+    ide_settings_key: str = ""
+    # Secondary configuration method (e.g., Aider also supports ANTHROPIC_BASE_URL)
+    alt_config: ProxyConfig | None = None
+
+
+# ---------------------------------------------------------------------------
+# Client definition
+# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
@@ -24,8 +73,7 @@ class ClientDef:
     category: str  # "cli" | "ide"
     provider: str  # "anthropic" | "openai" | "gemini" | "multi"
     ua_prefixes: tuple[str, ...]  # lowercase prefixes for User-Agent matching
-    env_var: str  # primary env var for setup
-    setup_cmd: str  # one-liner setup example
+    proxy_config: ProxyConfig  # how to configure proxy routing
     website: str  # project URL
     # Detection hints (used by lumen_argus/detect.py)
     detect_binary: tuple[str, ...] = ()  # binary names to check via shutil.which()
@@ -36,54 +84,32 @@ class ClientDef:
     detect_jetbrains_plugin: str = ""  # JetBrains plugin dir name
     detect_neovim_plugin: str = ""  # Neovim plugin dir name (lazy.nvim/vim-plug/native)
     detect_app_name: str = ""  # macOS /Applications/*.app
-    proxy_settings_key: str = ""  # IDE settings JSON key for proxy
     version_command: tuple[str, ...] = ()  # command to get version
 
 
 # ---------------------------------------------------------------------------
-# Built-in registry — 17 popular AI CLI agents
+# Built-in registry — 17 supported AI CLI agents
 # Ordered by specificity (longer/more-specific prefixes first)
 # ---------------------------------------------------------------------------
 
 CLIENT_REGISTRY: list[ClientDef] = [
+    # -- CLI tools (env var works) ------------------------------------------
     ClientDef(
         id="claude_code",
         display_name="Claude Code",
         category="cli",
         provider="anthropic",
         ua_prefixes=("claude-code/",),
-        env_var="ANTHROPIC_BASE_URL",
-        setup_cmd="ANTHROPIC_BASE_URL=http://localhost:8080 claude",
+        proxy_config=ProxyConfig(
+            config_type=ProxyConfigType.ENV_VAR,
+            env_var="ANTHROPIC_BASE_URL",
+            setup_cmd="ANTHROPIC_BASE_URL=http://localhost:8080 claude",
+            setup_instructions="Set ANTHROPIC_BASE_URL to the proxy URL.",
+        ),
         website="https://claude.ai/code",
         detect_binary=("claude",),
         detect_npm="@anthropic-ai/claude-code",
         version_command=("claude", "--version"),
-    ),
-    ClientDef(
-        id="cursor",
-        display_name="Cursor",
-        category="ide",
-        provider="multi",
-        ua_prefixes=("cursor/",),
-        env_var="OPENAI_BASE_URL",
-        setup_cmd="OPENAI_BASE_URL=http://localhost:8080 cursor",
-        website="https://cursor.com",
-        detect_binary=("cursor",),
-        detect_app_name="Cursor.app",
-    ),
-    ClientDef(
-        id="copilot",
-        display_name="GitHub Copilot",
-        category="ide",
-        provider="openai",
-        ua_prefixes=("github-copilot/", "copilot-"),
-        env_var="OPENAI_BASE_URL",
-        setup_cmd="OPENAI_BASE_URL=http://localhost:8080",
-        website="https://github.com/features/copilot",
-        detect_vscode_ext="github.copilot",
-        detect_jetbrains_plugin="github-copilot-intellij",
-        detect_neovim_plugin="copilot.vim",
-        proxy_settings_key="http.proxy",
     ),
     ClientDef(
         id="copilot_cli",
@@ -91,8 +117,12 @@ CLIENT_REGISTRY: list[ClientDef] = [
         category="cli",
         provider="multi",
         ua_prefixes=("copilot/",),
-        env_var="COPILOT_PROVIDER_BASE_URL",
-        setup_cmd="COPILOT_PROVIDER_BASE_URL=http://localhost:8080 copilot",
+        proxy_config=ProxyConfig(
+            config_type=ProxyConfigType.ENV_VAR,
+            env_var="COPILOT_PROVIDER_BASE_URL",
+            setup_cmd="COPILOT_PROVIDER_BASE_URL=http://localhost:8080 copilot",
+            setup_instructions="Set COPILOT_PROVIDER_BASE_URL to the proxy URL.",
+        ),
         website="https://github.com/features/copilot/cli",
         detect_binary=("copilot",),
         detect_brew="copilot",
@@ -104,8 +134,20 @@ CLIENT_REGISTRY: list[ClientDef] = [
         category="cli",
         provider="multi",
         ua_prefixes=("aider/",),
-        env_var="OPENAI_BASE_URL",
-        setup_cmd="OPENAI_BASE_URL=http://localhost:8080 aider",
+        proxy_config=ProxyConfig(
+            config_type=ProxyConfigType.ENV_VAR,
+            env_var="OPENAI_BASE_URL",
+            setup_cmd="OPENAI_BASE_URL=http://localhost:8080 aider",
+            setup_instructions=(
+                "Set OPENAI_BASE_URL to the proxy URL. For Anthropic models, also set ANTHROPIC_BASE_URL."
+            ),
+            alt_config=ProxyConfig(
+                config_type=ProxyConfigType.ENV_VAR,
+                env_var="ANTHROPIC_BASE_URL",
+                setup_cmd="ANTHROPIC_BASE_URL=http://localhost:8080 aider --model claude-sonnet-4-20250514",
+                setup_instructions="Set ANTHROPIC_BASE_URL for Anthropic model routing.",
+            ),
+        ),
         website="https://aider.chat",
         detect_binary=("aider",),
         detect_pip="aider-chat",
@@ -113,17 +155,93 @@ CLIENT_REGISTRY: list[ClientDef] = [
         version_command=("aider", "--version"),
     ),
     ClientDef(
+        id="codex_cli",
+        display_name="OpenAI Codex CLI",
+        category="cli",
+        provider="openai",
+        ua_prefixes=("codex/", "openai-codex/"),
+        proxy_config=ProxyConfig(
+            config_type=ProxyConfigType.ENV_VAR,
+            env_var="OPENAI_BASE_URL",
+            setup_cmd="OPENAI_BASE_URL=http://localhost:8080 codex",
+            setup_instructions="Set OPENAI_BASE_URL to the proxy URL.",
+        ),
+        website="https://github.com/openai/codex",
+        detect_binary=("codex",),
+        detect_npm="@openai/codex",
+        version_command=("codex", "--version"),
+    ),
+    ClientDef(
+        id="opencode",
+        display_name="OpenCode",
+        category="cli",
+        provider="multi",
+        ua_prefixes=("opencode/",),
+        proxy_config=ProxyConfig(
+            config_type=ProxyConfigType.ENV_VAR,
+            env_var="OPENAI_BASE_URL",
+            setup_cmd="OPENAI_BASE_URL=http://localhost:8080 opencode",
+            setup_instructions="Set OPENAI_BASE_URL to the proxy URL, or set baseURL in opencode.json.",
+            alt_config=ProxyConfig(
+                config_type=ProxyConfigType.CONFIG_FILE,
+                config_file_path="~/.config/opencode/config.json",
+                config_key="baseURL",
+                setup_instructions='Set "baseURL" in ~/.config/opencode/config.json per provider.',
+            ),
+        ),
+        website="https://opencode.ai",
+        detect_binary=("opencode",),
+        detect_npm="opencode",
+        version_command=("opencode", "--version"),
+    ),
+    # -- IDE tools (various mechanisms) -------------------------------------
+    ClientDef(
+        id="cursor",
+        display_name="Cursor",
+        category="ide",
+        provider="multi",
+        ua_prefixes=("cursor/",),
+        proxy_config=ProxyConfig(
+            config_type=ProxyConfigType.MANUAL,
+            setup_instructions="Open Cursor Settings > Models > enable 'Override OpenAI Base URL' > enter proxy URL.",
+        ),
+        website="https://cursor.com",
+        detect_binary=("cursor",),
+        detect_app_name="Cursor.app",
+    ),
+    ClientDef(
+        id="copilot",
+        display_name="GitHub Copilot",
+        category="ide",
+        provider="openai",
+        ua_prefixes=("github-copilot/", "copilot-"),
+        proxy_config=ProxyConfig(
+            config_type=ProxyConfigType.IDE_SETTINGS,
+            ide_settings_key="http.proxy",
+            setup_instructions=(
+                'Set "http.proxy" in VS Code settings.json. Note: this is a forward proxy, not a base URL override.'
+            ),
+        ),
+        website="https://github.com/features/copilot",
+        detect_vscode_ext="github.copilot",
+        detect_jetbrains_plugin="github-copilot-intellij",
+        detect_neovim_plugin="copilot.vim",
+    ),
+    ClientDef(
         id="continue",
         display_name="Continue",
         category="ide",
         provider="multi",
         ua_prefixes=("continue/",),
-        env_var="OPENAI_BASE_URL",
-        setup_cmd="OPENAI_BASE_URL=http://localhost:8080",
+        proxy_config=ProxyConfig(
+            config_type=ProxyConfigType.CONFIG_FILE,
+            config_file_path="~/.continue/config.json",
+            config_key="apiBase",
+            setup_instructions='Set "apiBase" per model in ~/.continue/config.json.',
+        ),
         website="https://continue.dev",
         detect_vscode_ext="continue.continue",
         detect_neovim_plugin="continue.nvim",
-        proxy_settings_key="continue.proxy",
     ),
     ClientDef(
         id="cody",
@@ -131,52 +249,18 @@ CLIENT_REGISTRY: list[ClientDef] = [
         category="ide",
         provider="multi",
         ua_prefixes=("cody/", "sourcegraph-"),
-        env_var="OPENAI_BASE_URL",
-        setup_cmd="OPENAI_BASE_URL=http://localhost:8080",
+        proxy_config=ProxyConfig(
+            config_type=ProxyConfigType.IDE_SETTINGS,
+            ide_settings_key="cody.serverEndpoint",
+            setup_instructions=(
+                'Set "cody.serverEndpoint" in VS Code settings.'
+                " Note: Cody uses Sourcegraph protocol, not standard LLM APIs."
+            ),
+        ),
         website="https://sourcegraph.com/cody",
         detect_vscode_ext="sourcegraph.cody-ai",
         detect_jetbrains_plugin="sourcegraph",
         detect_neovim_plugin="sg.nvim",
-        proxy_settings_key="cody.proxy",
-    ),
-    ClientDef(
-        id="windsurf",
-        display_name="Windsurf",
-        category="ide",
-        provider="multi",
-        ua_prefixes=("windsurf/", "codeium/"),
-        env_var="OPENAI_BASE_URL",
-        setup_cmd="OPENAI_BASE_URL=http://localhost:8080",
-        website="https://codeium.com/windsurf",
-        detect_binary=("windsurf",),
-        detect_app_name="Windsurf.app",
-    ),
-    ClientDef(
-        id="amazon_q",
-        display_name="Amazon Q Developer",
-        category="ide",
-        provider="openai",
-        ua_prefixes=("amazon-q/", "aws-toolkit/"),
-        env_var="OPENAI_BASE_URL",
-        setup_cmd="OPENAI_BASE_URL=http://localhost:8080",
-        website="https://aws.amazon.com/q/developer/",
-        detect_binary=("q",),
-        detect_vscode_ext="amazonwebservices.aws-toolkit-vscode",
-        detect_jetbrains_plugin="aws-toolkit-jetbrains",
-        proxy_settings_key="aws.proxy",
-    ),
-    ClientDef(
-        id="tabnine",
-        display_name="Tabnine",
-        category="ide",
-        provider="openai",
-        ua_prefixes=("tabnine/",),
-        env_var="OPENAI_BASE_URL",
-        setup_cmd="OPENAI_BASE_URL=http://localhost:8080",
-        website="https://www.tabnine.com",
-        detect_vscode_ext="tabnine.tabnine-vscode",
-        detect_jetbrains_plugin="tabnine-intellij",
-        proxy_settings_key="tabnine.proxy",
     ),
     ClientDef(
         id="cline",
@@ -184,8 +268,10 @@ CLIENT_REGISTRY: list[ClientDef] = [
         category="ide",
         provider="multi",
         ua_prefixes=("cline/",),
-        env_var="OPENAI_BASE_URL",
-        setup_cmd="OPENAI_BASE_URL=http://localhost:8080",
+        proxy_config=ProxyConfig(
+            config_type=ProxyConfigType.MANUAL,
+            setup_instructions="Open Cline sidebar > select provider > enable 'Use custom base URL' > enter proxy URL.",
+        ),
         website="https://cline.bot",
         detect_vscode_ext="saoudrizwan.claude-dev",
     ),
@@ -195,47 +281,14 @@ CLIENT_REGISTRY: list[ClientDef] = [
         category="ide",
         provider="multi",
         ua_prefixes=("roo-code/", "roo/"),
-        env_var="ANTHROPIC_BASE_URL",
-        setup_cmd="ANTHROPIC_BASE_URL=http://localhost:8080",
+        proxy_config=ProxyConfig(
+            config_type=ProxyConfigType.MANUAL,
+            setup_instructions=(
+                "Open Roo Code sidebar > select provider > enable 'Use custom base URL' > enter proxy URL."
+            ),
+        ),
         website="https://roocode.com",
         detect_vscode_ext="rooveterinaryinc.roo-cline",
-    ),
-    ClientDef(
-        id="augment",
-        display_name="Augment Code",
-        category="ide",
-        provider="multi",
-        ua_prefixes=("augment/",),
-        env_var="OPENAI_BASE_URL",
-        setup_cmd="OPENAI_BASE_URL=http://localhost:8080",
-        website="https://www.augmentcode.com",
-        detect_vscode_ext="augment.augment-vscode",
-        proxy_settings_key="http.proxy",
-    ),
-    ClientDef(
-        id="gemini_assist",
-        display_name="Gemini Code Assist",
-        category="ide",
-        provider="gemini",
-        ua_prefixes=("gemini-code-assist/",),
-        env_var="GEMINI_BASE_URL",
-        setup_cmd="GEMINI_BASE_URL=http://localhost:8080",
-        website="https://cloud.google.com/gemini/docs/codeassist",
-        detect_vscode_ext="google.gemini-code-assist",
-        proxy_settings_key="http.proxy",
-    ),
-    ClientDef(
-        id="codex_cli",
-        display_name="OpenAI Codex CLI",
-        category="cli",
-        provider="openai",
-        ua_prefixes=("codex/", "openai-codex/"),
-        env_var="OPENAI_BASE_URL",
-        setup_cmd="OPENAI_BASE_URL=http://localhost:8080 codex",
-        website="https://github.com/openai/codex",
-        detect_binary=("codex",),
-        detect_npm="@openai/codex",
-        version_command=("codex", "--version"),
     ),
     ClientDef(
         id="aide",
@@ -243,24 +296,85 @@ CLIENT_REGISTRY: list[ClientDef] = [
         category="ide",
         provider="multi",
         ua_prefixes=("aide/", "codestory/"),
-        env_var="OPENAI_BASE_URL",
-        setup_cmd="OPENAI_BASE_URL=http://localhost:8080",
+        proxy_config=ProxyConfig(
+            config_type=ProxyConfigType.MANUAL,
+            setup_instructions="Open Aide > Preferences > Model Selection > set OpenAI-compatible endpoint URL.",
+        ),
         website="https://aide.dev",
         detect_binary=("aide",),
         detect_app_name="Aide.app",
     ),
+    # -- IDE tools (unsupported — proprietary backends) ---------------------
     ClientDef(
-        id="opencode",
-        display_name="OpenCode",
-        category="cli",
+        id="windsurf",
+        display_name="Windsurf",
+        category="ide",
         provider="multi",
-        ua_prefixes=("opencode/",),
-        env_var="OPENAI_BASE_URL",
-        setup_cmd="OPENAI_BASE_URL=http://localhost:8080 opencode",
-        website="https://opencode.ai",
-        detect_binary=("opencode",),
-        detect_npm="opencode",
-        version_command=("opencode", "--version"),
+        ua_prefixes=("windsurf/", "codeium/"),
+        proxy_config=ProxyConfig(
+            config_type=ProxyConfigType.UNSUPPORTED,
+            setup_instructions="Windsurf routes through Codeium's proprietary backend. No reverse proxy support.",
+        ),
+        website="https://codeium.com/windsurf",
+        detect_binary=("windsurf",),
+        detect_app_name="Windsurf.app",
+    ),
+    ClientDef(
+        id="amazon_q",
+        display_name="Amazon Q Developer",
+        category="ide",
+        provider="multi",
+        ua_prefixes=("amazon-q/", "aws-toolkit/"),
+        proxy_config=ProxyConfig(
+            config_type=ProxyConfigType.UNSUPPORTED,
+            setup_instructions="Amazon Q uses proprietary AWS authentication. No custom base URL support.",
+        ),
+        website="https://aws.amazon.com/q/developer/",
+        detect_binary=("q",),
+        detect_vscode_ext="amazonwebservices.aws-toolkit-vscode",
+        detect_jetbrains_plugin="aws-toolkit-jetbrains",
+    ),
+    ClientDef(
+        id="tabnine",
+        display_name="Tabnine",
+        category="ide",
+        provider="multi",
+        ua_prefixes=("tabnine/",),
+        proxy_config=ProxyConfig(
+            config_type=ProxyConfigType.UNSUPPORTED,
+            setup_instructions="Tabnine uses a proprietary protocol. Enterprise: set server URL in Tabnine settings.",
+        ),
+        website="https://www.tabnine.com",
+        detect_vscode_ext="tabnine.tabnine-vscode",
+        detect_jetbrains_plugin="tabnine-intellij",
+    ),
+    ClientDef(
+        id="augment",
+        display_name="Augment Code",
+        category="ide",
+        provider="multi",
+        ua_prefixes=("augment/",),
+        proxy_config=ProxyConfig(
+            config_type=ProxyConfigType.UNSUPPORTED,
+            setup_instructions="Augment Code uses a proprietary backend. No custom endpoint support.",
+        ),
+        website="https://www.augmentcode.com",
+        detect_vscode_ext="augment.augment-vscode",
+    ),
+    ClientDef(
+        id="gemini_assist",
+        display_name="Gemini Code Assist",
+        category="ide",
+        provider="gemini",
+        ua_prefixes=("gemini-code-assist/",),
+        proxy_config=ProxyConfig(
+            config_type=ProxyConfigType.UNSUPPORTED,
+            setup_instructions=(
+                "Gemini Code Assist VS Code extension has no base URL override. Gemini CLI uses GOOGLE_GEMINI_BASE_URL."
+            ),
+        ),
+        website="https://cloud.google.com/gemini/docs/codeassist",
+        detect_vscode_ext="google.gemini-code-assist",
     ),
 ]
 
@@ -268,6 +382,26 @@ CLIENT_REGISTRY: list[ClientDef] = [
 _PREFIX_INDEX: list[tuple[str, ClientDef]] = [
     (_prefix, _client) for _client in CLIENT_REGISTRY for _prefix in _client.ua_prefixes
 ]
+
+
+# ---------------------------------------------------------------------------
+# Derived constants
+# ---------------------------------------------------------------------------
+
+
+def _collect_env_vars() -> tuple[str, ...]:
+    """Derive the set of proxy env vars from the registry."""
+    seen: set[str] = set()
+    for c in CLIENT_REGISTRY:
+        pc = c.proxy_config
+        if pc.config_type == ProxyConfigType.ENV_VAR and pc.env_var:
+            seen.add(pc.env_var)
+        if pc.alt_config and pc.alt_config.config_type == ProxyConfigType.ENV_VAR and pc.alt_config.env_var:
+            seen.add(pc.alt_config.env_var)
+    return tuple(sorted(seen))
+
+
+PROXY_ENV_VARS: tuple[str, ...] = _collect_env_vars()
 
 
 # ---------------------------------------------------------------------------

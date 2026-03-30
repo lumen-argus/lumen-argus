@@ -17,7 +17,7 @@ import re
 import shutil
 from dataclasses import asdict, dataclass
 
-from lumen_argus.detect import _SHELL_PROFILES, InstallMethod, detect_installed_clients, load_jsonc
+from lumen_argus.detect import _SHELL_PROFILES, detect_installed_clients, load_jsonc
 from lumen_argus.time_utils import now_iso
 
 log = logging.getLogger("argus.setup")
@@ -457,18 +457,19 @@ def run_setup(
     for target in targets:
         print("\n-- %s %s" % (target.display_name, "-" * (40 - len(target.display_name))))
 
-        # Determine setup method
-        from lumen_argus.clients import get_client_by_id
+        from lumen_argus.clients import ProxyConfigType, get_client_by_id
 
         client_def = get_client_by_id(target.client_id)
+        if not client_def:
+            log.warning("no client def for %s, skipping", target.client_id)
+            continue
 
-        def _try_add_env_var() -> None:
-            """Prompt and add env var to shell profile."""
-            if non_interactive or _prompt_yes(
-                "  Add 'export %s=%s' to %s?" % (target.env_var, proxy_url, profile_path)
-            ):
+        pc = client_def.proxy_config
+
+        if pc.config_type == ProxyConfigType.ENV_VAR:
+            if non_interactive or _prompt_yes("  Add 'export %s=%s' to %s?" % (pc.env_var, proxy_url, profile_path)):
                 change = add_env_to_shell_profile(
-                    target.env_var, proxy_url, target.client_id, profile_path, dry_run=dry_run
+                    pc.env_var, proxy_url, target.client_id, profile_path, dry_run=dry_run
                 )
                 if change:
                     changes.append(change)
@@ -477,35 +478,33 @@ def run_setup(
                 else:
                     print("  Skipped (already set or conflict)")
 
-        if target.install_method in (
-            InstallMethod.BINARY,
-            InstallMethod.PIP,
-            InstallMethod.NPM,
-            InstallMethod.BREW,
-            InstallMethod.APP_BUNDLE,
-            InstallMethod.NEOVIM_PLUGIN,
-        ):
-            _try_add_env_var()
-
-        elif target.install_method in (InstallMethod.VSCODE_EXT, InstallMethod.JETBRAINS_PLUGIN):
-            # IDE extension — update settings if proxy_settings_key available
-            if client_def and client_def.proxy_settings_key:
-                settings_file = _find_ide_settings(target.install_path)
-                if settings_file:
-                    if non_interactive or _prompt_yes(
-                        "  Set '%s': '%s' in %s?" % (client_def.proxy_settings_key, proxy_url, settings_file)
-                    ):
-                        change = update_ide_settings(
-                            settings_file, client_def.proxy_settings_key, proxy_url, target.client_id, dry_run=dry_run
-                        )
-                        if change:
-                            changes.append(change)
-                            if not dry_run:
-                                print("  Updated %s" % settings_file)
-                else:
-                    _try_add_env_var()
+        elif pc.config_type == ProxyConfigType.IDE_SETTINGS:
+            settings_file = _find_ide_settings(target.install_path)
+            if settings_file:
+                if non_interactive or _prompt_yes(
+                    "  Set '%s': '%s' in %s?" % (pc.ide_settings_key, proxy_url, settings_file)
+                ):
+                    change = update_ide_settings(
+                        settings_file, pc.ide_settings_key, proxy_url, target.client_id, dry_run=dry_run
+                    )
+                    if change:
+                        changes.append(change)
+                        if not dry_run:
+                            print("  Updated %s" % settings_file)
             else:
-                _try_add_env_var()
+                print("  Could not find IDE settings file.")
+                print("  %s" % pc.setup_instructions)
+
+        elif pc.config_type == ProxyConfigType.CONFIG_FILE:
+            print("  %s" % pc.setup_instructions)
+
+        elif pc.config_type == ProxyConfigType.MANUAL:
+            print("  Requires manual configuration:")
+            print("  %s" % pc.setup_instructions)
+
+        elif pc.config_type == ProxyConfigType.UNSUPPORTED:
+            print("  Reverse proxy not supported for this tool.")
+            print("  %s" % pc.setup_instructions)
 
     # Save manifest
     if changes and not dry_run:
