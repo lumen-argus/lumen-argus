@@ -242,10 +242,13 @@ def read_env_file() -> list[tuple[str, str, str]]:
 def write_env_file(entries: list[tuple[str, str, str]]) -> None:
     """Write env vars to ~/.lumen-argus/env.
 
+    File gets 0o600 permissions (owner-only) because it is sourced by the
+    shell — a writable env file is an arbitrary code execution vector.
+
     Args:
         entries: list of (var_name, value, client_id) tuples.
     """
-    os.makedirs(_ARGUS_DIR, exist_ok=True)
+    os.makedirs(_ARGUS_DIR, mode=0o700, exist_ok=True)
     lines = []
     for var_name, value, client_id in entries:
         lines.append("export %s=%s  %s client=%s" % (var_name, value, MANAGED_TAG, client_id))
@@ -254,6 +257,7 @@ def write_env_file(entries: list[tuple[str, str, str]]) -> None:
             if lines:
                 f.write("\n".join(lines))
                 f.write("\n")
+        os.chmod(_ENV_FILE, 0o600)
         log.info("env file written: %d var(s)", len(lines))
     except OSError as e:
         log.error("could not write env file: %s", e, exc_info=True)
@@ -354,10 +358,11 @@ def disable_protection() -> dict[str, object]:
 
     Returns status dict.
     """
-    os.makedirs(_ARGUS_DIR, exist_ok=True)
+    os.makedirs(_ARGUS_DIR, mode=0o700, exist_ok=True)
     try:
         with open(_ENV_FILE, "w", encoding="utf-8") as f:
             f.write("")
+        os.chmod(_ENV_FILE, 0o600)
         log.info("protection disabled: env file truncated")
     except OSError as e:
         log.error("could not truncate env file: %s", e, exc_info=True)

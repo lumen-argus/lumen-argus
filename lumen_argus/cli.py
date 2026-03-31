@@ -816,6 +816,27 @@ def _load_hmac_key() -> bytes:
     return key
 
 
+def _record_mode_finding(store: Any, old_mode: str, new_mode: str) -> None:
+    """Record a finding when proxy mode transitions to passthrough."""
+    if not store:
+        return
+    try:
+        from lumen_argus.models import Finding
+
+        finding = Finding(
+            detector="proxy",
+            type="mode_changed",
+            severity="warning",
+            location="proxy.mode",
+            value_preview="%s -> %s" % (old_mode, new_mode),
+            matched_value="",
+            action="log",
+        )
+        store.record_findings([finding], provider="", model="")
+    except Exception:
+        log.warning("failed to record mode change finding", exc_info=True)
+
+
 def _do_reload(
     server: Any,
     config_path: str | None,
@@ -888,11 +909,16 @@ def _do_reload(
                     elif key == "detectors.proprietary.enabled":
                         new_config.proprietary.enabled = value.lower() == "true"
                     elif key == "proxy.mode":
+                        # TODO: gate mode changes on auth/RBAC when available
                         if value in ("active", "passthrough"):
                             old_mode = server.mode
                             server.mode = value
                             if old_mode != value:
                                 log.info("proxy mode changed: %s -> %s", old_mode, value)
+                                # Record audit finding so the transition is visible
+                                # in the dashboard findings list, not just logs
+                                if value == "passthrough":
+                                    _record_mode_finding(analytics_store, old_mode, value)
                     elif key == "pipeline.parallel_batching":
                         new_config.pipeline.parallel_batching = value.lower() == "true"
                     elif key.startswith("pipeline.stages."):
