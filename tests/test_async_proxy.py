@@ -195,6 +195,67 @@ class TestAsyncProxy(unittest.TestCase):
 
         asyncio.run(_test())
 
+    def test_passthrough_mode_skips_scanning(self):
+        """In passthrough mode, secrets should NOT be blocked."""
+        proxy, port = self._create_proxy()
+        proxy.mode = "passthrough"
+
+        async def _test():
+            async def _inner():
+                # This contains an AWS key which would normally be blocked
+                status, data = await self._post(
+                    port,
+                    {
+                        "model": "claude-opus-4-6",
+                        "messages": [
+                            {"role": "user", "content": "My key: AKIAIOSFODNN7EXAMPLE"},
+                        ],
+                    },
+                )
+                # Should be forwarded (200), not blocked (400)
+                self.assertEqual(status, 200)
+                self.assertEqual(data["type"], "message")
+
+            return await self._run_with_proxy(proxy, _inner)
+
+        asyncio.run(_test())
+
+    def test_passthrough_to_active_resumes_scanning(self):
+        """Switching from passthrough back to active should resume scanning."""
+        proxy, port = self._create_proxy()
+
+        async def _test():
+            async def _inner():
+                # Start in passthrough — secret goes through
+                proxy.mode = "passthrough"
+                status, _data = await self._post(
+                    port,
+                    {
+                        "model": "claude-opus-4-6",
+                        "messages": [
+                            {"role": "user", "content": "My key: AKIAIOSFODNN7EXAMPLE"},
+                        ],
+                    },
+                )
+                self.assertEqual(status, 200)
+
+                # Switch to active — secret should be blocked
+                proxy.mode = "active"
+                status, _data = await self._post(
+                    port,
+                    {
+                        "model": "claude-opus-4-6",
+                        "messages": [
+                            {"role": "user", "content": "My key: AKIAIOSFODNN7EXAMPLE"},
+                        ],
+                    },
+                )
+                self.assertEqual(status, 400)
+
+            return await self._run_with_proxy(proxy, _inner)
+
+        asyncio.run(_test())
+
     def test_pii_alerted_but_forwarded(self):
         """PII with alert action should forward (not block)."""
         proxy, port = self._create_proxy()

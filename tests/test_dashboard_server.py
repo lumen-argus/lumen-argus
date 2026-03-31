@@ -1002,6 +1002,7 @@ class TestCommunityAPIDirect(unittest.TestCase):
         mock_proxy = MagicMock()
         mock_proxy.port = 9090
         mock_proxy.bind = "127.0.0.1"
+        mock_proxy.mode = "active"
         ext.set_proxy_server(mock_proxy)
 
         status, body = handle_community_api("/api/v1/status", "GET", b"", self.store, extensions=ext)
@@ -1009,6 +1010,25 @@ class TestCommunityAPIDirect(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(data["proxy_port"], 9090)
         self.assertEqual(data["proxy_bind"], "127.0.0.1")
+        self.assertEqual(data["mode"], "active")
+
+    def test_status_includes_mode(self):
+        """Status endpoint should include proxy mode."""
+        from unittest.mock import MagicMock
+
+        from lumen_argus.extensions import ExtensionRegistry
+
+        ext = ExtensionRegistry()
+        mock_proxy = MagicMock()
+        mock_proxy.port = 8080
+        mock_proxy.bind = "127.0.0.1"
+        mock_proxy.mode = "passthrough"
+        ext.set_proxy_server(mock_proxy)
+
+        status, body = handle_community_api("/api/v1/status", "GET", b"", self.store, extensions=ext)
+        data = json.loads(body)
+        self.assertEqual(status, 200)
+        self.assertEqual(data["mode"], "passthrough")
 
     def test_findings_no_store(self):
         status, body = handle_community_api("/api/v1/findings", "GET", b"", None)
@@ -1159,6 +1179,18 @@ class TestConfigOverrides(StoreTestCase):
     def test_bind_override_rejects_hostname(self):
         with self.assertRaises(ValueError):
             self.store.set_config_override("proxy.bind", "my-host.local")
+
+    def test_mode_override_valid_active(self):
+        self.store.set_config_override("proxy.mode", "active")
+        self.assertEqual(self.store.get_config_overrides()["proxy.mode"], "active")
+
+    def test_mode_override_valid_passthrough(self):
+        self.store.set_config_override("proxy.mode", "passthrough")
+        self.assertEqual(self.store.get_config_overrides()["proxy.mode"], "passthrough")
+
+    def test_mode_override_rejects_invalid(self):
+        with self.assertRaises(ValueError):
+            self.store.set_config_override("proxy.mode", "turbo")
 
     def test_put_config_api_success(self):
         body = json.dumps({"proxy.timeout": 60, "default_action": "block"}).encode()

@@ -47,6 +47,7 @@ _VALID_CONFIG_KEYS = {
     "pipeline.parallel_batching",
     "proxy.port",
     "proxy.bind",
+    "proxy.mode",
 }
 
 _VALID_ACTIONS = {"log", "alert", "block"}
@@ -96,6 +97,9 @@ class ConfigOverridesRepository:
                 except ValueError:
                     raise ValueError("bind must be a valid IP address or 'localhost'")
             value = addr
+        elif key == "proxy.mode":
+            if value not in ("active", "passthrough"):
+                raise ValueError("mode must be 'active' or 'passthrough'")
         elif key == "proxy.retries":
             try:
                 v = int(value)

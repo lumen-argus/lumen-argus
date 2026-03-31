@@ -406,6 +406,8 @@ def _handle_config_update(
         log.info("config update [settings]: %s", summary)
         _send_sighup()
         _broadcast_sse(extensions, "config")
+        if "proxy.mode" in applied:
+            _broadcast_sse(extensions, "mode-changed", {"mode": str(applied["proxy.mode"])})
 
     if errors and not applied:
         return _json_response(400, {"error": "; ".join(e["error"] for e in errors)})
@@ -429,6 +431,7 @@ def _handle_status(store: AnalyticsStore | None, extensions: ExtensionRegistry |
         proxy_info = {
             "proxy_port": proxy_server.port,
             "proxy_bind": proxy_server.bind,
+            "mode": getattr(proxy_server, "mode", "active"),
         }
     data = {
         "status": "operational",

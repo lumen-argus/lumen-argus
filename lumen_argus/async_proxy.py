@@ -303,7 +303,10 @@ async def _handle_websocket(request: web.Request, server: "AsyncArgusProxy") -> 
                         if _blocked.is_set():
                             break
                         if msg.type == aiohttp.WSMsgType.TEXT:
-                            findings = server.ws_scanner.scan_outbound_frame(msg.data)
+                            if server.mode != "passthrough":
+                                findings = server.ws_scanner.scan_outbound_frame(msg.data)
+                            else:
+                                findings = []
                             frames_sent += 1
                             fc = len(findings) if findings else 0
                             if fc:
@@ -328,7 +331,10 @@ async def _handle_websocket(request: web.Request, server: "AsyncArgusProxy") -> 
                         if _blocked.is_set():
                             break
                         if msg.type == aiohttp.WSMsgType.TEXT:
-                            findings = server.ws_scanner.scan_inbound_frame(msg.data)
+                            if server.mode != "passthrough":
+                                findings = server.ws_scanner.scan_inbound_frame(msg.data)
+                            else:
+                                findings = []
                             frames_received += 1
                             fc = len(findings) if findings else 0
                             if fc:
@@ -530,8 +536,13 @@ async def _do_forward(
         source_ip = request.remote or ""
         session = _extract_session(req_data, provider, headers_dict, source_ip)
 
+        # Passthrough mode — skip all scanning, forward directly
+        if server.mode == "passthrough":
+            log.debug("#%d passthrough mode — scanning skipped", request_id)
+            scan_result = ScanResult(action="pass", findings=[])
+
         # Scan request body (CPU-bound — run in thread pool)
-        if body and len(body) <= server.max_body_size:
+        elif body and len(body) <= server.max_body_size:
             scan_result = await asyncio.to_thread(
                 server.pipeline.scan,
                 body,
@@ -581,10 +592,10 @@ async def _do_forward(
                 "body too large to scan (%d bytes > %d limit)" % (len(body), server.max_body_size),
             )
 
-        # MCP-aware scanning
+        # MCP-aware scanning (skipped in passthrough)
         _mcp_info = None
         _mcp_method = None
-        if body and server.mcp_scanner:
+        if body and server.mcp_scanner and server.mode != "passthrough":
             from lumen_argus.mcp.scanner import detect_mcp_method, detect_mcp_request
 
             _mcp_method = detect_mcp_method(body)
@@ -805,7 +816,7 @@ async def _do_forward(
                 timeout=aiohttp.ClientTimeout(total=server.timeout),
             ) as upstream_resp:
                 # Determine response scanning strategy
-                _should_scan_response = server.response_scanner is not None
+                _should_scan_response = server.response_scanner is not None and server.mode != "passthrough"
                 _should_accumulate = (
                     _should_scan_response
                     or (_mcp_info is not None and server.mcp_scanner is not None)
@@ -1174,6 +1185,7 @@ class AsyncArgusProxy:
         self.mcp_scanner: Any = None
         self.ws_scanner: Any = None  # WebSocketScanner, set by cli.py
         self.ws_allowed_origins: list[str] = []  # set by cli.py
+        self.mode: str = "active"  # "active" or "passthrough"
         self.client_session: aiohttp.ClientSession | None = None
         self._app: web.Application | None = None
         self._runner: web.AppRunner | None = None

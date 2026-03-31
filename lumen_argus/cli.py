@@ -887,6 +887,12 @@ def _do_reload(
                         new_config.pii.enabled = value.lower() == "true"
                     elif key == "detectors.proprietary.enabled":
                         new_config.proprietary.enabled = value.lower() == "true"
+                    elif key == "proxy.mode":
+                        if value in ("active", "passthrough"):
+                            old_mode = server.mode
+                            server.mode = value
+                            if old_mode != value:
+                                log.info("proxy mode changed: %s -> %s", old_mode, value)
                     elif key == "pipeline.parallel_batching":
                         new_config.pipeline.parallel_batching = value.lower() == "true"
                     elif key.startswith("pipeline.stages."):
