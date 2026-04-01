@@ -309,6 +309,11 @@ def main(argv: list[str] | None = None) -> None:
         help="Skip auto-import of community rules on first run",
     )
     serve_parser.add_argument(
+        "--no-standalone",
+        action="store_true",
+        help="Mark as managed by tray app (default: standalone)",
+    )
+    serve_parser.add_argument(
         "--engine-port",
         type=int,
         default=None,
@@ -349,6 +354,11 @@ def main(argv: list[str] | None = None) -> None:
         "--log-level", type=str, default="warning", choices=["debug", "info", "warning", "error"], help="Log level"
     )
     engine_parser.add_argument("--no-default-rules", action="store_true", help="Skip auto-import of community rules")
+    engine_parser.add_argument(
+        "--no-standalone",
+        action="store_true",
+        help="Mark as managed by tray app (default: standalone)",
+    )
 
     # --- "scan" command ---
     scan_parser = subparsers.add_parser("scan", help="Scan files or stdin for secrets/PII (pre-commit hook)")
@@ -720,6 +730,8 @@ def main(argv: list[str] | None = None) -> None:
             ssl_context=ssl_context,
             max_connections=config.proxy.max_connections,
         )
+        standalone = not getattr(args, "no_standalone", False) and config.proxy.standalone
+        server.standalone = standalone
         extensions.set_proxy_server(server)
         server.extensions = extensions
         server.response_scanner = response_scanner

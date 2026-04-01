@@ -74,8 +74,8 @@ Only install plugins from trusted sources.
 
 - **AnalyticsStore**: Thread-local SQLite connections, WAL mode, write serialization via `threading.Lock`
 - **AuditReader**: Cache protected by `threading.Lock` for concurrent dashboard requests
-- **SSEBroadcaster**: Client list protected by lock; broadcast snapshots list before I/O
-- **DashboardServer**: `ThreadingHTTPServer` with daemon threads; session storage lock-protected
+- **SSEBroadcaster**: Async queue-based; `broadcast()` uses `put_nowait()` (thread-safe, callable from `asyncio.to_thread` context); defensive list copy before iteration
+- **AsyncDashboardServer**: `aiohttp.web` in proxy's event loop; session storage accessed from single event loop (no lock needed); community API handlers offloaded via `asyncio.to_thread()`
 
 ## Data Security
 

@@ -39,6 +39,7 @@ class ProxyConfig:
     drain_timeout: int = 30  # seconds to wait for in-flight requests on shutdown
     ca_bundle: str = ""  # path to custom CA cert file/directory
     verify_ssl: bool = True  # set False for dev/testing only
+    standalone: bool = True  # False when managed by tray app (--no-standalone)
 
 
 @dataclass
@@ -882,6 +883,8 @@ def _apply_config(config: Config, data: dict[str, Any]) -> None:
             config.proxy.ca_bundle = str(proxy["ca_bundle"])
         if "verify_ssl" in proxy:
             config.proxy.verify_ssl = bool(proxy["verify_ssl"])
+        if "standalone" in proxy:
+            config.proxy.standalone = bool(proxy["standalone"])
         upstream = proxy.get("upstream", {})
         if isinstance(upstream, dict):
             config.upstreams.update(upstream)

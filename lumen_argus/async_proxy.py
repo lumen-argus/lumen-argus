@@ -1228,6 +1228,7 @@ class AsyncArgusProxy:
         self.ready: bool = False  # set True after pipeline is fully loaded
         self.ws_allowed_origins: list[str] = []  # set by cli.py
         self.mode: str = "active"  # "active" or "passthrough"
+        self.standalone: bool = True  # False when managed by tray app
         self.client_session: aiohttp.ClientSession | None = None
         self._app: web.Application | None = None
         self._runner: web.AppRunner | None = None

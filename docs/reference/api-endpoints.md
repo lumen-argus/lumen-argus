@@ -209,7 +209,7 @@ The dashboard runs on a separate port (default `8081`) and provides a REST API f
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/v1/status` | GET | Health, uptime, version, tier, proxy port/bind |
+| `/api/v1/status` | GET | Health, uptime, version, tier, proxy port/bind, standalone |
 | `/api/v1/findings` | GET | Paginated findings with severity/detector/provider/session/account filters |
 | `/api/v1/sessions` | GET | Sessions grouped by session_id with finding counts and metadata |
 | `/api/v1/findings/:id` | GET | Single finding detail |

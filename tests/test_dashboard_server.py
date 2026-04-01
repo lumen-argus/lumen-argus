@@ -1011,6 +1011,7 @@ class TestCommunityAPIDirect(unittest.TestCase):
         mock_proxy.port = 9090
         mock_proxy.bind = "127.0.0.1"
         mock_proxy.mode = "active"
+        mock_proxy.standalone = True
         ext.set_proxy_server(mock_proxy)
 
         status, body = handle_community_api("/api/v1/status", "GET", b"", self.store, extensions=ext)
@@ -1019,6 +1020,7 @@ class TestCommunityAPIDirect(unittest.TestCase):
         self.assertEqual(data["proxy_port"], 9090)
         self.assertEqual(data["proxy_bind"], "127.0.0.1")
         self.assertEqual(data["mode"], "active")
+        self.assertTrue(data["standalone"])
 
     def test_status_includes_mode(self):
         """Status endpoint should include proxy mode."""
@@ -1031,6 +1033,7 @@ class TestCommunityAPIDirect(unittest.TestCase):
         mock_proxy.port = 8080
         mock_proxy.bind = "127.0.0.1"
         mock_proxy.mode = "passthrough"
+        mock_proxy.standalone = False
         ext.set_proxy_server(mock_proxy)
 
         status, body = handle_community_api("/api/v1/status", "GET", b"", self.store, extensions=ext)

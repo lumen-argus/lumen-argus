@@ -33,6 +33,7 @@ Network and connection settings for the proxy server.
 | `proxy.drain_timeout` | `int` | `30` | Seconds to wait for in-flight requests to complete during shutdown. Range: 0--300. |
 | `proxy.ca_bundle` | `str` | `""` | Path to a custom CA certificate file or directory. Use this behind corporate proxies. Empty string uses system defaults. |
 | `proxy.verify_ssl` | `bool` | `true` | Verify upstream TLS certificates. Set to `false` only for development/testing. |
+| `proxy.standalone` | `bool` | `true` | Whether the proxy is running standalone. Set to `false` when managed by tray app. Also settable via `--no-standalone` CLI flag. Exposed in `/api/v1/status`. |
 
 ```yaml title="Example"
 proxy:
@@ -45,6 +46,7 @@ proxy:
   drain_timeout: 30
   ca_bundle: ""
   verify_ssl: true
+  standalone: true
 ```
 
 !!! danger "Do not disable SSL verification in production"
@@ -462,6 +464,7 @@ proxy:
   drain_timeout: 30
   ca_bundle: ""
   verify_ssl: true
+  standalone: true
 
 default_action: alert
 

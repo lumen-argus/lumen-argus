@@ -432,6 +432,7 @@ def _handle_status(store: AnalyticsStore | None, extensions: ExtensionRegistry |
             "proxy_port": proxy_server.port,
             "proxy_bind": proxy_server.bind,
             "mode": getattr(proxy_server, "mode", "active"),
+            "standalone": getattr(proxy_server, "standalone", True),
         }
     data = {
         "status": "operational",
