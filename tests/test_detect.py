@@ -678,7 +678,9 @@ class TestCIEnvironmentDetection(unittest.TestCase):
         self.assertEqual(result.details["repository"], "org/repo")
 
     def test_gitlab_ci(self):
-        with patch.dict(os.environ, {"GITLAB_CI": "true", "CI_PROJECT_NAME": "myproject"}, clear=False):
+        clean_env = {k: v for k, v in os.environ.items() if k != "GITHUB_ACTIONS"}
+        clean_env.update({"GITLAB_CI": "true", "CI_PROJECT_NAME": "myproject"})
+        with patch.dict(os.environ, clean_env, clear=True):
             result = detect_ci_environment()
         self.assertIsNotNone(result)
         self.assertEqual(result.env_id, "gitlab_ci")
