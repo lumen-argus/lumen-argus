@@ -449,6 +449,37 @@ engine:
 
 ---
 
+## `enrollment`
+
+Enterprise agent deployment configuration. Served to agents via `GET /api/v1/enrollment/config` (Pro).
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `enrollment.organization` | `str` | `""` | Organization name displayed in tray app ("Protected by Acme Corp"). |
+| `enrollment.proxy_url` | `str` | `""` | Proxy URL that agents configure AI tools to use. Empty = derived from `proxy.bind:proxy.port`. |
+| `enrollment.dashboard_url` | `str` | `""` | Dashboard URL for agent poller/SSE. Empty = derived from `dashboard.bind:dashboard.port`. |
+| `enrollment.ca_cert` | `str` | `""` | PEM content or path to CA certificate for TLS inspection proxies. |
+| `enrollment.policy.fail_mode` | `str` | `open` | What happens when proxy is unreachable: `open` (direct to upstream) or `closed` (block). |
+| `enrollment.policy.auto_configure` | `bool` | `true` | Force-configure all detected AI tools (no per-tool opt-out). |
+| `enrollment.policy.allow_disable_protection` | `bool` | `true` | Whether developers can toggle protection off. |
+| `enrollment.policy.telemetry_interval_seconds` | `int` | `300` | How often agents send heartbeats (minimum 60). |
+| `enrollment.policy.watch_interval_seconds` | `int` | `300` | How often agents scan for new tools (minimum 60). |
+
+```yaml title="Example (K8s ConfigMap)"
+enrollment:
+  organization: "Acme Corp"
+  proxy_url: "https://argus.corp.io:8080"
+  dashboard_url: "https://argus.corp.io:8081"
+  policy:
+    fail_mode: closed
+    auto_configure: true
+    allow_disable_protection: false
+    telemetry_interval_seconds: 300
+    watch_interval_seconds: 300
+```
+
+---
+
 ## Full config example
 
 ```yaml

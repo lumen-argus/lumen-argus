@@ -231,6 +231,28 @@ class EngineConfig:
 
 
 @dataclass
+class EnrollmentPolicyConfig:
+    """Policy settings pushed to enrolled agents."""
+
+    fail_mode: str = "open"  # "open" or "closed"
+    auto_configure: bool = True
+    allow_disable_protection: bool = True
+    telemetry_interval_seconds: int = 300
+    watch_interval_seconds: int = 300
+
+
+@dataclass
+class EnrollmentConfig:
+    """Enrollment configuration for enterprise agent deployment."""
+
+    organization: str = ""
+    proxy_url: str = ""  # empty = derived from proxy.bind:proxy.port
+    dashboard_url: str = ""  # empty = derived from dashboard.bind:dashboard.port
+    ca_cert: str = ""  # PEM content or path to CA cert file
+    policy: EnrollmentPolicyConfig = field(default_factory=EnrollmentPolicyConfig)
+
+
+@dataclass
 class Config:
     proxy: ProxyConfig = field(default_factory=ProxyConfig)
     default_action: str = "alert"
@@ -253,6 +275,7 @@ class Config:
     websocket: WebSocketConfig = field(default_factory=WebSocketConfig)
     relay: RelayConfig = field(default_factory=RelayConfig)
     engine: EngineConfig = field(default_factory=EngineConfig)
+    enrollment: EnrollmentConfig = field(default_factory=EnrollmentConfig)
     notifications: list[dict[str, Any]] = field(default_factory=list)
 
 
@@ -277,6 +300,7 @@ _KNOWN_TOP_KEYS = {
     "pipeline",
     "mcp",
     "websocket",
+    "enrollment",
     # Pro/Enterprise extension keys
     "license_key",
     "redaction",
@@ -1143,6 +1167,41 @@ def _apply_config(config: Config, data: dict[str, Any]) -> None:
                 log.warning("engine.port %d out of range (1-65535), using default", p)
             else:
                 config.engine.port = p
+
+    # Enrollment config (enterprise agent deployment)
+    enrollment_data = data.get("enrollment", {})
+    if isinstance(enrollment_data, dict) and enrollment_data:
+        log.info(
+            "enrollment config loaded: organization=%s, proxy_url=%s",
+            enrollment_data.get("organization", ""),
+            enrollment_data.get("proxy_url", ""),
+        )
+        if "organization" in enrollment_data:
+            config.enrollment.organization = str(enrollment_data["organization"])
+        if "proxy_url" in enrollment_data:
+            config.enrollment.proxy_url = str(enrollment_data["proxy_url"])
+        if "dashboard_url" in enrollment_data:
+            config.enrollment.dashboard_url = str(enrollment_data["dashboard_url"])
+        if "ca_cert" in enrollment_data:
+            config.enrollment.ca_cert = str(enrollment_data["ca_cert"])
+        policy_data = enrollment_data.get("policy", {})
+        if isinstance(policy_data, dict):
+            if "fail_mode" in policy_data:
+                fm = str(policy_data["fail_mode"])
+                if fm in ("open", "closed"):
+                    config.enrollment.policy.fail_mode = fm
+                else:
+                    log.warning("enrollment.policy.fail_mode '%s' invalid, using default", fm)
+            if "auto_configure" in policy_data:
+                config.enrollment.policy.auto_configure = bool(policy_data["auto_configure"])
+            if "allow_disable_protection" in policy_data:
+                config.enrollment.policy.allow_disable_protection = bool(policy_data["allow_disable_protection"])
+            if "telemetry_interval_seconds" in policy_data:
+                config.enrollment.policy.telemetry_interval_seconds = max(
+                    60, int(policy_data["telemetry_interval_seconds"])
+                )
+            if "watch_interval_seconds" in policy_data:
+                config.enrollment.policy.watch_interval_seconds = max(60, int(policy_data["watch_interval_seconds"]))
 
     # Notifications (optional — reconciled to DB on startup)
     notifications = data.get("notifications", [])
