@@ -199,7 +199,7 @@ def load_enrollment() -> dict[str, Any] | None:
         with open(_ENROLLMENT_FILE, encoding="utf-8") as f:
             state: dict[str, Any] = json.load(f)
             return state
-    except (FileNotFoundError, json.JSONDecodeError):
+    except (FileNotFoundError, PermissionError, json.JSONDecodeError):
         return None
 
 
