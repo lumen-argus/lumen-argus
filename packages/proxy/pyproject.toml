@@ -48,3 +48,6 @@ include = ["lumen_argus*"]
 "lumen_argus" = ["py.typed"]
 "lumen_argus.dashboard" = ["static/**/*"]
 "lumen_argus.rules" = ["*.json"]
+
+[tool.uv.sources]
+lumen-argus-core = { workspace = true }

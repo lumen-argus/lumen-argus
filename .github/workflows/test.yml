@@ -16,6 +16,24 @@ permissions:
   contents: read
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      core: ${{ steps.filter.outputs.core }}
+      proxy: ${{ steps.filter.outputs.proxy }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3
+        id: filter
+        with:
+          filters: |
+            core:
+              - 'packages/core/**'
+            proxy:
+              - 'packages/proxy/**'
+              - 'packages/core/**'
+              - 'tests/**'
+
   lint:
     runs-on: ubuntu-latest
     steps:
@@ -25,42 +43,52 @@ jobs:
         with:
           args: "format --check"
 
-  test:
+  test-core:
+    needs: changes
+    if: needs.changes.outputs.core == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
         python-version: ["3.11", "3.12", "3.13"]
-
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
+      - name: Install uv
+        uses: astral-sh/setup-uv@6b9c6063abd6010835c3c7f4a7d2c2bef6ef3eb6 # v5
+
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
-        with:
-          python-version: ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
 
-      - name: Install dependencies
-        run: |
-          pip install -e packages/core/
-          pip install -e packages/proxy/
+      - name: Run core tests
+        run: uv run --python ${{ matrix.python-version }} --package lumen-argus-core python -m unittest discover -v packages/core/tests/
 
-      - name: Run tests
-        run: |
-          python -m unittest discover -v packages/core/tests/
-          python -m unittest discover -v tests/
+  test-proxy:
+    needs: changes
+    if: needs.changes.outputs.proxy == 'true'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@6b9c6063abd6010835c3c7f4a7d2c2bef6ef3eb6 # v5
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Run proxy tests
+        run: uv run --python ${{ matrix.python-version }} --package lumen-argus python -m unittest discover -v tests/
 
       - name: Verify CLI
         run: |
-          lumen-argus --version
-          lumen-argus --help
-
-      - name: Audit dependencies
-        run: |
-          pip freeze --exclude pip --exclude setuptools --exclude lumen-argus > /tmp/audit-reqs.txt
-          pip install pip-audit
-          pip-audit -r /tmp/audit-reqs.txt
+          uv run --package lumen-argus lumen-argus --version
+          uv run --package lumen-argus lumen-argus --help
 
   benchmark:
     if: github.event_name == 'push'
@@ -68,18 +96,11 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
-      - name: Set up Python
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
-        with:
-          python-version: "3.12"
-
-      - name: Install dependencies
-        run: |
-          pip install -e packages/core/
-          pip install -e packages/proxy/
+      - name: Install uv
+        uses: astral-sh/setup-uv@6b9c6063abd6010835c3c7f4a7d2c2bef6ef3eb6 # v5
 
       - name: Run benchmark (smoke test)
-        run: python benchmark.py -n 10 -p medium
+        run: uv run --package lumen-argus python benchmark.py -n 10 -p medium
 
   docker:
     if: github.event_name == 'push'

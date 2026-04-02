@@ -4,14 +4,17 @@ FROM python:3.12-slim AS builder
 WORKDIR /build
 
 # Install build tools + deps first (cached unless pyproject.toml changes)
-COPY pyproject.toml README.md ./
-RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev git \
+COPY packages/core/pyproject.toml packages/core/pyproject.toml
+COPY packages/proxy/pyproject.toml packages/proxy/pyproject.toml
+RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev git libre2-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy source and install (only re-runs on code changes, gcc is cached)
-COPY lumen_argus/ lumen_argus/
-RUN pip install --no-cache-dir --prefix=/install . \
-    && pip install --no-cache-dir --prefix=/install git+https://github.com/lumen-argus/crossfire.git
+COPY packages/core/lumen_argus_core/ packages/core/lumen_argus_core/
+COPY packages/proxy/lumen_argus/ packages/proxy/lumen_argus/
+RUN pip install --no-cache-dir --prefix=/install packages/core/ \
+    && pip install --no-cache-dir --prefix=/install packages/proxy/ \
+    && pip install --no-cache-dir --prefix=/install "crossfire-rules[re2] @ git+https://github.com/lumen-argus/crossfire.git"
 
 # ---- runtime stage ----
 FROM python:3.12-slim
@@ -21,6 +24,10 @@ LABEL org.opencontainers.image.title="lumen-argus" \
       org.opencontainers.image.url="https://github.com/lumen-argus/lumen-argus" \
       org.opencontainers.image.source="https://github.com/lumen-argus/lumen-argus" \
       org.opencontainers.image.licenses="MIT"
+
+# RE2 shared library needed at runtime by google-re2
+RUN apt-get update && apt-get install -y --no-install-recommends libre2-11 \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy only installed packages from builder — no pip, setuptools, or source
 COPY --from=builder /install /usr/local

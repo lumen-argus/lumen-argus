@@ -1,0 +1,81 @@
+name: publish
+
+on:
+  push:
+    tags: ["v*"]
+
+# Minimal permissions + id-token for trusted publisher
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        package:
+          - name: lumen-argus-core
+            path: packages/core
+          - name: lumen-argus
+            path: packages/proxy
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@6b9c6063abd6010835c3c7f4a7d2c2bef6ef3eb6 # v5
+
+      - name: Build
+        env:
+          PACKAGE_NAME: ${{ matrix.package.name }}
+        run: uv build --package "$PACKAGE_NAME"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.package.name }}
+          path: dist/
+
+  publish-testpypi:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: testpypi
+    strategy:
+      matrix:
+        package: [lumen-argus-core, lumen-argus]
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-${{ matrix.package }}
+          path: dist/
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@6b9c6063abd6010835c3c7f4a7d2c2bef6ef3eb6 # v5
+
+      - name: Publish to TestPyPI
+        run: uv publish --index-url https://test.pypi.org/simple/ dist/*
+        env:
+          UV_PUBLISH_TOKEN: ${{ secrets.TEST_PYPI_TOKEN }}
+
+  publish-pypi:
+    needs: [build, publish-testpypi]
+    runs-on: ubuntu-latest
+    environment: pypi
+    strategy:
+      matrix:
+        package: [lumen-argus-core, lumen-argus]
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-${{ matrix.package }}
+          path: dist/
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@6b9c6063abd6010835c3c7f4a7d2c2bef6ef3eb6 # v5
+
+      - name: Publish to PyPI
+        run: uv publish dist/*
+        env:
+          UV_PUBLISH_TOKEN: ${{ secrets.PYPI_TOKEN }}
