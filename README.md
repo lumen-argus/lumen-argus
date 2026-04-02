@@ -59,7 +59,7 @@ lumen-argus sits between your AI tool and the provider, scanning every outbound 
 **Requirements:** Python 3.11+
 
 ```bash
-pip install lumen-argus
+pip install lumen-argus-proxy
 lumen-argus serve
 ```
 
@@ -264,7 +264,7 @@ Every proxied request is enriched with session context — no configuration need
 | `client_name` | Client registry (User-Agent matching) | WHICH tool? (normalized ID, e.g., "cursor") |
 | `client_version` | User-Agent header | WHICH version? (e.g., "0.45.1") |
 
-16 AI CLI agents auto-detected via client registry (`lumen-argus clients` to list). Dashboard findings filterable by client, session, and account.
+27 AI CLI agents auto-detected via client registry (`lumen-argus clients` to list). Dashboard findings filterable by client, session, and account.
 
 ## Cross-Request Dedup
 
@@ -479,6 +479,42 @@ Highest-severity action wins: `block > redact > alert > log`.
 | `--format json` | JSONL | Structured output for log aggregation |
 
 Pro adds OpenTelemetry tracing across the full request lifecycle — detector, redaction, and notification spans nest under a root `proxy.request` span.
+
+## Packages
+
+Three PyPI packages from one monorepo:
+
+| Package | What | Size | Dependencies |
+|---------|------|------|-------------|
+| `lumen-argus-core` | Client registry, detection engine, setup wizard | 27KB | Zero (stdlib only) |
+| `lumen-argus-agent` | Lightweight workstation agent CLI | 5KB | `lumen-argus-core` |
+| `lumen-argus-proxy` | Full proxy server with dashboard | 245KB | `lumen-argus-core` + aiohttp + pyyaml |
+
+```bash
+# Individual developer — full proxy
+pip install lumen-argus-proxy
+
+# Enterprise workstation — lightweight agent only
+pip install lumen-argus-agent
+lumen-argus-agent detect --audit --proxy-url https://argus.corp.io
+lumen-argus-agent setup --proxy-url https://argus.corp.io --non-interactive
+```
+
+### Enterprise Deployment
+
+Central proxy on K8s, lightweight agent on developer machines:
+
+```bash
+# Developer machines (via Ansible/MDM)
+pip install lumen-argus-agent
+lumen-argus-agent enroll --server https://argus.corp.io --non-interactive
+# → auto-configures all AI tools, enables protection, installs watch daemon
+
+# Or use the desktop tray app (macOS) — bundles both sidecars
+# Local mode: full proxy | Dedicated mode: agent only (8MB vs 12MB binary)
+```
+
+Agent commands: `detect`, `setup`, `watch`, `protection`, `clients`, `enroll`, `heartbeat`.
 
 ## Docker
 

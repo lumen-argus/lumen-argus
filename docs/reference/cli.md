@@ -388,6 +388,56 @@ lumen-argus clients [--json]
 
 ---
 
+## `lumen-argus-agent`
+
+Lightweight workstation agent — available as a separate package (`pip install lumen-argus-agent`).
+
+Supports a subset of commands: `detect`, `setup`, `watch`, `protection`, `clients`, `enroll`, `heartbeat`.
+
+```bash
+lumen-argus-agent [--version] [--help] <command> [<args>]
+```
+
+### `enroll`
+
+Enroll this machine with a central lumen-argus proxy (enterprise deployment).
+
+```bash
+lumen-argus-agent enroll [OPTIONS]
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--server` | `str` | | Central proxy server URL |
+| `--token` | `str` | | Enrollment token |
+| `--non-interactive` | `bool` | `false` | No prompts |
+| `--undo` | `bool` | `false` | Unenroll and remove all configuration |
+
+```bash
+# Interactive enrollment
+lumen-argus-agent enroll --server https://argus.corp.io
+
+# Non-interactive (Ansible/MDM)
+lumen-argus-agent enroll --server https://argus.corp.io --token enroll_abc123 --non-interactive
+
+# Unenroll
+lumen-argus-agent enroll --undo
+```
+
+Enrollment fetches configuration from the proxy, registers the agent, configures all detected AI tools, enables protection, and installs the watch daemon. State saved to `~/.lumen-argus/enrollment.json`.
+
+### `heartbeat`
+
+Send a single heartbeat to the central proxy with current tool status.
+
+```bash
+lumen-argus-agent heartbeat
+```
+
+Reports: agent version, installed tools, proxy configuration status, protection state, watch daemon status. Used by the tray app and cron jobs for fleet monitoring.
+
+---
+
 ## Configuration precedence
 
 CLI flags override values from the config file. The full precedence order (highest to lowest):
