@@ -15,8 +15,6 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
-from lumen_argus_core.time_utils import now_iso
-
 from lumen_argus.analytics.allowlists import _ALLOWLIST_SCHEMA, AllowlistRepository
 from lumen_argus.analytics.channels import _NOTIFICATION_SCHEMA, ChannelsRepository
 from lumen_argus.analytics.config_overrides import _CONFIG_OVERRIDES_SCHEMA, ConfigOverridesRepository
@@ -26,6 +24,7 @@ from lumen_argus.analytics.rule_analysis_repo import _RULE_ANALYSIS_SCHEMA, Rule
 from lumen_argus.analytics.rules import _RULES_SCHEMA, RulesRepository
 from lumen_argus.analytics.ws_connections import _WS_CONNECTIONS_SCHEMA, WebSocketConnectionsRepository
 from lumen_argus.models import Finding, SessionContext
+from lumen_argus_core.time_utils import now_iso
 
 log = logging.getLogger("argus.analytics")
 

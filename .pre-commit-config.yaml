@@ -11,7 +11,7 @@ repos:
       - id: check-merge-conflict
       - id: debug-statements
       - id: detect-private-key
-        exclude: ^(tests/|benchmark\.py|docs/|lumen_argus/patterns/|lumen_argus/rules/)
+        exclude: ^(tests/|benchmark\.py|docs/|packages/proxy/lumen_argus/patterns/|packages/proxy/lumen_argus/rules/)
       - id: check-added-large-files
         args: ['--maxkb=500']
 

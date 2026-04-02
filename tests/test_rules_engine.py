@@ -103,9 +103,10 @@ class TestRulesImportExport(StoreTestCase):
         self.assertEqual(community_only[0]["name"], "comm")
 
     def test_community_bundle_loads(self):
+        import lumen_argus
+
         bundle_path = os.path.join(
-            os.path.dirname(os.path.dirname(__file__)),
-            "lumen_argus",
+            os.path.dirname(lumen_argus.__file__),
             "rules",
             "community.json",
         )
@@ -338,9 +339,10 @@ class TestRulesDetector(StoreTestCase):
 
     def test_community_bundle_scans(self):
         """Import real community bundle and verify it detects known secrets."""
+        import lumen_argus
+
         bundle_path = os.path.join(
-            os.path.dirname(os.path.dirname(__file__)),
-            "lumen_argus",
+            os.path.dirname(lumen_argus.__file__),
             "rules",
             "community.json",
         )

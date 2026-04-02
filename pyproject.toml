@@ -3,53 +3,14 @@ requires = ["setuptools>=64"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "lumen-argus"
-version = "0.1.0"
-description = "AI coding tool DLP proxy — scan outbound requests for secrets, PII, and proprietary data"
-readme = "README.md"
-license = "MIT"
+name = "lumen-argus-workspace"
+version = "0.0.0"
+description = "lumen-argus monorepo workspace"
 requires-python = ">=3.11"
-authors = [
-    {name = "lumen-argus contributors"},
-]
-keywords = ["dlp", "proxy", "ai", "security", "secrets", "pii"]
-classifiers = [
-    "Development Status :: 3 - Alpha",
-    "Environment :: Console",
-    "Intended Audience :: Developers",
-    "Operating System :: OS Independent",
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
-    "Programming Language :: Python :: 3.13",
-    "Topic :: Security",
-    "Topic :: Software Development :: Quality Assurance",
-]
-
-dependencies = [
-    "pyyaml>=6.0.1",
-    "aiohttp>=3.9",
-    "pyahocorasick>=2.0",
-]
 
 [project.optional-dependencies]
 dev = ["mypy>=1.10", "types-PyYAML>=6.0", "pre-commit>=3.7"]
 docs = ["mkdocs>=1.5", "mkdocs-material>=9.0"]
-rules-analysis = ["crossfire>=0.1.0"]
-
-[project.scripts]
-lumen-argus = "lumen_argus.cli:main"
-
-[project.urls]
-Homepage = "https://github.com/lumen-argus/lumen-argus"
-
-[tool.setuptools.packages.find]
-include = ["lumen_argus*"]
-
-[tool.setuptools.package-data]
-"lumen_argus" = ["py.typed"]
-"lumen_argus.dashboard" = ["static/**/*"]
-"lumen_argus.rules" = ["*.json"]
 
 [tool.ruff]
 target-version = "py311"
@@ -64,13 +25,14 @@ ignore = ["PERF203"]
 "__init__.py" = ["F401"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["lumen_argus"]
+known-first-party = ["lumen_argus", "lumen_argus_core"]
 
 [tool.mypy]
 strict = true
 python_version = "3.11"
 warn_return_any = true
 warn_unused_configs = true
+mypy_path = "packages/core"
 
 [[tool.mypy.overrides]]
 module = [
