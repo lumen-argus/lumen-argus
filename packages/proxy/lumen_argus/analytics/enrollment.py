@@ -152,6 +152,41 @@ class EnrollmentRepository:
                     ).fetchone()
                 return row[0] if row else 0
 
+    def list_and_count(
+        self,
+        status: str = "",
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[list[dict[str, Any]], int]:
+        """List agents and count total in a single lock acquisition.
+
+        Prevents race conditions where an agent registers between
+        separate list_agents() and count_agents() calls.
+        """
+        with self._store._lock:
+            with self._store._connect() as conn:
+                conn.row_factory = _dict_factory
+                if status:
+                    rows = conn.execute(
+                        "SELECT * FROM enrollment_agents WHERE status = ? ORDER BY enrolled_at DESC LIMIT ? OFFSET ?",
+                        (status, limit, offset),
+                    ).fetchall()
+                    count_row = conn.execute(
+                        "SELECT COUNT(*) AS total FROM enrollment_agents WHERE status = ?",
+                        (status,),
+                    ).fetchone()
+                else:
+                    rows = conn.execute(
+                        "SELECT * FROM enrollment_agents WHERE status != 'deregistered' "
+                        "ORDER BY enrolled_at DESC LIMIT ? OFFSET ?",
+                        (limit, offset),
+                    ).fetchall()
+                    count_row = conn.execute(
+                        "SELECT COUNT(*) AS total FROM enrollment_agents WHERE status != 'deregistered'",
+                    ).fetchone()
+                total = count_row["total"] if count_row else 0
+                return rows, total
+
     def mark_stale(self, stale_before: str) -> int:
         """Mark agents as stale if last heartbeat is before the given timestamp.
 
