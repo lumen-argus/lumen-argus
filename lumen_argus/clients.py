@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import enum
 import logging
+import re
 from dataclasses import asdict, dataclass
 from typing import Any
 
@@ -88,7 +89,7 @@ class ClientDef:
 
 
 # ---------------------------------------------------------------------------
-# Built-in registry — 17 supported AI CLI agents
+# Built-in registry — 27 supported AI CLI agents
 # Ordered by specificity (longer/more-specific prefixes first)
 # ---------------------------------------------------------------------------
 
@@ -193,6 +194,24 @@ CLIENT_REGISTRY: list[ClientDef] = [
         detect_binary=("opencode",),
         detect_npm="opencode",
         version_command=("opencode", "--version"),
+    ),
+    ClientDef(
+        id="gemini_cli",
+        display_name="Gemini CLI",
+        category="cli",
+        provider="gemini",
+        ua_prefixes=("geminicli/", "gemini-cli/"),
+        proxy_config=ProxyConfig(
+            config_type=ProxyConfigType.ENV_VAR,
+            env_var="GEMINI_BASE_URL",
+            setup_cmd="GEMINI_BASE_URL=http://localhost:8080 gemini",
+            setup_instructions="Set GEMINI_BASE_URL to the proxy URL.",
+        ),
+        website="https://github.com/google-gemini/gemini-cli",
+        detect_binary=("gemini",),
+        detect_npm="@google/gemini-cli",
+        detect_brew="gemini-cli",
+        version_command=("gemini", "--version"),
     ),
     # -- IDE tools (various mechanisms) -------------------------------------
     ClientDef(
@@ -304,6 +323,53 @@ CLIENT_REGISTRY: list[ClientDef] = [
         detect_binary=("aide",),
         detect_app_name="Aide.app",
     ),
+    ClientDef(
+        id="droid",
+        display_name="Droid",
+        category="cli",
+        provider="multi",
+        ua_prefixes=("droid/", "factory/"),
+        proxy_config=ProxyConfig(
+            config_type=ProxyConfigType.MANUAL,
+            setup_instructions=('Set "base_url" in ~/.factory/settings.json under the provider config (BYOK mode).'),
+        ),
+        website="https://factory.ai",
+        detect_binary=("droid",),
+        detect_npm="@factory/cli",
+        detect_vscode_ext="Factory.factory-vscode-extension",
+    ),
+    ClientDef(
+        id="codebuddy",
+        display_name="CodeBuddy",
+        category="cli",
+        provider="multi",
+        ua_prefixes=("codebuddy/",),
+        proxy_config=ProxyConfig(
+            config_type=ProxyConfigType.MANUAL,
+            setup_instructions=("Add a custom model in models.json with base_url pointing to the proxy URL."),
+        ),
+        website="https://www.codebuddy.ai",
+        detect_binary=("codebuddy",),
+        detect_npm="@tencent-ai/codebuddy-code",
+        detect_vscode_ext="Tencent-Cloud.coding-copilot",
+        detect_jetbrains_plugin="tencent-cloud-codebuddy",
+    ),
+    ClientDef(
+        id="kilo_code",
+        display_name="Kilo Code",
+        category="ide",
+        provider="multi",
+        ua_prefixes=("kilo-code/", "kilo/"),
+        proxy_config=ProxyConfig(
+            config_type=ProxyConfigType.MANUAL,
+            setup_instructions=(
+                "Open Kilo Code settings > add OpenAI-compatible provider > set Base URL to the proxy URL."
+            ),
+        ),
+        website="https://kilo.ai",
+        detect_npm="@kilocode/cli",
+        detect_vscode_ext="kilocode.Kilo-Code",
+    ),
     # -- IDE tools (unsupported — proprietary backends) ---------------------
     ClientDef(
         id="windsurf",
@@ -370,11 +436,94 @@ CLIENT_REGISTRY: list[ClientDef] = [
         proxy_config=ProxyConfig(
             config_type=ProxyConfigType.UNSUPPORTED,
             setup_instructions=(
-                "Gemini Code Assist VS Code extension has no base URL override. Gemini CLI uses GOOGLE_GEMINI_BASE_URL."
+                "Gemini Code Assist VS Code extension has no base URL override. Use Gemini CLI with GEMINI_BASE_URL."
             ),
         ),
         website="https://cloud.google.com/gemini/docs/codeassist",
         detect_vscode_ext="google.gemini-code-assist",
+    ),
+    ClientDef(
+        id="antigravity",
+        display_name="Antigravity",
+        category="ide",
+        provider="multi",
+        ua_prefixes=("antigravity/",),
+        proxy_config=ProxyConfig(
+            config_type=ProxyConfigType.UNSUPPORTED,
+            setup_instructions="Antigravity routes through Google's proprietary backend. No reverse proxy support.",
+        ),
+        website="https://antigravity.google",
+        detect_binary=("antigravity",),
+        detect_app_name="Antigravity.app",
+    ),
+    ClientDef(
+        id="kiro",
+        display_name="Kiro",
+        category="ide",
+        provider="multi",
+        ua_prefixes=("kiro/",),
+        proxy_config=ProxyConfig(
+            config_type=ProxyConfigType.UNSUPPORTED,
+            setup_instructions="Kiro IDE uses AWS proprietary backend. No custom base URL support.",
+        ),
+        website="https://kiro.dev",
+        detect_binary=("kiro",),
+        detect_app_name="Kiro.app",
+    ),
+    ClientDef(
+        id="kiro_cli",
+        display_name="Kiro CLI",
+        category="cli",
+        provider="multi",
+        ua_prefixes=("kiro-cli/",),
+        proxy_config=ProxyConfig(
+            config_type=ProxyConfigType.UNSUPPORTED,
+            setup_instructions="Kiro CLI uses AWS proprietary backend. No custom base URL support.",
+        ),
+        website="https://kiro.dev/cli/",
+        detect_binary=("kiro-cli",),
+    ),
+    ClientDef(
+        id="trae",
+        display_name="Trae",
+        category="ide",
+        provider="multi",
+        ua_prefixes=("trae/",),
+        proxy_config=ProxyConfig(
+            config_type=ProxyConfigType.UNSUPPORTED,
+            setup_instructions="Trae IDE routes through ByteDance's proprietary backend. No base URL override.",
+        ),
+        website="https://www.trae.ai",
+        detect_app_name="Trae.app",
+    ),
+    ClientDef(
+        id="qoder",
+        display_name="Qoder",
+        category="ide",
+        provider="multi",
+        ua_prefixes=("qoder/",),
+        proxy_config=ProxyConfig(
+            config_type=ProxyConfigType.UNSUPPORTED,
+            setup_instructions="Qoder routes through Alibaba's proprietary backend. No reverse proxy support.",
+        ),
+        website="https://qoder.com",
+        detect_app_name="Qoder.app",
+    ),
+    ClientDef(
+        id="warp",
+        display_name="Warp",
+        category="cli",
+        provider="multi",
+        ua_prefixes=("warp/",),
+        proxy_config=ProxyConfig(
+            config_type=ProxyConfigType.UNSUPPORTED,
+            setup_instructions=(
+                "Warp routes AI through its proprietary backend. Enterprise BYOLLM supports AWS Bedrock only."
+            ),
+        ),
+        website="https://www.warp.dev",
+        detect_app_name="Warp.app",
+        detect_binary=("warp",),
     ),
 ]
 
@@ -409,11 +558,19 @@ PROXY_ENV_VARS: tuple[str, ...] = _collect_env_vars()
 # ---------------------------------------------------------------------------
 
 
+_VERSION_RE = re.compile(r"\d+\.\d+(?:\.\d+)?(?:[.-]\w+)?")
+
+
 def _parse_version(raw_token: str) -> str:
-    """Extract version from a UA token like 'aider/0.50.1' → '0.50.1'."""
-    if "/" in raw_token:
-        return raw_token.split("/", 1)[1]
-    return ""
+    """Extract version from a UA token like 'aider/0.50.1' → '0.50.1'.
+
+    Handles multi-segment tokens like 'GeminiCLI/0.34.0/gemini-pro' → '0.34.0'.
+    """
+    if "/" not in raw_token:
+        return ""
+    after_slash = raw_token.split("/", 1)[1]
+    m = _VERSION_RE.match(after_slash)
+    return m.group(0) if m else after_slash
 
 
 def identify_client(user_agent: str, headers: dict[str, str] | None = None) -> tuple[str, str, str, str]:

@@ -12,7 +12,7 @@ The detection and setup workflow has three layers:
 2. **Setup** — interactive (or non-interactive) wizard that configures tools
 3. **Watch** — background daemon that detects newly installed tools over time
 
-All three share the same detection engine and client registry of 17 supported agents.
+All three share the same detection engine and client registry of 27 supported agents.
 
 ---
 
@@ -341,7 +341,7 @@ The env file uses atomic writes (temp file + rename) and file locking (`fcntl.fl
 
 ## Supported Agents
 
-All 17 agents in the built-in registry, with their proxy configuration and detection methods:
+All 27 agents in the built-in registry, with their proxy configuration and detection methods:
 
 | Agent | Proxy Config | Setup Mechanism | Detection |
 |-------|-------------|-----------------|-----------|
@@ -350,6 +350,7 @@ All 17 agents in the built-in registry, with their proxy configuration and detec
 | Aider | `OPENAI_BASE_URL` | env var | binary, pip, brew |
 | Codex CLI | `OPENAI_BASE_URL` | env var | binary, npm |
 | OpenCode | `OPENAI_BASE_URL` | env var | binary, npm |
+| Gemini CLI | `GEMINI_BASE_URL` | env var | binary, npm, brew |
 | Cursor | Manual (IDE settings UI) | manual | binary, app bundle |
 | GitHub Copilot | `http.proxy` (forward proxy) | IDE settings | VS Code, JetBrains, Neovim |
 | Continue | `~/.continue/config.json` | config file | VS Code, Neovim |
@@ -357,11 +358,20 @@ All 17 agents in the built-in registry, with their proxy configuration and detec
 | Cline | Manual (extension UI) | manual | VS Code |
 | Roo Code | Manual (extension UI) | manual | VS Code |
 | Aide | Manual (IDE settings UI) | manual | binary, app bundle |
+| Droid | Manual (BYOK settings) | manual | binary, npm, VS Code |
+| CodeBuddy | Manual (models.json) | manual | binary, npm, VS Code, JetBrains |
+| Kilo Code | Manual (extension UI) | manual | npm, VS Code |
 | Windsurf | Not supported | — | binary, app bundle |
 | Amazon Q | Not supported | — | binary, VS Code, JetBrains |
 | Tabnine | Not supported | — | VS Code, JetBrains |
 | Augment Code | Not supported | — | VS Code |
 | Gemini Code Assist | Not supported | — | VS Code |
+| Antigravity | Not supported | — | binary, app bundle |
+| Kiro | Not supported | — | binary, app bundle |
+| Kiro CLI | Not supported | — | binary |
+| Trae | Not supported | — | app bundle |
+| Qoder | Not supported | — | app bundle |
+| Warp | Not supported | — | binary, app bundle |
 
 Run `lumen-argus clients` to see the full list with setup instructions.
 
@@ -382,7 +392,7 @@ Detection and setup support includes:
   Windows PowerShell 5.1 (`Documents/WindowsPowerShell/`)
 - **PowerShell syntax** — uses `$env:VAR = "value"` instead of `export`
 - **VS Code settings** — checks `%APPDATA%/Code/User/settings.json` (and
-  variants for Cursor, Windsurf, Insiders, VSCodium)
+  variants for Cursor, Windsurf, Kiro, Trae, Insiders, VSCodium)
 - **JetBrains plugins** — checks `%APPDATA%/JetBrains/`
 - **npm global packages** — checks `%APPDATA%/npm/node_modules/`
 

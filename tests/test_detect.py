@@ -223,13 +223,20 @@ class TestScanShellProfiles(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.tmpdir, ignore_errors=True)
 
+    def _scan(self, proxy_url: str = "") -> dict:
+        """Run _scan_shell_profiles with mock profiles and no env file leakage."""
+        mock_profiles = {"zsh": (self.zshrc,)}
+        with (
+            patch("lumen_argus.detect._SHELL_PROFILES", mock_profiles),
+            patch("lumen_argus.detect._ENV_FILE_PATH", "/nonexistent/env"),
+            patch.dict(os.environ, {"SHELL": "/bin/zsh"}),
+        ):
+            return _scan_shell_profiles(proxy_url)
+
     def test_finds_env_var(self):
         with open(self.zshrc, "w") as f:
             f.write("# shell config\nexport OPENAI_BASE_URL=http://localhost:8080\n")
-        mock_profiles = {"zsh": (self.zshrc,)}
-        with patch("lumen_argus.detect._SHELL_PROFILES", mock_profiles):
-            with patch.dict(os.environ, {"SHELL": "/bin/zsh"}):
-                result = _scan_shell_profiles("http://localhost:8080")
+        result = self._scan("http://localhost:8080")
         self.assertIn("OPENAI_BASE_URL", result)
         self.assertEqual(result["OPENAI_BASE_URL"][0][0], "http://localhost:8080")
         self.assertEqual(result["OPENAI_BASE_URL"][0][3], "")  # no client tag
@@ -237,28 +244,19 @@ class TestScanShellProfiles(unittest.TestCase):
     def test_skips_comments(self):
         with open(self.zshrc, "w") as f:
             f.write("# export OPENAI_BASE_URL=http://localhost:8080\n")
-        mock_profiles = {"zsh": (self.zshrc,)}
-        with patch("lumen_argus.detect._SHELL_PROFILES", mock_profiles):
-            with patch.dict(os.environ, {"SHELL": "/bin/zsh"}):
-                result = _scan_shell_profiles()
+        result = self._scan()
         self.assertNotIn("OPENAI_BASE_URL", result)
 
     def test_empty_file(self):
         with open(self.zshrc, "w") as f:
             f.write("")
-        mock_profiles = {"zsh": (self.zshrc,)}
-        with patch("lumen_argus.detect._SHELL_PROFILES", mock_profiles):
-            with patch.dict(os.environ, {"SHELL": "/bin/zsh"}):
-                result = _scan_shell_profiles()
+        result = self._scan()
         self.assertEqual(len(result), 0)
 
     def test_extracts_client_tag(self):
         with open(self.zshrc, "w") as f:
             f.write("export OPENAI_BASE_URL=http://localhost:8080  # lumen-argus:managed client=opencode\n")
-        mock_profiles = {"zsh": (self.zshrc,)}
-        with patch("lumen_argus.detect._SHELL_PROFILES", mock_profiles):
-            with patch.dict(os.environ, {"SHELL": "/bin/zsh"}):
-                result = _scan_shell_profiles("http://localhost:8080")
+        result = self._scan("http://localhost:8080")
         entries = result["OPENAI_BASE_URL"]
         self.assertEqual(len(entries), 1)
         self.assertEqual(entries[0][0], "http://localhost:8080")
@@ -273,10 +271,7 @@ class TestScanShellProfiles(unittest.TestCase):
                 "export OPENAI_BASE_URL=http://localhost:8080"
                 "  # lumen-argus:managed client=aider\n"
             )
-        mock_profiles = {"zsh": (self.zshrc,)}
-        with patch("lumen_argus.detect._SHELL_PROFILES", mock_profiles):
-            with patch.dict(os.environ, {"SHELL": "/bin/zsh"}):
-                result = _scan_shell_profiles("http://localhost:8080")
+        result = self._scan("http://localhost:8080")
         entries = result["OPENAI_BASE_URL"]
         self.assertEqual(len(entries), 2)
         tags = {e[3] for e in entries}

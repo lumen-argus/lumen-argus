@@ -98,6 +98,30 @@ _VSCODE_VARIANTS: tuple[IDEVariant, ...] = (
             "~/Library/Application Support/Windsurf/User/settings.json",
         ),
     ),
+    IDEVariant(
+        name="Kiro",
+        extensions=("~/.kiro/extensions",),
+        settings=(
+            "~/Library/Application Support/Kiro/User/settings.json",
+            "~/.config/Kiro/User/settings.json",
+        ),
+    ),
+    IDEVariant(
+        name="Trae",
+        extensions=("~/.trae/extensions",),
+        settings=(
+            "~/Library/Application Support/Trae/User/settings.json",
+            "~/.config/Trae/User/settings.json",
+        ),
+    ),
+    IDEVariant(
+        name="Antigravity",
+        extensions=("~/.antigravity/extensions",),
+        settings=(
+            "~/Library/Application Support/Antigravity/User/settings.json",
+            "~/.config/Antigravity/User/settings.json",
+        ),
+    ),
 )
 
 # Windows-specific IDE paths (appended when on Windows)
@@ -126,6 +150,21 @@ _WINDOWS_VSCODE_VARIANTS: tuple[IDEVariant, ...] = (
         name="Windsurf (Windows)",
         extensions=("~/.windsurf/extensions",),
         settings=("%APPDATA%/Windsurf/User/settings.json",),
+    ),
+    IDEVariant(
+        name="Kiro (Windows)",
+        extensions=("~/.kiro/extensions",),
+        settings=("%APPDATA%/Kiro/User/settings.json",),
+    ),
+    IDEVariant(
+        name="Trae (Windows)",
+        extensions=("~/.trae/extensions",),
+        settings=("%APPDATA%/Trae/User/settings.json",),
+    ),
+    IDEVariant(
+        name="Antigravity (Windows)",
+        extensions=("~/.antigravity/extensions",),
+        settings=("%APPDATA%/Antigravity/User/settings.json",),
     ),
 )
 
@@ -704,9 +743,12 @@ def _detect_version(client: ClientDef, detected: DetectedClient) -> str:
 # ---------------------------------------------------------------------------
 
 
+_ENV_FILE_PATH = "~/.lumen-argus/env"
+
+
 def _read_env_file_vars() -> set[str]:
     """Read ~/.lumen-argus/env and return the set of env var names present."""
-    env_file = os.path.expanduser("~/.lumen-argus/env")
+    env_file = os.path.expanduser(_ENV_FILE_PATH)
     if not os.path.isfile(env_file):
         return set()
     result: set[str] = set()
@@ -753,8 +795,7 @@ def _scan_shell_profiles(proxy_url: str = "") -> dict[str, list[tuple[str, str, 
 
     # Also scan the lumen-argus env file (appended last so entries win
     # in last-applicable-line matching via _match_shell_entry)
-    env_file = os.path.expanduser("~/.lumen-argus/env")
-    profiles_to_scan.append(env_file)
+    profiles_to_scan.append(_ENV_FILE_PATH)
 
     for profile_path in profiles_to_scan:
         expanded = os.path.expanduser(profile_path)

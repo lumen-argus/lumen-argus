@@ -63,7 +63,21 @@ pip install lumen-argus
 lumen-argus serve
 ```
 
-Then point your AI tool at the proxy. **16 agents supported** — auto-detect and configure them all:
+Then point your AI tool at the proxy. **27 agents supported** — auto-detect and configure them all:
+
+| Proxied (env var) | Proxied (manual config) | Detected only |
+|---|---|---|
+| Claude Code | Cursor | Windsurf |
+| GitHub Copilot CLI | GitHub Copilot (IDE) | Amazon Q |
+| Aider | Continue | Tabnine |
+| Codex CLI | Cody | Augment Code |
+| OpenCode | Cline | Gemini Code Assist |
+| Gemini CLI | Roo Code | Antigravity |
+| | Aide | Kiro |
+| | Droid | Trae |
+| | CodeBuddy | Qoder |
+| | Kilo Code | Kiro CLI |
+| | | Warp |
 
 ```bash
 # Auto-detect installed AI tools
@@ -75,6 +89,7 @@ lumen-argus setup
 # Or configure manually:
 ANTHROPIC_BASE_URL=http://localhost:8080 claude
 OPENAI_BASE_URL=http://localhost:8080 aider
+GEMINI_BASE_URL=http://localhost:8080 gemini
 ```
 
 **Background monitoring** — detect and configure new tools automatically:

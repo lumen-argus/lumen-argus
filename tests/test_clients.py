@@ -17,8 +17,8 @@ from lumen_argus.clients import (
 class TestRegistryIntegrity(unittest.TestCase):
     """Verify the built-in registry is well-formed."""
 
-    def test_has_17_clients(self):
-        self.assertEqual(len(CLIENT_REGISTRY), 17)
+    def test_has_27_clients(self):
+        self.assertEqual(len(CLIENT_REGISTRY), 27)
 
     def test_no_duplicate_ids(self):
         ids = [c.id for c in CLIENT_REGISTRY]
@@ -60,17 +60,18 @@ class TestRegistryIntegrity(unittest.TestCase):
         counts: dict[ProxyConfigType, int] = {}
         for c in CLIENT_REGISTRY:
             counts[c.proxy_config.config_type] = counts.get(c.proxy_config.config_type, 0) + 1
-        self.assertEqual(counts[ProxyConfigType.ENV_VAR], 5)
+        self.assertEqual(counts[ProxyConfigType.ENV_VAR], 6)
         self.assertEqual(counts[ProxyConfigType.IDE_SETTINGS], 2)
         self.assertEqual(counts[ProxyConfigType.CONFIG_FILE], 1)
-        self.assertEqual(counts[ProxyConfigType.MANUAL], 4)
-        self.assertEqual(counts[ProxyConfigType.UNSUPPORTED], 5)
+        self.assertEqual(counts[ProxyConfigType.MANUAL], 7)
+        self.assertEqual(counts[ProxyConfigType.UNSUPPORTED], 11)
 
     def test_proxy_env_vars_derived(self):
         """PROXY_ENV_VARS should be derived from registry, not hardcoded."""
         self.assertIn("ANTHROPIC_BASE_URL", PROXY_ENV_VARS)
         self.assertIn("OPENAI_BASE_URL", PROXY_ENV_VARS)
         self.assertIn("COPILOT_PROVIDER_BASE_URL", PROXY_ENV_VARS)
+        self.assertIn("GEMINI_BASE_URL", PROXY_ENV_VARS)
 
     def test_prefixes_are_lowercase(self):
         for c in CLIENT_REGISTRY:
@@ -161,6 +162,65 @@ class TestIdentifyClient(unittest.TestCase):
         self.assertEqual(name, "OpenCode")
         self.assertEqual(ver, "0.5.0")
 
+    def test_gemini_cli(self):
+        cid, name, ver, _ = identify_client("GeminiCLI/0.35.3")
+        self.assertEqual(cid, "gemini_cli")
+        self.assertEqual(name, "Gemini CLI")
+        self.assertEqual(ver, "0.35.3")
+
+    def test_gemini_cli_full_ua(self):
+        """Gemini CLI sends GeminiCLI/{ver}/{model} ({platform}; {arch})."""
+        cid, _, ver, raw = identify_client("GeminiCLI/0.34.0/gemini-pro (linux; x64; terminal)")
+        self.assertEqual(cid, "gemini_cli")
+        self.assertEqual(ver, "0.34.0")
+        self.assertEqual(raw, "GeminiCLI/0.34.0/gemini-pro")
+
+    def test_droid(self):
+        cid, _, _, _ = identify_client("droid/1.0.0")
+        self.assertEqual(cid, "droid")
+
+    def test_factory_maps_to_droid(self):
+        cid, _, _, _ = identify_client("factory/2.0")
+        self.assertEqual(cid, "droid")
+
+    def test_codebuddy(self):
+        cid, _, _, _ = identify_client("codebuddy/1.0.0")
+        self.assertEqual(cid, "codebuddy")
+
+    def test_kilo_code(self):
+        cid, _, _, _ = identify_client("kilo-code/1.5.0")
+        self.assertEqual(cid, "kilo_code")
+
+    def test_kilo_prefix(self):
+        cid, _, _, _ = identify_client("kilo/2.0")
+        self.assertEqual(cid, "kilo_code")
+
+    def test_antigravity(self):
+        cid, _, _, _ = identify_client("antigravity/1.0")
+        self.assertEqual(cid, "antigravity")
+
+    def test_kiro(self):
+        cid, name, _, _ = identify_client("kiro/1.0.0")
+        self.assertEqual(cid, "kiro")
+        self.assertEqual(name, "Kiro")
+
+    def test_kiro_cli(self):
+        cid, name, _, _ = identify_client("kiro-cli/0.5.0")
+        self.assertEqual(cid, "kiro_cli")
+        self.assertEqual(name, "Kiro CLI")
+
+    def test_trae(self):
+        cid, _, _, _ = identify_client("trae/1.0.0")
+        self.assertEqual(cid, "trae")
+
+    def test_qoder(self):
+        cid, _, _, _ = identify_client("qoder/1.0.0")
+        self.assertEqual(cid, "qoder")
+
+    def test_warp(self):
+        cid, _, _, _ = identify_client("warp/1.0.0")
+        self.assertEqual(cid, "warp")
+
     def test_case_insensitive(self):
         cid, _, _, _ = identify_client("CLAUDE-CODE/1.2.3")
         self.assertEqual(cid, "claude_code")
@@ -220,9 +280,9 @@ class TestGetClientById(unittest.TestCase):
 
 
 class TestGetAllClients(unittest.TestCase):
-    def test_returns_17_clients(self):
+    def test_returns_27_clients(self):
         clients = get_all_clients()
-        self.assertEqual(len(clients), 17)
+        self.assertEqual(len(clients), 27)
         self.assertIsInstance(clients[0], dict)
         self.assertIn("id", clients[0])
 
@@ -242,13 +302,13 @@ class TestGetAllClients(unittest.TestCase):
             website="https://example.com",
         )
         clients = get_all_clients(extra_clients=[extra])
-        self.assertEqual(len(clients), 18)
+        self.assertEqual(len(clients), 28)
         self.assertEqual(clients[-1]["id"], "enterprise_tool")
 
     def test_with_extra_dict(self):
         extra = {"id": "custom", "display_name": "Custom Tool"}
         clients = get_all_clients(extra_clients=[extra])
-        self.assertEqual(len(clients), 18)
+        self.assertEqual(len(clients), 28)
         self.assertEqual(clients[-1]["id"], "custom")
 
 
