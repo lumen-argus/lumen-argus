@@ -42,10 +42,14 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install dependencies
-        run: pip install -e .
+        run: |
+          pip install -e packages/core/
+          pip install -e packages/proxy/
 
       - name: Run tests
-        run: python -m unittest discover -v tests/
+        run: |
+          python -m unittest discover -v packages/core/tests/
+          python -m unittest discover -v tests/
 
       - name: Verify CLI
         run: |
@@ -70,7 +74,9 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: pip install -e .
+        run: |
+          pip install -e packages/core/
+          pip install -e packages/proxy/
 
       - name: Run benchmark (smoke test)
         run: python benchmark.py -n 10 -p medium

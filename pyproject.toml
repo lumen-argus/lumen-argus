@@ -22,6 +22,7 @@ ignore = ["PERF203"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["PT", "PERF401", "RUF003", "RUF005", "RUF015", "C401"]
+"packages/*/tests/*" = ["PT", "PERF401", "RUF003", "RUF005", "RUF015", "C401"]
 "__init__.py" = ["F401"]
 
 [tool.ruff.lint.isort]
@@ -44,4 +45,4 @@ module = [
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests", "packages/core/tests"]

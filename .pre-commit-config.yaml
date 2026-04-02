@@ -29,4 +29,4 @@ repos:
         entry: .venv/bin/mypy --strict
         language: system
         types: [python]
-        exclude: ^(tests/|benchmark\.py)
+        exclude: ^(tests/|packages/.*/tests/|benchmark\.py)
