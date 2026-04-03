@@ -81,7 +81,7 @@ function registerPage(name, label, options) {
   }
   _registeredPages[name] = options;
   VALID_PAGES[name] = 1;
-  _ensureNavTab(name, label, options.order);
+  if (!options.hidden) _ensureNavTab(name, label, options.order);
   if (!document.getElementById('page-' + name)) {
     var div = document.createElement('div');
     div.className = 'page';

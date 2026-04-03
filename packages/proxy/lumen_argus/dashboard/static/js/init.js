@@ -15,6 +15,7 @@ registerPage('mcp', 'MCP', {locked: true, order: 50,
 registerPage('notifications', 'Notifications', {order: 55, loadFn: loadNotifications});
 registerPage('performance', 'Performance', {locked: true, order: 75,
   proDescription: 'Rule performance analytics: scan time percentiles, per-rule hit rates, pre-filter efficiency, and scan time budget tracking.'});
+registerPage('enrollment', 'Enrollment', {hidden: true, order: 80});
 
 /* Export helpers */
 function exportFindings(fmt){
