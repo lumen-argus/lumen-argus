@@ -20,12 +20,69 @@ import time
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol, Sequence, runtime_checkable
 
 log = logging.getLogger("argus.analytics")
 
 # No-op lock for adapters that don't need write serialization (PostgreSQL MVCC).
 _NOOP_LOCK = type("_NoopLock", (), {"__enter__": lambda self: self, "__exit__": lambda *a: None})()
+
+
+@runtime_checkable
+class DBCursor(Protocol):
+    """Structural type for database cursors (DB-API 2.0 subset).
+
+    Both sqlite3.Cursor and psycopg.Cursor satisfy this protocol.
+    """
+
+    @property
+    def rowcount(self) -> int: ...
+    @property
+    def lastrowid(self) -> int | None: ...
+    @property
+    def description(self) -> Any: ...
+    def fetchone(self) -> Any: ...
+    def fetchall(self) -> list[Any]: ...
+    def __iter__(self) -> Any: ...
+    def __next__(self) -> Any: ...
+
+
+@runtime_checkable
+class DBConnection(Protocol):
+    """Structural type for database connections (DB-API 2.0 subset).
+
+    Both sqlite3.Connection and psycopg.Connection satisfy this protocol.
+    Repositories type their connection variables as DBConnection instead of
+    coupling to a specific engine.
+    """
+
+    def execute(self, sql: str, parameters: Sequence[Any] = ...) -> DBCursor:
+        """Execute a single SQL statement. Returns a cursor."""
+        ...
+
+    def executemany(self, sql: str, parameters: Sequence[Sequence[Any]]) -> DBCursor:
+        """Execute a SQL statement with multiple parameter sets."""
+        ...
+
+    def executescript(self, sql: str) -> DBCursor:
+        """Execute multiple SQL statements (SQLite-specific, used in schema setup)."""
+        ...
+
+    def commit(self) -> None:
+        """Commit the current transaction."""
+        ...
+
+    def close(self) -> None:
+        """Close the connection."""
+        ...
+
+    def __enter__(self) -> DBConnection:
+        """Context manager entry (transaction begin)."""
+        ...
+
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> Any:
+        """Context manager exit (commit on success, rollback on exception)."""
+        ...
 
 
 class DatabaseAdapter(ABC):
@@ -39,7 +96,7 @@ class DatabaseAdapter(ABC):
     # --- Connection lifecycle ---
 
     @abstractmethod
-    def connect(self) -> Any:
+    def connect(self) -> DBConnection:
         """Get a database connection.
 
         SQLite: thread-local, reused across calls.
@@ -145,7 +202,7 @@ class SQLiteAdapter(DatabaseAdapter):
         self._local = threading.local()
         self._lock = threading.Lock()
 
-    def connect(self) -> sqlite3.Connection:
+    def connect(self) -> DBConnection:
         """Return a thread-local SQLite connection.
 
         Each thread gets its own connection, reused across method calls.

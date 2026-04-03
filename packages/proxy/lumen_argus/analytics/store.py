@@ -10,13 +10,12 @@ via extensions.set_database_adapter().
 """
 
 import logging
-import sqlite3
 import threading
 import time
 from contextlib import contextmanager
 from typing import Any, Callable
 
-from lumen_argus.analytics.adapter import DatabaseAdapter, SQLiteAdapter
+from lumen_argus.analytics.adapter import DatabaseAdapter, DBConnection, SQLiteAdapter
 from lumen_argus.analytics.allowlists import _ALLOWLIST_SCHEMA, AllowlistRepository
 from lumen_argus.analytics.channels import _NOTIFICATION_SCHEMA, ChannelsRepository
 from lumen_argus.analytics.config_overrides import _CONFIG_OVERRIDES_SCHEMA, ConfigOverridesRepository
@@ -132,17 +131,14 @@ class AnalyticsStore:
         )
         self._adapter.ensure_schema(all_schemas)
 
-    def _connect(self) -> sqlite3.Connection:
+    def _connect(self) -> DBConnection:
         """Return a database connection via the adapter.
 
         Repositories call this — the adapter handles the lifecycle
         (thread-local for SQLite, pooled for PostgreSQL).
-
-        Typed as sqlite3.Connection for community (all repos expect DB-API 2.0).
-        Pro widens this when PostgresAdapter is active.
+        Returns a DBConnection (DB-API 2.0 protocol).
         """
-        conn: sqlite3.Connection = self._adapter.connect()
-        return conn
+        return self._adapter.connect()
 
     @contextmanager
     def _write_lock(self) -> Any:
