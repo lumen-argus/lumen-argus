@@ -199,6 +199,7 @@ def build_enrollment_tokens_schema(a: DatabaseAdapter) -> str:
 CREATE TABLE IF NOT EXISTS enrollment_tokens (
     id {auto_id},
     token_hash TEXT NOT NULL UNIQUE,
+    description TEXT NOT NULL DEFAULT '',
     namespace_id INTEGER NOT NULL DEFAULT 1 REFERENCES namespaces(id),
     expires_at {ts} NOT NULL,
     used_at {ts},
