@@ -153,6 +153,47 @@ class DatabaseAdapter(ABC):
         """
 
     @abstractmethod
+    def hours_ago_sql(self, column: str, hours: int) -> str:
+        """SQL expression for 'column >= N hours ago'.
+
+        SQLite: column >= DATETIME('now', '-N hours')
+        PostgreSQL: column >= now() - interval 'N hours'
+        """
+
+    @abstractmethod
+    def is_today_sql(self, column: str) -> str:
+        """SQL expression for 'column is today'.
+
+        SQLite: DATE(column) = DATE('now')
+        PostgreSQL: column::date = CURRENT_DATE
+        """
+
+    @abstractmethod
+    def extract_weekday_sql(self, column: str) -> str:
+        """SQL expression for weekday as integer (0=Sunday for SQLite, 0=Sunday for PG).
+
+        SQLite: CAST(strftime('%w', column) AS INTEGER)
+        PostgreSQL: EXTRACT(DOW FROM column)::INTEGER
+        """
+
+    @abstractmethod
+    def extract_hour_sql(self, column: str) -> str:
+        """SQL expression for hour as integer.
+
+        SQLite: CAST(strftime('%H', column) AS INTEGER)
+        PostgreSQL: EXTRACT(HOUR FROM column)::INTEGER
+        """
+
+    @abstractmethod
+    def date_subtract_literal_sql(self, interval_param: str = "?") -> str:
+        """SQL expression for date subtraction with a literal interval parameter.
+
+        The bound value is a pre-formatted interval string like '-365 days'.
+        SQLite: DATE('now', ?)
+        PostgreSQL: now() + ?::interval
+        """
+
+    @abstractmethod
     def auto_id_type(self) -> str:
         """Column type for auto-incrementing primary key.
 
@@ -263,6 +304,21 @@ class SQLiteAdapter(DatabaseAdapter):
 
     def date_diff_sql(self, column: str, days: int) -> str:
         return f"{column} >= DATE('now', '-{days} days')"
+
+    def hours_ago_sql(self, column: str, hours: int) -> str:
+        return f"{column} >= DATETIME('now', '-{hours} hours')"
+
+    def is_today_sql(self, column: str) -> str:
+        return f"DATE({column}) = DATE('now')"
+
+    def extract_weekday_sql(self, column: str) -> str:
+        return f"CAST(strftime('%w', {column}) AS INTEGER)"
+
+    def extract_hour_sql(self, column: str) -> str:
+        return f"CAST(strftime('%H', {column}) AS INTEGER)"
+
+    def date_subtract_literal_sql(self, interval_param: str = "?") -> str:
+        return f"DATE('now', {interval_param})"
 
     def auto_id_type(self) -> str:
         return "INTEGER PRIMARY KEY AUTOINCREMENT"

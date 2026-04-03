@@ -8,9 +8,10 @@ import sqlite3
 from typing import TYPE_CHECKING, Any
 
 from lumen_argus.analytics._db import scalar
+from lumen_argus.analytics.base import BaseRepository
 
 if TYPE_CHECKING:
-    from lumen_argus.analytics.store import AnalyticsStore
+    from lumen_argus.analytics.adapter import DatabaseAdapter
 
 log = logging.getLogger("argus.analytics")
 
@@ -19,11 +20,11 @@ _CHANNEL_COLUMNS = (
 )
 
 
-class ChannelsRepository:
+class ChannelsRepository(BaseRepository):
     """Repository for notification channel CRUD operations."""
 
-    def __init__(self, store: AnalyticsStore) -> None:
-        self._store = store
+    def __init__(self, adapter: DatabaseAdapter) -> None:
+        super().__init__(adapter)
 
     def _parse_row(self, row: sqlite3.Row) -> dict[str, Any]:
         """Convert a DB row to a dict with parsed JSON fields."""
@@ -47,13 +48,13 @@ class ChannelsRepository:
             + " ORDER BY id"
         )
         params: list[str | None] = [source] if source else []
-        with self._store._connect() as conn:
+        with self._connect() as conn:
             rows = conn.execute(query, params).fetchall()
         return [self._parse_row(r) for r in rows]
 
     def get(self, channel_id: int) -> dict[str, Any] | None:
         """Return a single channel by ID (with full config)."""
-        with self._store._connect() as conn:
+        with self._connect() as conn:
             row = conn.execute(
                 "SELECT " + _CHANNEL_COLUMNS + " FROM notification_channels WHERE id = ?",
                 (channel_id,),
@@ -62,7 +63,7 @@ class ChannelsRepository:
 
     def count(self) -> int:
         """Return total channel count (for limit enforcement)."""
-        with self._store._connect() as conn:
+        with self._connect() as conn:
             return scalar(conn, "SELECT COUNT(*) FROM notification_channels")
 
     def create(
@@ -89,9 +90,9 @@ class ChannelsRepository:
         if isinstance(events, str):
             events = json.loads(events)
 
-        now = self._store._now()
-        with self._store._adapter.write_lock():
-            with self._store._connect() as conn:
+        now = self._now()
+        with self._adapter.write_lock():
+            with self._connect() as conn:
                 # Atomic limit check under the same lock as insert
                 if channel_limit is not None:
                     current = scalar(conn, "SELECT COUNT(*) FROM notification_channels")
@@ -152,14 +153,14 @@ class ChannelsRepository:
             return self.get(channel_id)
 
         updates.append("updated_at = ?")
-        params.append(self._store._now())
+        params.append(self._now())
         if "updated_by" in data:
             updates.append("updated_by = ?")
             params.append(data["updated_by"])
         params.append(channel_id)
 
-        with self._store._adapter.write_lock():
-            with self._store._connect() as conn:
+        with self._adapter.write_lock():
+            with self._connect() as conn:
                 try:
                     cursor = conn.execute(
                         "UPDATE notification_channels SET %s WHERE id = ?" % ", ".join(updates),
@@ -174,8 +175,8 @@ class ChannelsRepository:
 
     def delete(self, channel_id: int) -> bool:
         """Delete a channel by ID. Returns True if deleted."""
-        with self._store._adapter.write_lock():
-            with self._store._connect() as conn:
+        with self._adapter.write_lock():
+            with self._connect() as conn:
                 cursor = conn.execute(
                     "DELETE FROM notification_channels WHERE id = ?",
                     (channel_id,),
@@ -187,8 +188,8 @@ class ChannelsRepository:
         if not ids:
             return 0
         placeholders = ",".join("?" for _ in ids)
-        with self._store._adapter.write_lock():
-            with self._store._connect() as conn:
+        with self._adapter.write_lock():
+            with self._connect() as conn:
                 if action == "delete":
                     # Only delete dashboard-managed channels
                     cursor = conn.execute(
@@ -199,7 +200,7 @@ class ChannelsRepository:
                     enabled = 1 if action == "enable" else 0
                     cursor = conn.execute(
                         "UPDATE notification_channels SET enabled = ?, updated_at = ? WHERE id IN (%s)" % placeholders,
-                        [enabled, self._store._now(), *ids],
+                        [enabled, self._now(), *ids],
                     )
                 else:
                     return 0

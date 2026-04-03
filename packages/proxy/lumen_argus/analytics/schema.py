@@ -205,7 +205,7 @@ CREATE TABLE IF NOT EXISTS rule_analysis (
     total_rules INTEGER NOT NULL DEFAULT 0,
     duplicates INTEGER NOT NULL DEFAULT 0,
     subsets INTEGER NOT NULL DEFAULT 0,
-    overlaps INTEGER NOT NULL DEFAULT 0,
+    overlap_count INTEGER NOT NULL DEFAULT 0,
     results_json TEXT NOT NULL DEFAULT '{{}}',
     dismissed_json TEXT NOT NULL DEFAULT '[]'
 );

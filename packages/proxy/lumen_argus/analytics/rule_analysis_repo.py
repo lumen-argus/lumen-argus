@@ -6,17 +6,19 @@ import json
 import logging
 from typing import TYPE_CHECKING, Any
 
+from lumen_argus.analytics.base import BaseRepository
+
 if TYPE_CHECKING:
-    from lumen_argus.analytics.store import AnalyticsStore
+    from lumen_argus.analytics.adapter import DatabaseAdapter
 
 log = logging.getLogger("argus.analytics")
 
 
-class RuleAnalysisRepository:
+class RuleAnalysisRepository(BaseRepository):
     """Repository for rule overlap analysis results."""
 
-    def __init__(self, store: AnalyticsStore) -> None:
-        self._store = store
+    def __init__(self, adapter: DatabaseAdapter) -> None:
+        super().__init__(adapter)
 
     def save_analysis(
         self,
@@ -29,7 +31,7 @@ class RuleAnalysisRepository:
         results_json: str,
     ) -> None:
         """Insert a new analysis result. Keeps only the latest row."""
-        with self._store._connect() as conn:
+        with self._connect() as conn:
             prev_dismissed = "[]"
             row = conn.execute("SELECT dismissed_json FROM rule_analysis ORDER BY id DESC LIMIT 1").fetchone()
             if row:
@@ -38,7 +40,8 @@ class RuleAnalysisRepository:
             conn.execute("DELETE FROM rule_analysis")
             conn.execute(
                 "INSERT INTO rule_analysis "
-                "(timestamp, duration_s, total_rules, duplicates, subsets, overlaps, results_json, dismissed_json) "
+                "(timestamp, duration_s, total_rules, duplicates, subsets, "
+                "overlap_count, results_json, dismissed_json) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 (timestamp, duration_s, total_rules, duplicates, subsets, overlaps, results_json, prev_dismissed),
             )
@@ -46,9 +49,9 @@ class RuleAnalysisRepository:
 
     def get_latest_analysis(self) -> dict[str, Any] | None:
         """Get the most recent analysis result, or None."""
-        with self._store._connect() as conn:
+        with self._connect() as conn:
             row = conn.execute(
-                "SELECT timestamp, duration_s, total_rules, duplicates, subsets, overlaps, "
+                "SELECT timestamp, duration_s, total_rules, duplicates, subsets, overlap_count, "
                 "results_json, dismissed_json FROM rule_analysis ORDER BY id DESC LIMIT 1"
             ).fetchone()
         if not row:
@@ -105,7 +108,7 @@ class RuleAnalysisRepository:
 
     def dismiss_finding(self, rule_a: str, rule_b: str) -> bool:
         """Add a pair to the dismissed list. Returns True if added, False if already dismissed."""
-        with self._store._connect() as conn:
+        with self._connect() as conn:
             row = conn.execute("SELECT id, dismissed_json FROM rule_analysis ORDER BY id DESC LIMIT 1").fetchone()
             if not row:
                 log.warning("dismiss_finding called but no analysis exists")
@@ -132,7 +135,7 @@ class RuleAnalysisRepository:
 
     def get_dismissed_findings(self) -> list[Any]:
         """Return list of dismissed [rule_a, rule_b] pairs."""
-        with self._store._connect() as conn:
+        with self._connect() as conn:
             row = conn.execute("SELECT dismissed_json FROM rule_analysis ORDER BY id DESC LIMIT 1").fetchone()
         if not row:
             return []
@@ -144,6 +147,6 @@ class RuleAnalysisRepository:
 
     def clear_analysis(self) -> None:
         """Delete all analysis data."""
-        with self._store._connect() as conn:
+        with self._connect() as conn:
             conn.execute("DELETE FROM rule_analysis")
         log.info("rule analysis data cleared")

@@ -8,11 +8,12 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from lumen_argus.analytics._db import scalar
+from lumen_argus.analytics.base import BaseRepository
 from lumen_argus.models import Finding, SessionContext
 from lumen_argus_core.time_utils import now_iso_ms
 
 if TYPE_CHECKING:
-    from lumen_argus.analytics.store import AnalyticsStore
+    from lumen_argus.analytics.adapter import DatabaseAdapter
 
 log = logging.getLogger("argus.analytics")
 
@@ -24,11 +25,12 @@ _FINDINGS_COLUMNS = (
 )
 
 
-class FindingsRepository:
+class FindingsRepository(BaseRepository):
     """Repository for findings CRUD operations."""
 
-    def __init__(self, store: AnalyticsStore) -> None:
-        self._store = store
+    def __init__(self, adapter: DatabaseAdapter, hmac_key: bytes | None = None) -> None:
+        super().__init__(adapter)
+        self._hmac_key = hmac_key
 
     def record(
         self,
@@ -59,8 +61,8 @@ class FindingsRepository:
             content_hash = hashlib.sha256(hash_input.encode()).hexdigest()[:16]
             # HMAC-SHA-256 of matched_value for cross-session secret tracking.
             # Full 64 hex chars (256 bits), keyed — useless without the key file.
-            if self._store._hmac_key:
-                vh = hmac_mod.new(self._store._hmac_key, f.matched_value.encode(), hashlib.sha256).hexdigest()
+            if self._hmac_key:
+                vh = hmac_mod.new(self._hmac_key, f.matched_value.encode(), hashlib.sha256).hexdigest()
             else:
                 vh = ""
             rows.append(
@@ -89,8 +91,8 @@ class FindingsRepository:
                 )
             )
 
-        with self._store._adapter.write_lock():
-            with self._store._connect() as conn:
+        with self._adapter.write_lock():
+            with self._connect() as conn:
                 conn.executemany(
                     "INSERT INTO findings "
                     "(timestamp, detector, finding_type, severity, location, "
@@ -115,8 +117,8 @@ class FindingsRepository:
         """
         if not session_id:
             return
-        with self._store._adapter.write_lock():
-            with self._store._connect() as conn:
+        with self._adapter.write_lock():
+            with self._connect() as conn:
                 conn.execute(
                     "UPDATE findings SET seen_count = seen_count + 1 WHERE session_id = ?",
                     (session_id,),
@@ -165,11 +167,11 @@ class FindingsRepository:
             conditions.append("client_name = ?")
             params.append(client_name)
         if days and days > 0:
-            conditions.append("timestamp >= DATE('now', '-%d days')" % min(days, 365))
+            conditions.append(self._adapter.date_diff_sql("timestamp", min(days, 365)))
         if conditions:
             where = " WHERE " + " AND ".join(conditions)
 
-        with self._store._connect() as conn:
+        with self._connect() as conn:
             total = scalar(conn, "SELECT COUNT(*) FROM findings" + where, tuple(params))
             rows = conn.execute(
                 "SELECT " + _FINDINGS_COLUMNS + " FROM findings" + where + " ORDER BY id DESC LIMIT ? OFFSET ?",
@@ -179,7 +181,7 @@ class FindingsRepository:
 
     def get_by_id(self, finding_id: int) -> dict[str, Any] | None:
         """Return a single finding by ID."""
-        with self._store._connect() as conn:
+        with self._connect() as conn:
             row = conn.execute(
                 "SELECT " + _FINDINGS_COLUMNS + " FROM findings WHERE id = ?",
                 (finding_id,),
@@ -193,7 +195,7 @@ class FindingsRepository:
         Sorted by finding_count descending. Excludes empty account_id.
         Read-only — no write lock needed.
         """
-        with self._store._connect() as conn:
+        with self._connect() as conn:
             rows = conn.execute(
                 "SELECT account_id, "
                 "COUNT(*) as finding_count, "
@@ -213,10 +215,11 @@ class FindingsRepository:
                   Totals and breakdowns are always all-time.
         """
         days = max(1, min(days, 365))
-        with self._store._connect() as conn:
+
+        with self._connect() as conn:
             agg = conn.execute(
                 "SELECT COUNT(*) as total, "
-                "SUM(CASE WHEN DATE(timestamp) = DATE('now') THEN 1 ELSE 0 END) as today_count, "
+                f"SUM(CASE WHEN {self._adapter.is_today_sql('timestamp')} THEN 1 ELSE 0 END) as today_count, "
                 "MAX(timestamp) as last_finding_time "
                 "FROM findings"
             ).fetchone()
@@ -262,11 +265,10 @@ class FindingsRepository:
             daily = [
                 {"date": row["day"], "count": row["cnt"]}
                 for row in conn.execute(
-                    "SELECT DATE(timestamp) as day, COUNT(*) as cnt "
+                    f"SELECT {self._adapter.date_trunc_sql('day', 'timestamp')} as day, COUNT(*) as cnt "
                     "FROM findings "
-                    "WHERE timestamp >= DATE('now', '-' || ? || ' days') "
+                    f"WHERE {self._adapter.date_diff_sql('timestamp', days)} "
                     "GROUP BY day ORDER BY day",
-                    (days,),
                 )
             ]
 
@@ -287,13 +289,13 @@ class FindingsRepository:
     def get_action_trend(self, days: int = 30) -> list[dict[str, Any]]:
         """Daily findings grouped by action_taken for stacked area chart."""
         days = max(1, min(days, 365))
-        with self._store._connect() as conn:
+
+        with self._connect() as conn:
             rows = conn.execute(
-                "SELECT DATE(timestamp) as day, action_taken, COUNT(*) as cnt "
+                f"SELECT {self._adapter.date_trunc_sql('day', 'timestamp')} as day, action_taken, COUNT(*) as cnt "
                 "FROM findings "
-                "WHERE timestamp >= DATE('now', '-' || ? || ' days') "
+                f"WHERE {self._adapter.date_diff_sql('timestamp', days)} "
                 "GROUP BY day, action_taken ORDER BY day",
-                (days,),
             ).fetchall()
         # Pivot into {date, block, redact, alert, log} per day
         by_day: dict[str, dict[str, Any]] = {}
@@ -313,17 +315,17 @@ class FindingsRepository:
         SQLite strftime('%w') returns 0=Sunday, so we remap to Mon-first order.
         """
         days = max(1, min(days, 365))
-        # Build empty 7x24 grid (indexed by strftime %w: 0=Sun, 1=Mon, ...)
+
+        # Build empty 7x24 grid (indexed by DOW: 0=Sun, 1=Mon, ...)
         grid = [[0] * 24 for _ in range(7)]
-        with self._store._connect() as conn:
+        with self._connect() as conn:
             rows = conn.execute(
-                "SELECT CAST(strftime('%w', timestamp) AS INTEGER) as weekday, "
-                "CAST(strftime('%H', timestamp) AS INTEGER) as hour, "
+                f"SELECT {self._adapter.extract_weekday_sql('timestamp')} as weekday, "
+                f"{self._adapter.extract_hour_sql('timestamp')} as hour, "
                 "COUNT(*) as cnt "
                 "FROM findings "
-                "WHERE timestamp >= DATE('now', '-' || ? || ' days') "
+                f"WHERE {self._adapter.date_diff_sql('timestamp', days)} "
                 "GROUP BY weekday, hour",
-                (days,),
             ).fetchall()
         for r in rows:
             grid[r["weekday"]][r["hour"]] = r["cnt"]
@@ -335,28 +337,30 @@ class FindingsRepository:
     def get_top_accounts(self, days: int = 30, limit: int = 8) -> list[dict[str, Any]]:
         """Top accounts by finding count."""
         days = max(1, min(days, 365))
-        with self._store._connect() as conn:
+
+        with self._connect() as conn:
             rows = conn.execute(
                 "SELECT account_id, COUNT(*) as cnt "
                 "FROM findings "
                 "WHERE account_id IS NOT NULL AND account_id != '' "
-                "AND timestamp >= DATE('now', '-' || ? || ' days') "
+                f"AND {self._adapter.date_diff_sql('timestamp', days)} "
                 "GROUP BY account_id ORDER BY cnt DESC LIMIT ?",
-                (days, limit),
+                (limit,),
             ).fetchall()
         return [{"account_id": r["account_id"], "count": r["cnt"]} for r in rows]
 
     def get_top_projects(self, days: int = 30, limit: int = 8) -> list[dict[str, Any]]:
         """Top working directories by finding count."""
         days = max(1, min(days, 365))
-        with self._store._connect() as conn:
+
+        with self._connect() as conn:
             rows = conn.execute(
                 "SELECT working_directory, COUNT(*) as cnt "
                 "FROM findings "
                 "WHERE working_directory IS NOT NULL AND working_directory != '' "
-                "AND timestamp >= DATE('now', '-' || ? || ' days') "
+                f"AND {self._adapter.date_diff_sql('timestamp', days)} "
                 "GROUP BY working_directory ORDER BY cnt DESC LIMIT ?",
-                (days, limit),
+                (limit,),
             ).fetchall()
         return [{"working_directory": r["working_directory"], "count": r["cnt"]} for r in rows]
 
@@ -381,7 +385,7 @@ class FindingsRepository:
             params.append(provider)
         if conditions:
             query += " WHERE " + " AND ".join(conditions)
-        with self._store._connect() as conn:
+        with self._connect() as conn:
             return scalar(conn, query, tuple(params))
 
     def get_sessions(self, limit: int = 50) -> list[dict[str, Any]]:
@@ -395,7 +399,7 @@ class FindingsRepository:
         field changes mid-session (e.g., branch switch), the shown value may
         not be the latest. Exact-latest would require a correlated subquery.
         """
-        with self._store._connect() as conn:
+        with self._connect() as conn:
             rows = conn.execute(
                 "SELECT session_id, MIN(timestamp) as first_seen, "
                 "MAX(timestamp) as last_seen, COUNT(*) as finding_count, "
@@ -419,8 +423,8 @@ class FindingsRepository:
         so the quick-stat card can show the real active session count.
         """
         hours = max(1, min(hours, 168))  # 1h-7d
-        time_filter = "AND timestamp >= DATETIME('now', '-%d hours')" % hours
-        with self._store._connect() as conn:
+        time_filter = "AND " + self._adapter.hours_ago_sql("timestamp", hours)
+        with self._connect() as conn:
             # Fetch limit+1 to detect if there are more sessions than limit
             rows = conn.execute(
                 "SELECT session_id, MIN(timestamp) as first_seen, "
@@ -448,10 +452,11 @@ class FindingsRepository:
 
     def cleanup(self, retention_days: int = 365) -> int:
         """Delete findings older than retention_days. Returns count deleted."""
-        with self._store._adapter.write_lock():
-            with self._store._connect() as conn:
+
+        with self._adapter.write_lock():
+            with self._connect() as conn:
                 cursor = conn.execute(
-                    "DELETE FROM findings WHERE timestamp < DATE('now', ?)",
+                    f"DELETE FROM findings WHERE timestamp < {self._adapter.date_subtract_literal_sql()}",
                     ("-%d days" % retention_days,),
                 )
                 deleted = cursor.rowcount

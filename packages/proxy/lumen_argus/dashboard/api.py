@@ -14,6 +14,7 @@ import os
 import re
 import signal
 import time
+from datetime import date, datetime
 from typing import TYPE_CHECKING, Any
 from urllib.parse import unquote_plus
 
@@ -76,9 +77,21 @@ def _parse_query(path: str) -> tuple[str, dict[str, str]]:
     return path, params
 
 
+class _DateTimeEncoder(json.JSONEncoder):
+    """JSON encoder that handles datetime objects from PostgreSQL TIMESTAMPTZ columns."""
+
+    def default(self, o: Any) -> Any:
+        # datetime must be checked before date (datetime is a date subclass)
+        if isinstance(o, datetime):
+            return o.isoformat()
+        if isinstance(o, date):
+            return o.isoformat()
+        return super().default(o)
+
+
 def _json_response(status: int, data: object) -> tuple[int, bytes]:
     """Return (status, body_bytes) JSON response."""
-    body = json.dumps(data).encode("utf-8")
+    body = json.dumps(data, cls=_DateTimeEncoder).encode("utf-8")
     return status, body
 
 

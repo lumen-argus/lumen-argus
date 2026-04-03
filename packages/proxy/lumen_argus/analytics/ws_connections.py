@@ -6,22 +6,24 @@ import logging
 import time
 from typing import TYPE_CHECKING, Any
 
+from lumen_argus.analytics.base import BaseRepository
+
 if TYPE_CHECKING:
-    from lumen_argus.analytics.store import AnalyticsStore
+    from lumen_argus.analytics.adapter import DatabaseAdapter
 
 log = logging.getLogger("argus.analytics")
 
 
-class WebSocketConnectionsRepository:
+class WebSocketConnectionsRepository(BaseRepository):
     """Repository for WebSocket connection lifecycle operations."""
 
-    def __init__(self, store: AnalyticsStore) -> None:
-        self._store = store
+    def __init__(self, adapter: DatabaseAdapter) -> None:
+        super().__init__(adapter)
 
     def record_open(self, connection_id: str, target_url: str, origin: str, timestamp: float) -> None:
         """Record a new WebSocket connection."""
-        with self._store._adapter.write_lock():
-            with self._store._connect() as conn:
+        with self._adapter.write_lock():
+            with self._connect() as conn:
                 conn.execute(
                     "INSERT OR IGNORE INTO ws_connections (id, target_url, origin, connected_at) VALUES (?, ?, ?, ?)",
                     (connection_id, target_url, origin or "", timestamp),
@@ -39,8 +41,8 @@ class WebSocketConnectionsRepository:
         close_code: int | None,
     ) -> None:
         """Update a WebSocket connection record on close."""
-        with self._store._adapter.write_lock():
-            with self._store._connect() as conn:
+        with self._adapter.write_lock():
+            with self._connect() as conn:
                 conn.execute(
                     "UPDATE ws_connections SET disconnected_at = ?, duration_seconds = ?, "
                     "frames_sent = ?, frames_received = ?, findings_count = findings_count + ?, "
@@ -55,8 +57,8 @@ class WebSocketConnectionsRepository:
         """Increment findings count for a WebSocket connection."""
         if count <= 0:
             return
-        with self._store._adapter.write_lock():
-            with self._store._connect() as conn:
+        with self._adapter.write_lock():
+            with self._connect() as conn:
                 conn.execute(
                     "UPDATE ws_connections SET findings_count = findings_count + ? WHERE id = ?",
                     (count, connection_id),
@@ -64,7 +66,7 @@ class WebSocketConnectionsRepository:
 
     def get_connections(self, limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
         """Return recent WebSocket connections, newest first."""
-        with self._store._connect() as conn:
+        with self._connect() as conn:
             rows = conn.execute(
                 "SELECT id, target_url, origin, connected_at, disconnected_at, "
                 "duration_seconds, frames_sent, frames_received, findings_count, close_code "
@@ -76,7 +78,7 @@ class WebSocketConnectionsRepository:
     def get_stats(self, days: int = 7) -> dict[str, Any]:
         """Return aggregate WebSocket stats for the given period."""
         cutoff = time.time() - (days * 86400)
-        with self._store._connect() as conn:
+        with self._connect() as conn:
             row = conn.execute(
                 "SELECT COUNT(*) as total_connections, "
                 "COALESCE(SUM(frames_sent), 0) as total_frames_sent, "
@@ -101,8 +103,8 @@ class WebSocketConnectionsRepository:
     def cleanup(self, retention_days: int = 365) -> int:
         """Delete WebSocket connection records older than retention_days."""
         cutoff = time.time() - (retention_days * 86400)
-        with self._store._adapter.write_lock():
-            with self._store._connect() as conn:
+        with self._adapter.write_lock():
+            with self._connect() as conn:
                 cursor = conn.execute(
                     "DELETE FROM ws_connections WHERE connected_at < ?",
                     (cutoff,),

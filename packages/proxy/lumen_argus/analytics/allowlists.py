@@ -5,8 +5,10 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
+from lumen_argus.analytics.base import BaseRepository
+
 if TYPE_CHECKING:
-    from lumen_argus.analytics.store import AnalyticsStore
+    from lumen_argus.analytics.adapter import DatabaseAdapter
 
 log = logging.getLogger("argus.analytics")
 
@@ -15,11 +17,11 @@ _ALLOWLIST_COLUMNS = (
 )
 
 
-class AllowlistRepository:
+class AllowlistRepository(BaseRepository):
     """Repository for allowlist entry CRUD operations."""
 
-    def __init__(self, store: AnalyticsStore) -> None:
-        self._store = store
+    def __init__(self, adapter: DatabaseAdapter) -> None:
+        super().__init__(adapter)
 
     def _row_to_dict(self, row: Any) -> dict[str, Any]:
         d = dict(row)
@@ -33,9 +35,9 @@ class AllowlistRepository:
         pattern = (pattern or "").strip()
         if not pattern:
             raise ValueError("pattern is required")
-        now = self._store._now()
-        with self._store._adapter.write_lock():
-            with self._store._connect() as conn:
+        now = self._now()
+        with self._adapter.write_lock():
+            with self._connect() as conn:
                 cursor = conn.execute(
                     "INSERT INTO allowlist_entries "
                     "(list_type, pattern, description, source, enabled, "
@@ -71,13 +73,13 @@ class AllowlistRepository:
         if not updates:
             return self.get(entry_id)
         updates.append("updated_at = ?")
-        params.append(self._store._now())
+        params.append(self._now())
         if "updated_by" in data:
             updates.append("updated_by = ?")
             params.append(data["updated_by"])
         params.append(int(entry_id))
-        with self._store._adapter.write_lock():
-            with self._store._connect() as conn:
+        with self._adapter.write_lock():
+            with self._connect() as conn:
                 cursor = conn.execute(
                     "UPDATE allowlist_entries SET %s WHERE id = ? AND source = 'api'" % ", ".join(updates),
                     params,
@@ -88,7 +90,7 @@ class AllowlistRepository:
 
     def get(self, entry_id: int) -> dict[str, Any] | None:
         """Get a single entry by ID."""
-        with self._store._connect() as conn:
+        with self._connect() as conn:
             row = conn.execute(
                 "SELECT " + _ALLOWLIST_COLUMNS + " FROM allowlist_entries WHERE id = ?",
                 (int(entry_id),),
@@ -99,8 +101,8 @@ class AllowlistRepository:
 
     def delete(self, entry_id: int) -> bool:
         """Delete an API-managed allowlist entry by ID. Returns True if deleted."""
-        with self._store._adapter.write_lock():
-            with self._store._connect() as conn:
+        with self._adapter.write_lock():
+            with self._connect() as conn:
                 cursor = conn.execute(
                     "DELETE FROM allowlist_entries WHERE id = ? AND source = 'api'",
                     (int(entry_id),),
@@ -115,7 +117,7 @@ class AllowlistRepository:
             query += " WHERE list_type = ?"
             params.append(list_type)
         query += " ORDER BY created_at DESC"
-        with self._store._connect() as conn:
+        with self._connect() as conn:
             rows = conn.execute(query, params).fetchall()
         return [self._row_to_dict(r) for r in rows]
 
@@ -127,6 +129,6 @@ class AllowlistRepository:
             query += " AND list_type = ?"
             params.append(list_type)
         query += " ORDER BY created_at DESC"
-        with self._store._connect() as conn:
+        with self._connect() as conn:
             rows = conn.execute(query, params).fetchall()
         return [self._row_to_dict(r) for r in rows]

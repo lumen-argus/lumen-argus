@@ -6,12 +6,13 @@ import json
 import logging
 import re
 import sqlite3
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 
 from lumen_argus.analytics._db import scalar
+from lumen_argus.analytics.base import BaseRepository
 
 if TYPE_CHECKING:
-    from lumen_argus.analytics.store import AnalyticsStore
+    from lumen_argus.analytics.adapter import DatabaseAdapter
 
 log = logging.getLogger("argus.analytics")
 
@@ -22,15 +23,24 @@ _RULES_COLUMNS = (
 )
 
 
-class RulesRepository:
+class RulesRepository(BaseRepository):
     """Repository for rules CRUD operations."""
 
-    def __init__(self, store: AnalyticsStore) -> None:
-        self._store = store
+    def __init__(self, adapter: DatabaseAdapter, on_rules_changed: Callable[..., Any] | None = None) -> None:
+        super().__init__(adapter)
+        self._on_rules_changed = on_rules_changed
+
+    def _notify_rules_changed(self, change_type: str, rule_name: str | None = None) -> None:
+        """Notify the registered callback that rules have changed."""
+        if self._on_rules_changed:
+            try:
+                self._on_rules_changed(change_type, rule_name=rule_name)
+            except Exception:
+                log.warning("rules change callback failed for %s (rule=%s)", change_type, rule_name, exc_info=True)
 
     def get_count(self) -> int:
         """Return total number of rules in the DB."""
-        with self._store._connect() as conn:
+        with self._connect() as conn:
             return scalar(conn, "SELECT COUNT(*) FROM rules")
 
     def get_active(self, detector: str | None = None, tier: str | None = None) -> list[dict[str, Any]]:
@@ -44,7 +54,7 @@ class RulesRepository:
             query += " AND tier = ?"
             params.append(tier)
         query += " ORDER BY id"
-        with self._store._connect() as conn:
+        with self._connect() as conn:
             rows = conn.execute(query, params).fetchall()
         result: list[dict[str, Any]] = []
         for r in rows:
@@ -102,7 +112,7 @@ class RulesRepository:
             params.append('%"' + tag.replace('"', "") + '"%')
         where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
 
-        with self._store._connect() as conn:
+        with self._connect() as conn:
             total = scalar(conn, "SELECT COUNT(*) FROM rules" + where, tuple(params))
             rows = conn.execute(
                 "SELECT " + _RULES_COLUMNS + " FROM rules" + where + " ORDER BY id LIMIT ? OFFSET ?",
@@ -122,7 +132,7 @@ class RulesRepository:
 
     def get_by_name(self, name: str) -> dict[str, Any] | None:
         """Return a single rule by name."""
-        with self._store._connect() as conn:
+        with self._connect() as conn:
             row = conn.execute("SELECT " + _RULES_COLUMNS + " FROM rules WHERE name = ?", (name,)).fetchone()
         if not row:
             return None
@@ -149,9 +159,9 @@ class RulesRepository:
         except re.error as e:
             raise ValueError("invalid regex: %s" % e)
 
-        now = self._store._now()
-        with self._store._adapter.write_lock():
-            with self._store._connect() as conn:
+        now = self._now()
+        with self._adapter.write_lock():
+            with self._connect() as conn:
                 try:
                     conn.execute(
                         "INSERT INTO rules "
@@ -180,7 +190,7 @@ class RulesRepository:
                     )
                 except sqlite3.IntegrityError:
                     raise ValueError("rule '%s' already exists" % name)
-        self._store._notify_rules_changed("create", rule_name=name)
+        self._notify_rules_changed("create", rule_name=name)
         return self.get_by_name(name)
 
     def _build_set_clause(self, data: dict[str, Any]) -> tuple[list[str], list[Any]]:
@@ -205,7 +215,7 @@ class RulesRepository:
             params.append(1 if data["entropy_context"] else 0)
         if fragments:
             fragments.append("updated_at = ?")
-            params.append(self._store._now())
+            params.append(self._now())
             if "updated_by" in data:
                 fragments.append("updated_by = ?")
                 params.append(data["updated_by"])
@@ -218,15 +228,15 @@ class RulesRepository:
             return self.get_by_name(name)
         params.append(name)
 
-        with self._store._adapter.write_lock():
-            with self._store._connect() as conn:
+        with self._adapter.write_lock():
+            with self._connect() as conn:
                 cursor = conn.execute(
                     "UPDATE rules SET %s WHERE name = ?" % ", ".join(fragments),
                     params,
                 )
                 if cursor.rowcount == 0:
                     return None
-        self._store._notify_rules_changed("update", rule_name=name)
+        self._notify_rules_changed("update", rule_name=name)
         return self.get_by_name(name)
 
     def bulk_update(self, names: list[str], data: dict[str, Any]) -> dict[str, Any]:
@@ -244,8 +254,8 @@ class RulesRepository:
         updated = 0
         failed: list[dict[str, str]] = []
 
-        with self._store._adapter.write_lock():
-            with self._store._connect() as conn:
+        with self._adapter.write_lock():
+            with self._connect() as conn:
                 for name in names:
                     params = [*list(base_params), name]
                     cursor = conn.execute(
@@ -260,21 +270,21 @@ class RulesRepository:
         if failed:
             log.warning("bulk_update: %d rules not found: %s", len(failed), [f["name"] for f in failed])
         if updated:
-            self._store._notify_rules_changed("bulk")
+            self._notify_rules_changed("bulk")
             log.info("bulk_update: %d rules updated", updated)
         return {"updated": updated, "failed": failed}
 
     def delete(self, name: str) -> bool:
         """Delete a dashboard-created rule. Returns True if deleted."""
-        with self._store._adapter.write_lock():
-            with self._store._connect() as conn:
+        with self._adapter.write_lock():
+            with self._connect() as conn:
                 cursor = conn.execute(
                     "DELETE FROM rules WHERE name = ? AND source = 'dashboard'",
                     (name,),
                 )
                 deleted = cursor.rowcount > 0
         if deleted:
-            self._store._notify_rules_changed("delete", rule_name=name)
+            self._notify_rules_changed("delete", rule_name=name)
         return deleted
 
     def clone(self, name: str, new_name: str) -> dict[str, Any] | None:
@@ -309,10 +319,10 @@ class RulesRepository:
         """
 
         result = {"created": 0, "updated": 0, "skipped": 0}
-        now = self._store._now()
+        now = self._now()
 
-        with self._store._adapter.write_lock():
-            with self._store._connect() as conn:
+        with self._adapter.write_lock():
+            with self._connect() as conn:
                 for r in rules:
                     name = r.get("name", "").strip()
                     if not name:
@@ -403,7 +413,7 @@ class RulesRepository:
                         result["created"] += 1
 
         if result["created"] or result["updated"]:
-            self._store._notify_rules_changed("bulk")
+            self._notify_rules_changed("bulk")
         return result
 
     def export(self, tier: str | None = None, detector: str | None = None) -> list[dict[str, Any]]:
@@ -421,7 +431,7 @@ class RulesRepository:
             query += " WHERE " + " AND ".join(conditions)
         query += " ORDER BY id"
 
-        with self._store._connect() as conn:
+        with self._connect() as conn:
             rows = conn.execute(query, params).fetchall()
         result: list[dict[str, Any]] = []
         for r in rows:
@@ -437,7 +447,7 @@ class RulesRepository:
 
     def get_stats(self) -> dict[str, Any]:
         """Rule counts by tier, detector, enabled."""
-        with self._store._connect() as conn:
+        with self._connect() as conn:
             total = scalar(conn, "SELECT COUNT(*) FROM rules")
             by_tier: dict[str, Any] = {}
             for row in conn.execute("SELECT tier, COUNT(*) as cnt FROM rules GROUP BY tier"):
@@ -456,7 +466,7 @@ class RulesRepository:
 
     def get_coverage(self) -> dict[str, int]:
         """Detection coverage stats for dashboard gauge."""
-        with self._store._connect() as conn:
+        with self._connect() as conn:
             total = scalar(conn, "SELECT COUNT(*) FROM rules")
             active = scalar(conn, "SELECT COUNT(*) FROM rules WHERE enabled = 1")
             pro_imported = scalar(conn, "SELECT COUNT(*) FROM rules WHERE tier = 'pro'")
@@ -472,7 +482,7 @@ class RulesRepository:
         Returns list of {"tag": "cloud", "total": N, "enabled": M}.
         Parses the JSON tags column and aggregates.
         """
-        with self._store._connect() as conn:
+        with self._connect() as conn:
             rows = conn.execute("SELECT tags, enabled FROM rules WHERE tags != '[]' AND tags != ''").fetchall()
 
         tag_counts: dict[str, dict[str, int]] = {}
@@ -503,7 +513,7 @@ class RulesRepository:
         """
 
         result: dict[str, list[str]] = {"created": [], "updated": [], "deleted": []}
-        now = self._store._now()
+        now = self._now()
 
         yaml_by_name: dict[str, Any] = {}
         for rule in custom_rules:
@@ -515,8 +525,8 @@ class RulesRepository:
                 continue
             yaml_by_name[name] = rule
 
-        with self._store._adapter.write_lock():
-            with self._store._connect() as conn:
+        with self._adapter.write_lock():
+            with self._connect() as conn:
                 # Snapshot YAML-sourced rules inside the lock to avoid TOCTOU
                 db_yaml: dict[str, bool] = {}
                 for row in conn.execute("SELECT name FROM rules WHERE source = 'yaml'").fetchall():
@@ -594,5 +604,5 @@ class RulesRepository:
                         result["created"].append(name)
 
         if result["created"] or result["updated"] or result["deleted"]:
-            self._store._notify_rules_changed("bulk")
+            self._notify_rules_changed("bulk")
         return result

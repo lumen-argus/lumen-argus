@@ -5,8 +5,10 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
+from lumen_argus.analytics.base import BaseRepository
+
 if TYPE_CHECKING:
-    from lumen_argus.analytics.store import AnalyticsStore
+    from lumen_argus.analytics.adapter import DatabaseAdapter
 
 log = logging.getLogger("argus.analytics")
 
@@ -45,15 +47,15 @@ _VALID_CONFIG_KEYS = {
 _VALID_ACTIONS = {"log", "alert", "block"}
 
 
-class ConfigOverridesRepository:
+class ConfigOverridesRepository(BaseRepository):
     """Repository for config override CRUD operations."""
 
-    def __init__(self, store: AnalyticsStore) -> None:
-        self._store = store
+    def __init__(self, adapter: DatabaseAdapter) -> None:
+        super().__init__(adapter)
 
     def get_all(self) -> dict[str, Any]:
         """Return all config overrides as a dict."""
-        with self._store._connect() as conn:
+        with self._connect() as conn:
             rows = conn.execute("SELECT key, value FROM config_overrides").fetchall()
         overrides = {row["key"]: row["value"] for row in rows}
         log.debug("loaded %d config override(s) from DB", len(overrides))
@@ -137,9 +139,9 @@ class ConfigOverridesRepository:
             if v < 100 or v > 1_000_000:
                 raise ValueError("max_decoded_length must be 100-1000000")
 
-        now = self._store._now()
-        with self._store._adapter.write_lock():
-            with self._store._connect() as conn:
+        now = self._now()
+        with self._adapter.write_lock():
+            with self._connect() as conn:
                 conn.execute(
                     "INSERT OR REPLACE INTO config_overrides (key, value, updated_at) VALUES (?, ?, ?)",
                     (key, value, now),
@@ -148,8 +150,8 @@ class ConfigOverridesRepository:
 
     def delete(self, key: str) -> bool:
         """Delete a config override (revert to YAML default)."""
-        with self._store._adapter.write_lock():
-            with self._store._connect() as conn:
+        with self._adapter.write_lock():
+            with self._connect() as conn:
                 cursor = conn.execute(
                     "DELETE FROM config_overrides WHERE key = ?",
                     (key,),

@@ -5,22 +5,24 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
+from lumen_argus.analytics.base import BaseRepository
+
 if TYPE_CHECKING:
-    from lumen_argus.analytics.store import AnalyticsStore
+    from lumen_argus.analytics.adapter import DatabaseAdapter
 
 log = logging.getLogger("argus.analytics")
 
 
-class MCPToolListsRepository:
+class MCPToolListsRepository(BaseRepository):
     """Repository for MCP tool allow/block list operations."""
 
-    def __init__(self, store: AnalyticsStore) -> None:
-        self._store = store
+    def __init__(self, adapter: DatabaseAdapter) -> None:
+        super().__init__(adapter)
 
     def get_lists(self) -> dict[str, list[dict[str, Any]]]:
         """Return MCP tool lists: {"allowed": [...], "blocked": [...]}."""
         log.debug("loading MCP tool lists from DB")
-        with self._store._connect() as conn:
+        with self._connect() as conn:
             rows = conn.execute(
                 "SELECT id, list_type, tool_name, source, created_at FROM mcp_tool_lists ORDER BY id"
             ).fetchall()
@@ -44,9 +46,9 @@ class MCPToolListsRepository:
         if not tool_name or not tool_name.strip():
             raise ValueError("tool_name must not be empty")
         tool_name = tool_name.strip()
-        now = self._store._now()
-        with self._store._adapter.write_lock():
-            with self._store._connect() as conn:
+        now = self._now()
+        with self._adapter.write_lock():
+            with self._connect() as conn:
                 cursor = conn.execute(
                     "INSERT OR IGNORE INTO mcp_tool_lists (list_type, tool_name, source, created_at) "
                     "VALUES (?, ?, 'api', ?)",
@@ -61,8 +63,8 @@ class MCPToolListsRepository:
 
     def delete_entry(self, entry_id: int) -> bool:
         """Remove an MCP tool list entry by ID. Returns True if deleted."""
-        with self._store._adapter.write_lock():
-            with self._store._connect() as conn:
+        with self._adapter.write_lock():
+            with self._connect() as conn:
                 cursor = conn.execute(
                     "DELETE FROM mcp_tool_lists WHERE id = ? AND source = 'api'",
                     (entry_id,),
@@ -78,11 +80,11 @@ class MCPToolListsRepository:
         YAML entries are authoritative for source='config'. API entries untouched.
         Same pattern as reconcile_yaml_channels.
         """
-        now = self._store._now()
+        now = self._now()
         created = 0
         deleted = 0
-        with self._store._adapter.write_lock():
-            with self._store._connect() as conn:
+        with self._adapter.write_lock():
+            with self._connect() as conn:
                 # Get current config-sourced entries
                 existing = conn.execute(
                     "SELECT id, list_type, tool_name FROM mcp_tool_lists WHERE source = 'config'"
