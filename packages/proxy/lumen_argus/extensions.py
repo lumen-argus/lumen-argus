@@ -88,6 +88,8 @@ class ExtensionRegistry:
         self._mcp_session_escalation: Callable[..., Any] | None = None
         # Database adapter hook
         self._database_adapter: Any | None = None
+        # Agent auth hook
+        self._agent_auth_provider: Any | None = None
 
     def add_detector(self, detector: BaseDetector, priority: bool = False) -> None:
         """Register an additional detector.
@@ -496,6 +498,20 @@ class ExtensionRegistry:
 
     def get_database_adapter(self) -> Any | None:
         return self._database_adapter
+
+    def set_agent_auth_provider(self, provider: object) -> None:
+        """Register the agent authentication provider.
+
+        Must implement the AgentAuthProvider interface from auth.py.
+        Only one provider active at a time (last wins).
+        Called by Pro at startup to enable agent bearer token auth,
+        OIDC, mTLS, or SaaS token validation.
+        """
+        self._agent_auth_provider = provider
+        log.info("agent auth provider registered: %s", type(provider).__name__)
+
+    def get_agent_auth_provider(self) -> Any | None:
+        return self._agent_auth_provider
 
     def loaded_plugins(self) -> list[tuple[str, str]]:
         """Return list of (name, version) for loaded plugins."""

@@ -70,6 +70,26 @@ class ScanResult:
     _pending_hashes: tuple[str, list[str]] | None = field(default=None, repr=False)
 
 
+@dataclass(frozen=True)
+class AgentIdentity:
+    """Verified agent identity extracted from an authenticated request.
+
+    Populated by the AgentAuthProvider after validating the agent's
+    credentials (bearer token, mTLS cert, OIDC JWT, etc.).
+
+    All scoped data access methods accept this to enforce tenant isolation.
+    namespace_id is the universal isolation boundary — all tenant-scoped
+    queries filter by it.
+    """
+
+    agent_id: str  # e.g. "agent_ff9cc0dd77af6867"
+    namespace_id: int  # FK to namespaces.id — 1 = default (self-hosted)
+    scopes: frozenset[str] = frozenset()  # e.g. {"stats:read", "findings:read"}
+    device_id: str = ""  # correlation to findings.device_id
+    machine_id: str = ""  # correlation to enrollment_agents.machine_id
+    namespace_slug: str = ""  # e.g. "acme-corp" — for logging/display only
+
+
 @dataclass
 class AuditEntry:
     """A single audit log record."""
