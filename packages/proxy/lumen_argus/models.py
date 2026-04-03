@@ -3,6 +3,17 @@
 from dataclasses import dataclass, field
 from typing import Any
 
+# Canonical severity levels, ordered from lowest to highest priority.
+# Used by config validation, policy engine, notifiers, and dashboard.
+SEVERITIES = ("info", "warning", "high", "critical")
+SEVERITY_SET: frozenset[str] = frozenset(SEVERITIES)
+SEVERITY_ORDER: dict[str, int] = {s: i for i, s in enumerate(SEVERITIES)}
+
+# Canonical policy actions, ordered from lowest to highest priority.
+# "redact" is Pro-only -- community downgrades to "alert".
+ACTIONS = ("log", "alert", "redact", "block")
+ACTION_SET: frozenset[str] = frozenset(ACTIONS)
+
 
 @dataclass
 class Finding:
@@ -10,7 +21,7 @@ class Finding:
 
     detector: str  # "secrets" | "pii" | "proprietary"
     type: str  # e.g. "aws_access_key", "ssn", "confidential_keyword"
-    severity: str  # "critical" | "high" | "warning" | "info"
+    severity: str
     location: str  # path into request body, e.g. "messages[4].content"
     value_preview: str  # masked preview, e.g. "AKIA****"
     matched_value: str  # full match — kept in memory only, never written to disk

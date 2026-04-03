@@ -12,7 +12,7 @@ import platform
 import urllib.error
 import urllib.request
 
-from lumen_argus_core.enrollment import load_enrollment, update_agent_token
+from lumen_argus_core.enrollment import load_enrollment, ssl_context_for_proxy, update_agent_token
 from lumen_argus_core.time_utils import now_iso
 
 log = logging.getLogger("argus.telemetry")
@@ -86,7 +86,8 @@ def send_heartbeat() -> bool:
     )
 
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        ctx = ssl_context_for_proxy()
+        with urllib.request.urlopen(req, timeout=10, context=ctx) as resp:
             try:
                 response_data = json.loads(resp.read())
             except (json.JSONDecodeError, ValueError):

@@ -5,9 +5,9 @@ import logging
 from typing import Any
 from urllib.request import Request, urlopen
 
-log = logging.getLogger("argus.notifiers.webhook")
+from lumen_argus.models import SEVERITY_ORDER
 
-_SEVERITY_ORDER = {"info": 0, "warning": 1, "high": 2, "critical": 3}
+log = logging.getLogger("argus.notifiers.webhook")
 
 WEBHOOK_CHANNEL_TYPE = {
     "webhook": {
@@ -79,8 +79,8 @@ class WebhookNotifier:
             model: Model name if available.
             **kwargs: Forward compatibility (e.g. session_id).
         """
-        min_level = _SEVERITY_ORDER.get(self.min_severity, 0)
-        filtered = [f for f in findings if _SEVERITY_ORDER.get(f.severity, 0) >= min_level]
+        min_level = SEVERITY_ORDER.get(self.min_severity, 0)
+        filtered = [f for f in findings if SEVERITY_ORDER.get(f.severity, 0) >= min_level]
         if not filtered:
             return
 

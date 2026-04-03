@@ -6,6 +6,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from lumen_argus.analytics.base import BaseRepository
+from lumen_argus.models import ACTION_SET
 
 if TYPE_CHECKING:
     from lumen_argus.analytics.adapter import DatabaseAdapter
@@ -44,7 +45,7 @@ _VALID_CONFIG_KEYS = {
     "proxy.mode",
 }
 
-_VALID_ACTIONS = {"log", "alert", "block"}
+_VALID_ACTIONS = ACTION_SET
 
 
 class ConfigOverridesRepository(BaseRepository):

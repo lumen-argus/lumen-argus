@@ -386,20 +386,29 @@ class TestAnalyticsStore(unittest.TestCase):
 
     def test_dashboard_sessions_ordered_by_last_seen(self):
         """Sessions should be ordered most recent first."""
+        from datetime import datetime, timezone
+        from unittest.mock import patch
+
         from lumen_argus.models import SessionContext
 
-        self.store.record_findings(
-            [_make_finding()],
-            provider="a",
-            model="m",
-            session=SessionContext(session_id="old"),
-        )
-        self.store.record_findings(
-            [_make_finding(type_="github_token")],
-            provider="a",
-            model="m",
-            session=SessionContext(session_id="new"),
-        )
+        now = datetime.now(timezone.utc)
+        ts_old = now.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+        ts_new = now.strftime("%Y-%m-%dT%H:%M:%S.999Z")
+
+        with patch("lumen_argus.analytics.findings.now_iso_ms", return_value=ts_old):
+            self.store.record_findings(
+                [_make_finding()],
+                provider="a",
+                model="m",
+                session=SessionContext(session_id="old"),
+            )
+        with patch("lumen_argus.analytics.findings.now_iso_ms", return_value=ts_new):
+            self.store.record_findings(
+                [_make_finding(type_="github_token")],
+                provider="a",
+                model="m",
+                session=SessionContext(session_id="new"),
+            )
         result = self.store.get_dashboard_sessions()
         self.assertEqual(result["sessions"][0]["session_id"], "new")
 

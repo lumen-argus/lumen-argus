@@ -278,7 +278,8 @@ class FindingsRepository(BaseRepository):
             by_client = {}
             for row in conn.execute(
                 "SELECT client_name, COUNT(*) as cnt FROM findings "
-                f"WHERE client_name != '' {ns_and} GROUP BY client_name ORDER BY cnt DESC LIMIT 50",
+                f"WHERE client_name != '' {ns_and} "
+                "GROUP BY client_name ORDER BY cnt DESC LIMIT 50",
                 (namespace_id,),
             ):
                 by_client[row["client_name"]] = row["cnt"]

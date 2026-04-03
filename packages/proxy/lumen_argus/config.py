@@ -9,6 +9,8 @@ from typing import Any
 
 import yaml
 
+from lumen_argus.models import ACTION_SET, SEVERITY_SET
+
 log = logging.getLogger("argus.config")
 
 
@@ -283,7 +285,7 @@ class Config:
 # Validation
 # ---------------------------------------------------------------------------
 
-_VALID_ACTIONS = {"log", "alert", "redact", "block"}
+_VALID_ACTIONS = ACTION_SET
 
 _KNOWN_TOP_KEYS = {
     # Community keys
@@ -344,7 +346,7 @@ _KNOWN_DEDUP_KEYS = {
     "max_conversations",
     "max_hashes_per_conversation",
 }
-_VALID_SEVERITIES = {"critical", "high", "warning", "info"}
+_VALID_SEVERITIES = SEVERITY_SET
 
 
 def _warn(msg: str) -> None:

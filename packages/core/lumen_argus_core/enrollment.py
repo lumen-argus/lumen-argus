@@ -12,6 +12,7 @@ import logging
 import os
 import platform
 import secrets
+import ssl
 import urllib.error
 import urllib.request
 from typing import Any
@@ -23,6 +24,29 @@ log = logging.getLogger("argus.enrollment")
 _ARGUS_DIR = os.path.expanduser("~/.lumen-argus")
 _ENROLLMENT_FILE = os.path.join(_ARGUS_DIR, "enrollment.json")
 _CA_CERT_FILE = os.path.join(_ARGUS_DIR, "ca.pem")
+
+
+_ssl_ctx_cache: ssl.SSLContext | None = None
+_ssl_ctx_mtime: float = 0.0
+
+
+def ssl_context_for_proxy() -> ssl.SSLContext | None:
+    """Build an SSL context using the enrolled CA cert, if available.
+
+    Returns None if no CA cert is installed (default system CA will be used).
+    Called by enrollment and telemetry for all proxy HTTPS requests.
+    Caches the context and only rebuilds when the CA file changes on disk.
+    """
+    global _ssl_ctx_cache, _ssl_ctx_mtime
+    if not os.path.isfile(_CA_CERT_FILE):
+        _ssl_ctx_cache = None
+        return None
+    mtime = os.path.getmtime(_CA_CERT_FILE)
+    if _ssl_ctx_cache is None or mtime != _ssl_ctx_mtime:
+        _ssl_ctx_cache = ssl.create_default_context(cafile=_CA_CERT_FILE)
+        _ssl_ctx_mtime = mtime
+        log.debug("loaded CA cert %s for proxy TLS", _CA_CERT_FILE)
+    return _ssl_ctx_cache
 
 
 def _generate_agent_id() -> str:
@@ -56,7 +80,8 @@ def fetch_enrollment_config(server_url: str, token: str = "") -> dict[str, Any]:
 
     req = urllib.request.Request(url, headers=headers, method="GET")
     try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        ctx = ssl_context_for_proxy()
+        with urllib.request.urlopen(req, timeout=15, context=ctx) as resp:
             data: dict[str, Any] = json.loads(resp.read())
             return data
     except urllib.error.HTTPError as e:
@@ -106,7 +131,8 @@ def register_agent(server_url: str, agent_id: str, machine_id: str, token: str =
 
     req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
     try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        ctx = ssl_context_for_proxy()
+        with urllib.request.urlopen(req, timeout=15, context=ctx) as resp:
             try:
                 response_data: dict[str, Any] = json.loads(resp.read())
             except (json.JSONDecodeError, ValueError):
@@ -132,7 +158,8 @@ def deregister_agent(server_url: str, agent_id: str) -> None:
 
     req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
     try:
-        urllib.request.urlopen(req, timeout=15)
+        ctx = ssl_context_for_proxy()
+        urllib.request.urlopen(req, timeout=15, context=ctx)
     except (urllib.error.URLError, urllib.error.HTTPError):
         log.warning("failed to deregister agent — server may be unreachable")
 

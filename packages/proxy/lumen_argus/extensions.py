@@ -227,8 +227,9 @@ class ExtensionRegistry:
     def register_dashboard_api(self, handler: Callable[..., Any]) -> None:
         """Register a plugin API handler (async).
 
-        Signature: async handler(path, method, body, store, audit_reader)
+        Signature: async handler(path, method, body, store, audit_reader, agent_identity)
                    -> (status, body) | (status, content_type, body) | None
+        agent_identity is AgentIdentity | None (None for dashboard users).
         Return None to fall through to community handler.
         """
         self._dashboard_api_handler = handler
