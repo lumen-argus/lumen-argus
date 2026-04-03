@@ -51,7 +51,7 @@ class AllowlistRepository:
         if not pattern:
             raise ValueError("pattern is required")
         now = self._store._now()
-        with self._store._lock:
+        with self._store._adapter.write_lock():
             with self._store._connect() as conn:
                 cursor = conn.execute(
                     "INSERT INTO allowlist_entries "
@@ -93,7 +93,7 @@ class AllowlistRepository:
             updates.append("updated_by = ?")
             params.append(data["updated_by"])
         params.append(int(entry_id))
-        with self._store._lock:
+        with self._store._adapter.write_lock():
             with self._store._connect() as conn:
                 cursor = conn.execute(
                     "UPDATE allowlist_entries SET %s WHERE id = ? AND source = 'api'" % ", ".join(updates),
@@ -116,7 +116,7 @@ class AllowlistRepository:
 
     def delete(self, entry_id: int) -> bool:
         """Delete an API-managed allowlist entry by ID. Returns True if deleted."""
-        with self._store._lock:
+        with self._store._adapter.write_lock():
             with self._store._connect() as conn:
                 cursor = conn.execute(
                     "DELETE FROM allowlist_entries WHERE id = ? AND source = 'api'",

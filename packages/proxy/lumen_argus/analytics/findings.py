@@ -125,7 +125,7 @@ class FindingsRepository:
                 )
             )
 
-        with self._store._lock:
+        with self._store._adapter.write_lock():
             with self._store._connect() as conn:
                 conn.executemany(
                     "INSERT INTO findings "
@@ -151,7 +151,7 @@ class FindingsRepository:
         """
         if not session_id:
             return
-        with self._store._lock:
+        with self._store._adapter.write_lock():
             with self._store._connect() as conn:
                 conn.execute(
                     "UPDATE findings SET seen_count = seen_count + 1 WHERE session_id = ?",
@@ -484,7 +484,7 @@ class FindingsRepository:
 
     def cleanup(self, retention_days: int = 365) -> int:
         """Delete findings older than retention_days. Returns count deleted."""
-        with self._store._lock:
+        with self._store._adapter.write_lock():
             with self._store._connect() as conn:
                 cursor = conn.execute(
                     "DELETE FROM findings WHERE timestamp < DATE('now', ?)",

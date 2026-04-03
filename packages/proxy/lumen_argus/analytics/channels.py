@@ -107,7 +107,7 @@ class ChannelsRepository:
             events = json.loads(events)
 
         now = self._store._now()
-        with self._store._lock:
+        with self._store._adapter.write_lock():
             with self._store._connect() as conn:
                 # Atomic limit check under the same lock as insert
                 if channel_limit is not None:
@@ -175,7 +175,7 @@ class ChannelsRepository:
             params.append(data["updated_by"])
         params.append(channel_id)
 
-        with self._store._lock:
+        with self._store._adapter.write_lock():
             with self._store._connect() as conn:
                 try:
                     cursor = conn.execute(
@@ -191,7 +191,7 @@ class ChannelsRepository:
 
     def delete(self, channel_id: int) -> bool:
         """Delete a channel by ID. Returns True if deleted."""
-        with self._store._lock:
+        with self._store._adapter.write_lock():
             with self._store._connect() as conn:
                 cursor = conn.execute(
                     "DELETE FROM notification_channels WHERE id = ?",
@@ -204,7 +204,7 @@ class ChannelsRepository:
         if not ids:
             return 0
         placeholders = ",".join("?" for _ in ids)
-        with self._store._lock:
+        with self._store._adapter.write_lock():
             with self._store._connect() as conn:
                 if action == "delete":
                     # Only delete dashboard-managed channels

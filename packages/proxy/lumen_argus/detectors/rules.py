@@ -189,7 +189,7 @@ class RulesDetector(BaseDetector):
             return
 
         try:
-            with self._store._lock:
+            with self._store._adapter.write_lock():
                 conn = self._store._connect()
                 for rule_name, count in snapshot.items():
                     conn.execute(

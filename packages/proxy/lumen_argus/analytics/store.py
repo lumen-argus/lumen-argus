@@ -12,7 +12,6 @@ via extensions.set_database_adapter().
 import logging
 import threading
 import time
-from contextlib import contextmanager
 from typing import Any, Callable
 
 from lumen_argus.analytics.adapter import DatabaseAdapter, DBConnection, SQLiteAdapter
@@ -95,9 +94,6 @@ class AnalyticsStore:
         else:
             self._adapter = SQLiteAdapter(db_path)
         self._hmac_key = hmac_key
-        # Repositories use `with self._store._lock:` for write serialization.
-        # SQLite: real threading.Lock. PostgreSQL: no-op lock (MVCC).
-        self._lock = self._adapter.lock
         self._rules_change_callback: Callable[..., Any] | None = None
         self._ensure_db()
         self.findings = FindingsRepository(self)
@@ -139,16 +135,6 @@ class AnalyticsStore:
         Returns a DBConnection (DB-API 2.0 protocol).
         """
         return self._adapter.connect()
-
-    @contextmanager
-    def _write_lock(self) -> Any:
-        """Acquire write lock via the adapter.
-
-        SQLite: threading.Lock (single-writer serialization).
-        PostgreSQL: no-op (MVCC handles concurrency).
-        """
-        with self._adapter.write_lock():
-            yield
 
     def _now(self) -> str:
         return now_iso()
@@ -479,7 +465,7 @@ class AnalyticsStore:
             update_parts.append("description = excluded.description")
         if input_schema:
             update_parts.append("input_schema = excluded.input_schema")
-        with self._lock:
+        with self._adapter.write_lock():
             with self._connect() as conn:
                 conn.execute(
                     "INSERT INTO mcp_detected_tools "
@@ -513,7 +499,7 @@ class AnalyticsStore:
         if not tool_name:
             return
         now = self._now()
-        with self._lock:
+        with self._adapter.write_lock():
             with self._connect() as conn:
                 conn.execute(
                     "INSERT INTO mcp_tool_calls "
@@ -545,7 +531,7 @@ class AnalyticsStore:
         from datetime import datetime, timedelta, timezone
 
         cutoff = (datetime.now(timezone.utc) - timedelta(days=retention_days)).strftime("%Y-%m-%dT%H:%M:%SZ")
-        with self._lock:
+        with self._adapter.write_lock():
             with self._connect() as conn:
                 cursor = conn.execute("DELETE FROM mcp_tool_calls WHERE timestamp < ?", (cutoff,))
                 deleted = cursor.rowcount
@@ -577,7 +563,7 @@ class AnalyticsStore:
 
         now = self._now()
         params_json = _json.dumps(param_names)
-        with self._lock:
+        with self._adapter.write_lock():
             with self._connect() as conn:
                 conn.execute(
                     "INSERT INTO mcp_tool_baselines (tool_name, definition_hash, description, "
@@ -590,7 +576,7 @@ class AnalyticsStore:
     def update_mcp_tool_baseline_seen(self, tool_name: str) -> None:
         """Update last_seen timestamp for a tool baseline."""
         now = self._now()
-        with self._lock:
+        with self._adapter.write_lock():
             with self._connect() as conn:
                 conn.execute(
                     "UPDATE mcp_tool_baselines SET last_seen = ? WHERE tool_name = ?",
@@ -599,7 +585,7 @@ class AnalyticsStore:
 
     def increment_mcp_tool_drift_count(self, tool_name: str) -> None:
         """Increment drift_count for a tool that changed."""
-        with self._lock:
+        with self._adapter.write_lock():
             with self._connect() as conn:
                 conn.execute(
                     "UPDATE mcp_tool_baselines SET drift_count = drift_count + 1 WHERE tool_name = ?",

@@ -90,7 +90,7 @@ class DatabaseAdapter(ABC):
 
     Community provides SQLiteAdapter. Pro provides PostgresAdapter.
     Repositories access connections via store._connect() and serialize
-    writes via store._lock (which delegates to adapter.lock).
+    writes via store._adapter.write_lock().
     """
 
     # --- Connection lifecycle ---
@@ -116,16 +116,6 @@ class DatabaseAdapter(ABC):
         """Release all connections / close pool."""
 
     # --- Write locking ---
-
-    @property
-    def lock(self) -> Any:
-        """Lock object for write serialization.
-
-        Repositories use `with self._store._lock:` which is bound to this.
-        SQLite: real threading.Lock (single-writer).
-        PostgreSQL: no-op lock (MVCC handles concurrency).
-        """
-        return _NOOP_LOCK
 
     @contextmanager
     def write_lock(self) -> Any:
@@ -252,11 +242,6 @@ class SQLiteAdapter(DatabaseAdapter):
             except Exception as exc:
                 log.warning("error closing SQLite connection: %s", exc)
             self._local.conn = None
-
-    @property
-    def lock(self) -> threading.Lock:
-        """Real threading.Lock for SQLite single-writer serialization."""
-        return self._lock
 
     @contextmanager
     def write_lock(self) -> Any:

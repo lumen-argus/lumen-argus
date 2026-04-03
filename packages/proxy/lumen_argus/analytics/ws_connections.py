@@ -36,7 +36,7 @@ class WebSocketConnectionsRepository:
 
     def record_open(self, connection_id: str, target_url: str, origin: str, timestamp: float) -> None:
         """Record a new WebSocket connection."""
-        with self._store._lock:
+        with self._store._adapter.write_lock():
             with self._store._connect() as conn:
                 conn.execute(
                     "INSERT OR IGNORE INTO ws_connections (id, target_url, origin, connected_at) VALUES (?, ?, ?, ?)",
@@ -55,7 +55,7 @@ class WebSocketConnectionsRepository:
         close_code: int | None,
     ) -> None:
         """Update a WebSocket connection record on close."""
-        with self._store._lock:
+        with self._store._adapter.write_lock():
             with self._store._connect() as conn:
                 conn.execute(
                     "UPDATE ws_connections SET disconnected_at = ?, duration_seconds = ?, "
@@ -71,7 +71,7 @@ class WebSocketConnectionsRepository:
         """Increment findings count for a WebSocket connection."""
         if count <= 0:
             return
-        with self._store._lock:
+        with self._store._adapter.write_lock():
             with self._store._connect() as conn:
                 conn.execute(
                     "UPDATE ws_connections SET findings_count = findings_count + ? WHERE id = ?",
@@ -117,7 +117,7 @@ class WebSocketConnectionsRepository:
     def cleanup(self, retention_days: int = 365) -> int:
         """Delete WebSocket connection records older than retention_days."""
         cutoff = time.time() - (retention_days * 86400)
-        with self._store._lock:
+        with self._store._adapter.write_lock():
             with self._store._connect() as conn:
                 cursor = conn.execute(
                     "DELETE FROM ws_connections WHERE connected_at < ?",

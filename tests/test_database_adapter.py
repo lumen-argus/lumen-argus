@@ -105,9 +105,25 @@ class TestSQLiteAdapterWriteLock(StoreTestCase):
             conn = self.store._adapter.connect()
             conn.execute("SELECT 1")
 
-    def test_store_lock_is_adapter_lock(self):
-        """store._lock should be the adapter's lock property."""
-        self.assertIs(self.store._lock, self.store._adapter.lock)
+    def test_write_lock_blocks_concurrent_access(self):
+        """write_lock() should block concurrent writers."""
+        import time
+
+        results = []
+
+        def writer():
+            with self.store._adapter.write_lock():
+                results.append(time.monotonic())
+                time.sleep(0.05)
+
+        t = threading.Thread(target=writer)
+        with self.store._adapter.write_lock():
+            t.start()
+            time.sleep(0.05)
+            results.append(time.monotonic())
+        t.join()
+        # Main thread should finish before the spawned thread acquires the lock
+        self.assertLess(results[0], results[1])
 
 
 class TestSQLiteAdapterClose(StoreTestCase):

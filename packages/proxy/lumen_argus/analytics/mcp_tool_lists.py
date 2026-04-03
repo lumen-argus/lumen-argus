@@ -57,7 +57,7 @@ class MCPToolListsRepository:
             raise ValueError("tool_name must not be empty")
         tool_name = tool_name.strip()
         now = self._store._now()
-        with self._store._lock:
+        with self._store._adapter.write_lock():
             with self._store._connect() as conn:
                 cursor = conn.execute(
                     "INSERT OR IGNORE INTO mcp_tool_lists (list_type, tool_name, source, created_at) "
@@ -73,7 +73,7 @@ class MCPToolListsRepository:
 
     def delete_entry(self, entry_id: int) -> bool:
         """Remove an MCP tool list entry by ID. Returns True if deleted."""
-        with self._store._lock:
+        with self._store._adapter.write_lock():
             with self._store._connect() as conn:
                 cursor = conn.execute(
                     "DELETE FROM mcp_tool_lists WHERE id = ? AND source = 'api'",
@@ -93,7 +93,7 @@ class MCPToolListsRepository:
         now = self._store._now()
         created = 0
         deleted = 0
-        with self._store._lock:
+        with self._store._adapter.write_lock():
             with self._store._connect() as conn:
                 # Get current config-sourced entries
                 existing = conn.execute(

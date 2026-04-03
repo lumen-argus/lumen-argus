@@ -177,7 +177,7 @@ class RulesRepository:
             raise ValueError("invalid regex: %s" % e)
 
         now = self._store._now()
-        with self._store._lock:
+        with self._store._adapter.write_lock():
             with self._store._connect() as conn:
                 try:
                     conn.execute(
@@ -245,7 +245,7 @@ class RulesRepository:
             return self.get_by_name(name)
         params.append(name)
 
-        with self._store._lock:
+        with self._store._adapter.write_lock():
             with self._store._connect() as conn:
                 cursor = conn.execute(
                     "UPDATE rules SET %s WHERE name = ?" % ", ".join(fragments),
@@ -271,7 +271,7 @@ class RulesRepository:
         updated = 0
         failed: list[dict[str, str]] = []
 
-        with self._store._lock:
+        with self._store._adapter.write_lock():
             with self._store._connect() as conn:
                 for name in names:
                     params = [*list(base_params), name]
@@ -293,7 +293,7 @@ class RulesRepository:
 
     def delete(self, name: str) -> bool:
         """Delete a dashboard-created rule. Returns True if deleted."""
-        with self._store._lock:
+        with self._store._adapter.write_lock():
             with self._store._connect() as conn:
                 cursor = conn.execute(
                     "DELETE FROM rules WHERE name = ? AND source = 'dashboard'",
@@ -338,7 +338,7 @@ class RulesRepository:
         result = {"created": 0, "updated": 0, "skipped": 0}
         now = self._store._now()
 
-        with self._store._lock:
+        with self._store._adapter.write_lock():
             with self._store._connect() as conn:
                 for r in rules:
                     name = r.get("name", "").strip()
@@ -542,7 +542,7 @@ class RulesRepository:
                 continue
             yaml_by_name[name] = rule
 
-        with self._store._lock:
+        with self._store._adapter.write_lock():
             with self._store._connect() as conn:
                 # Snapshot YAML-sourced rules inside the lock to avoid TOCTOU
                 db_yaml: dict[str, bool] = {}

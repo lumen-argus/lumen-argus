@@ -146,7 +146,7 @@ class ConfigOverridesRepository:
                 raise ValueError("max_decoded_length must be 100-1000000")
 
         now = self._store._now()
-        with self._store._lock:
+        with self._store._adapter.write_lock():
             with self._store._connect() as conn:
                 conn.execute(
                     "INSERT OR REPLACE INTO config_overrides (key, value, updated_at) VALUES (?, ?, ?)",
@@ -156,7 +156,7 @@ class ConfigOverridesRepository:
 
     def delete(self, key: str) -> bool:
         """Delete a config override (revert to YAML default)."""
-        with self._store._lock:
+        with self._store._adapter.write_lock():
             with self._store._connect() as conn:
                 cursor = conn.execute(
                     "DELETE FROM config_overrides WHERE key = ?",

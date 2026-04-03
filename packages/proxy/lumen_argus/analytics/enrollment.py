@@ -64,7 +64,7 @@ class EnrollmentRepository:
         enrolled_at: str,
     ) -> None:
         """Register a new agent or update an existing one."""
-        with self._store._lock:
+        with self._store._adapter.write_lock():
             with self._store._connect() as conn:
                 conn.execute(
                     """INSERT INTO enrollment_agents
@@ -85,7 +85,7 @@ class EnrollmentRepository:
 
     def deregister(self, agent_id: str) -> bool:
         """Mark an agent as deregistered. Returns True if found."""
-        with self._store._lock:
+        with self._store._adapter.write_lock():
             with self._store._connect() as conn:
                 cur = conn.execute(
                     "UPDATE enrollment_agents SET status = 'deregistered' WHERE agent_id = ?",
@@ -105,7 +105,7 @@ class EnrollmentRepository:
         heartbeat_at: str,
     ) -> bool:
         """Update agent heartbeat. Returns True if agent exists."""
-        with self._store._lock:
+        with self._store._adapter.write_lock():
             with self._store._connect() as conn:
                 cur = conn.execute(
                     """UPDATE enrollment_agents SET
@@ -122,7 +122,7 @@ class EnrollmentRepository:
 
     def get_agent(self, agent_id: str) -> dict[str, Any] | None:
         """Get a single agent by ID."""
-        with self._store._lock:
+        with self._store._adapter.write_lock():
             with self._store._connect() as conn:
                 row = conn.execute(
                     "SELECT * FROM enrollment_agents WHERE agent_id = ?",
@@ -137,7 +137,7 @@ class EnrollmentRepository:
         offset: int = 0,
     ) -> list[dict[str, Any]]:
         """List enrolled agents with optional status filter."""
-        with self._store._lock:
+        with self._store._adapter.write_lock():
             with self._store._connect() as conn:
                 if status:
                     rows = conn.execute(
@@ -154,7 +154,7 @@ class EnrollmentRepository:
 
     def count_agents(self, status: str = "") -> int:
         """Count agents by status."""
-        with self._store._lock:
+        with self._store._adapter.write_lock():
             with self._store._connect() as conn:
                 if status:
                     row = conn.execute(
@@ -178,7 +178,7 @@ class EnrollmentRepository:
         Prevents race conditions where an agent registers between
         separate list_agents() and count_agents() calls.
         """
-        with self._store._lock:
+        with self._store._adapter.write_lock():
             with self._store._connect() as conn:
                 if status:
                     rows = conn.execute(
@@ -208,7 +208,7 @@ class EnrollmentRepository:
         """
         current_ids = [t.get("client_id", "") for t in tools]
         current_ids = [cid for cid in current_ids if cid]
-        with self._store._lock:
+        with self._store._adapter.write_lock():
             with self._store._connect() as conn:
                 if current_ids:
                     placeholders = ",".join("?" for _ in current_ids)
@@ -277,7 +277,7 @@ class EnrollmentRepository:
 
     def get_agent_tools(self, agent_id: str) -> list[dict[str, Any]]:
         """Get all tools for a specific agent."""
-        with self._store._lock:
+        with self._store._adapter.write_lock():
             with self._store._connect() as conn:
                 rows = conn.execute(
                     "SELECT * FROM enrollment_agent_tools WHERE agent_id = ? ORDER BY client_id",
@@ -292,7 +292,7 @@ class EnrollmentRepository:
         Returns per-tool install/configured/routing counts and a list of
         unconfigured tools (capped at _GAPS_LIMIT) with agent context.
         """
-        with self._store._lock:
+        with self._store._adapter.write_lock():
             with self._store._connect() as conn:
                 by_tool = [
                     dict(r)
@@ -352,7 +352,7 @@ class EnrollmentRepository:
 
         Returns the number of agents marked stale.
         """
-        with self._store._lock:
+        with self._store._adapter.write_lock():
             with self._store._connect() as conn:
                 cur = conn.execute(
                     """UPDATE enrollment_agents SET status = 'stale'

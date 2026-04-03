@@ -458,7 +458,7 @@ class TestAnalyticsStore(unittest.TestCase):
 
         # Manually backdate the row to 400 days ago
         conn = self.store._connect()
-        with self.store._lock:
+        with self.store._adapter.write_lock():
             with conn:
                 conn.execute("UPDATE findings SET timestamp = DATE('now', '-400 days') WHERE id = 1")
 
@@ -479,7 +479,7 @@ class TestAnalyticsStore(unittest.TestCase):
         self.store.record_findings(findings)
 
         conn = self.store._connect()
-        with self.store._lock:
+        with self.store._adapter.write_lock():
             with conn:
                 conn.execute("UPDATE findings SET timestamp = DATE('now', '-500 days')")
 
@@ -492,7 +492,7 @@ class TestAnalyticsStore(unittest.TestCase):
 
         # Backdate only the first record
         conn = self.store._connect()
-        with self.store._lock:
+        with self.store._adapter.write_lock():
             with conn:
                 conn.execute("UPDATE findings SET timestamp = DATE('now', '-400 days') WHERE id = 1")
 
