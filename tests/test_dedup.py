@@ -6,7 +6,7 @@ import time
 import unittest
 
 from lumen_argus.models import Finding, ScanField, SessionContext
-from lumen_argus.pipeline import ContentFingerprint, _FindingDedup
+from lumen_argus.pipeline import ContentFingerprint, FindingDedup
 from tests.helpers import StoreTestCase
 
 
@@ -255,18 +255,18 @@ class TestFindingDedup(unittest.TestCase):
         )
 
     def test_first_finding_is_new(self):
-        dedup = _FindingDedup(ttl_seconds=60)
+        dedup = FindingDedup(ttl_seconds=60)
         f = self._make_finding()
         self.assertTrue(dedup.is_new(f))
 
     def test_same_finding_within_ttl_is_not_new(self):
-        dedup = _FindingDedup(ttl_seconds=60)
+        dedup = FindingDedup(ttl_seconds=60)
         f = self._make_finding()
         dedup.is_new(f)
         self.assertFalse(dedup.is_new(f))
 
     def test_same_finding_after_ttl_is_new_again(self):
-        dedup = _FindingDedup(ttl_seconds=0)
+        dedup = FindingDedup(ttl_seconds=0)
         f = self._make_finding()
         dedup.is_new(f)
         # TTL=0 means immediately expired
@@ -274,14 +274,14 @@ class TestFindingDedup(unittest.TestCase):
         self.assertTrue(dedup.is_new(f))
 
     def test_different_type_is_always_new(self):
-        dedup = _FindingDedup(ttl_seconds=60)
+        dedup = FindingDedup(ttl_seconds=60)
         f1 = self._make_finding(ftype="aws_access_key")
         f2 = self._make_finding(ftype="aws_secret_key", matched="wJalrXUtnFEMI/SECRET")
         dedup.is_new(f1)
         self.assertTrue(dedup.is_new(f2))
 
     def test_different_detector_is_always_new(self):
-        dedup = _FindingDedup(ttl_seconds=60)
+        dedup = FindingDedup(ttl_seconds=60)
         f1 = self._make_finding(detector="secrets")
         f2 = self._make_finding(detector="custom")
         dedup.is_new(f1)
@@ -289,7 +289,7 @@ class TestFindingDedup(unittest.TestCase):
 
     def test_same_finding_different_session_is_new(self):
         """Same finding in different sessions should both be recorded."""
-        dedup = _FindingDedup(ttl_seconds=60)
+        dedup = FindingDedup(ttl_seconds=60)
         f = self._make_finding()
         self.assertTrue(dedup.is_new(f, session_id="sess-1"))
         # Same finding, different session — should be new
@@ -298,7 +298,7 @@ class TestFindingDedup(unittest.TestCase):
         self.assertFalse(dedup.is_new(f, session_id="sess-1"))
 
     def test_filter_new_returns_subset(self):
-        dedup = _FindingDedup(ttl_seconds=60)
+        dedup = FindingDedup(ttl_seconds=60)
         f1 = self._make_finding(ftype="aws_access_key")
         f2 = self._make_finding(ftype="github_token", matched="ghp_1234567890abcdef")
         # Record f1 as seen
@@ -310,7 +310,7 @@ class TestFindingDedup(unittest.TestCase):
         self.assertEqual(result[0].type, "github_token")
 
     def test_cleanup_removes_expired(self):
-        dedup = _FindingDedup(ttl_seconds=0)
+        dedup = FindingDedup(ttl_seconds=0)
         f = self._make_finding()
         dedup.is_new(f)
         time.sleep(0.01)
@@ -318,7 +318,7 @@ class TestFindingDedup(unittest.TestCase):
         self.assertGreaterEqual(removed, 1)
 
     def test_thread_safety(self):
-        dedup = _FindingDedup(ttl_seconds=60)
+        dedup = FindingDedup(ttl_seconds=60)
         errors = []
 
         def worker(thread_id):
