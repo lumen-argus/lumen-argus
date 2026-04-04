@@ -188,7 +188,7 @@ class TestHeartbeat(unittest.TestCase):
 
     def test_heartbeat_payload_includes_tool_detail(self):
         """Heartbeat tools array includes display_name, install_method, proxy_config_type."""
-        from lumen_argus_core.detect import DetectedClient
+        from lumen_argus_core.detect_models import DetectedClient
         from lumen_argus_core.telemetry import send_heartbeat
 
         client = DetectedClient(

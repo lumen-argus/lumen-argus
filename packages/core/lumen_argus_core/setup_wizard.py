@@ -796,10 +796,10 @@ def _prompt_yes(message: str) -> bool:
 
 def _find_ide_settings(extension_path: str) -> str | None:
     """Find the IDE settings.json file that corresponds to an extension path."""
-    from lumen_argus_core.detect import _get_vscode_variants
+    from lumen_argus_core.detect_models import get_vscode_variants
 
     # Determine which variant owns this extension path
-    for variant in _get_vscode_variants():
+    for variant in get_vscode_variants():
         for ext_dir in variant.extensions:
             expanded = os.path.expanduser(ext_dir)
             if extension_path.startswith(expanded):

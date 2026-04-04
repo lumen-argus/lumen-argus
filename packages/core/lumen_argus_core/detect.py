@@ -7,19 +7,47 @@ shell profiles and IDE settings.
 All detection is read-only — never modifies files. Setup is in setup_wizard.py.
 """
 
-import enum
-import glob
 import json
 import logging
 import os
 import platform
 import re
-import shutil
-import subprocess
-from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from lumen_argus_core.clients import CLIENT_REGISTRY, PROXY_ENV_VARS, ClientDef, ProxyConfigType
+from lumen_argus_core.detect_models import (
+    CIEnvironment,
+    DetectedClient,
+    DetectionReport,
+    get_vscode_variants,
+)
+from lumen_argus_core.scanners import (
+    detect_version as _detect_version,
+)
+from lumen_argus_core.scanners import (
+    scan_app_bundle as _scan_app_bundle,
+)
+from lumen_argus_core.scanners import (
+    scan_binary as _scan_binary,
+)
+from lumen_argus_core.scanners import (
+    scan_brew_package as _scan_brew_package,
+)
+from lumen_argus_core.scanners import (
+    scan_jetbrains_plugin as _scan_jetbrains_plugin,
+)
+from lumen_argus_core.scanners import (
+    scan_neovim_plugin as _scan_neovim_plugin,
+)
+from lumen_argus_core.scanners import (
+    scan_npm_package as _scan_npm_package,
+)
+from lumen_argus_core.scanners import (
+    scan_pip_package as _scan_pip_package,
+)
+from lumen_argus_core.scanners import (
+    scan_vscode_extension as _scan_vscode_extension,
+)
 
 log = logging.getLogger("argus.detect")
 
@@ -42,148 +70,6 @@ def _get_powershell_profiles() -> tuple[str, ...]:
         os.path.join(docs, "Documents", "PowerShell", "Microsoft.PowerShell_profile.ps1"),
         os.path.join(docs, "Documents", "WindowsPowerShell", "Microsoft.PowerShell_profile.ps1"),
     )
-
-
-@dataclass(frozen=True)
-class IDEVariant:
-    """VS Code-like IDE variant with extension and settings paths."""
-
-    name: str
-    extensions: tuple[str, ...]
-    settings: tuple[str, ...]
-
-
-# VS Code variants and their extensions/settings paths
-_VSCODE_VARIANTS: tuple[IDEVariant, ...] = (
-    IDEVariant(
-        name="VS Code",
-        extensions=(
-            "~/.vscode/extensions",
-            "~/Library/Application Support/Code/User/extensions",
-        ),
-        settings=(
-            "~/Library/Application Support/Code/User/settings.json",
-            "~/.config/Code/User/settings.json",
-        ),
-    ),
-    IDEVariant(
-        name="VS Code Insiders",
-        extensions=("~/.vscode-insiders/extensions",),
-        settings=(
-            "~/Library/Application Support/Code - Insiders/User/settings.json",
-            "~/.config/Code - Insiders/User/settings.json",
-        ),
-    ),
-    IDEVariant(
-        name="VSCodium",
-        extensions=("~/.vscode-oss/extensions",),
-        settings=(
-            "~/Library/Application Support/VSCodium/User/settings.json",
-            "~/.config/VSCodium/User/settings.json",
-        ),
-    ),
-    IDEVariant(
-        name="Cursor",
-        extensions=("~/.cursor/extensions",),
-        settings=(
-            "~/.cursor/User/settings.json",
-            "~/Library/Application Support/Cursor/User/settings.json",
-        ),
-    ),
-    IDEVariant(
-        name="Windsurf",
-        extensions=("~/.windsurf/extensions",),
-        settings=(
-            "~/.windsurf/User/settings.json",
-            "~/Library/Application Support/Windsurf/User/settings.json",
-        ),
-    ),
-    IDEVariant(
-        name="Kiro",
-        extensions=("~/.kiro/extensions",),
-        settings=(
-            "~/Library/Application Support/Kiro/User/settings.json",
-            "~/.config/Kiro/User/settings.json",
-        ),
-    ),
-    IDEVariant(
-        name="Trae",
-        extensions=("~/.trae/extensions",),
-        settings=(
-            "~/Library/Application Support/Trae/User/settings.json",
-            "~/.config/Trae/User/settings.json",
-        ),
-    ),
-    IDEVariant(
-        name="Antigravity",
-        extensions=("~/.antigravity/extensions",),
-        settings=(
-            "~/Library/Application Support/Antigravity/User/settings.json",
-            "~/.config/Antigravity/User/settings.json",
-        ),
-    ),
-)
-
-# Windows-specific IDE paths (appended when on Windows)
-_WINDOWS_VSCODE_VARIANTS: tuple[IDEVariant, ...] = (
-    IDEVariant(
-        name="VS Code (Windows)",
-        extensions=("~/.vscode/extensions",),
-        settings=("%APPDATA%/Code/User/settings.json",),
-    ),
-    IDEVariant(
-        name="VS Code Insiders (Windows)",
-        extensions=("~/.vscode-insiders/extensions",),
-        settings=("%APPDATA%/Code - Insiders/User/settings.json",),
-    ),
-    IDEVariant(
-        name="VSCodium (Windows)",
-        extensions=("~/.vscode-oss/extensions",),
-        settings=("%APPDATA%/VSCodium/User/settings.json",),
-    ),
-    IDEVariant(
-        name="Cursor (Windows)",
-        extensions=("~/.cursor/extensions",),
-        settings=("%APPDATA%/Cursor/User/settings.json",),
-    ),
-    IDEVariant(
-        name="Windsurf (Windows)",
-        extensions=("~/.windsurf/extensions",),
-        settings=("%APPDATA%/Windsurf/User/settings.json",),
-    ),
-    IDEVariant(
-        name="Kiro (Windows)",
-        extensions=("~/.kiro/extensions",),
-        settings=("%APPDATA%/Kiro/User/settings.json",),
-    ),
-    IDEVariant(
-        name="Trae (Windows)",
-        extensions=("~/.trae/extensions",),
-        settings=("%APPDATA%/Trae/User/settings.json",),
-    ),
-    IDEVariant(
-        name="Antigravity (Windows)",
-        extensions=("~/.antigravity/extensions",),
-        settings=("%APPDATA%/Antigravity/User/settings.json",),
-    ),
-)
-
-
-def _get_vscode_variants() -> tuple[IDEVariant, ...]:
-    """Get VS Code variants for the current platform."""
-    if platform.system() == "Windows":
-        # Expand %APPDATA% in Windows paths
-        appdata = os.environ.get("APPDATA", "")
-        if appdata:
-            expanded = []
-            for v in _WINDOWS_VSCODE_VARIANTS:
-                settings = tuple(s.replace("%APPDATA%", appdata) for s in v.settings)
-                expanded.append(IDEVariant(name=v.name, extensions=v.extensions, settings=settings))
-            return tuple(expanded) + _VSCODE_VARIANTS
-    return _VSCODE_VARIANTS
-
-
-_VERSION_RE = re.compile(r"(\d+\.\d+(?:\.\d+)?(?:[.-]\w+)?)")
 
 
 def load_jsonc(path: str) -> dict[str, Any]:
@@ -242,19 +128,6 @@ _CONTAINER_ENVIRONMENTS = (
 )
 
 
-@dataclass
-class CIEnvironment:
-    """Detected CI/CD or container environment."""
-
-    env_id: str = ""  # e.g., "github_actions", "kubernetes"
-    display_name: str = ""  # e.g., "GitHub Actions"
-    detected: bool = False
-    details: dict[str, str] = field(default_factory=dict)  # extra info
-
-    def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
-
-
 def detect_ci_environment() -> CIEnvironment | None:
     """Detect if running in a CI/CD or container environment.
 
@@ -294,448 +167,6 @@ def detect_ci_environment() -> CIEnvironment | None:
         return CIEnvironment(env_id="ci_generic", display_name="CI (generic)", detected=True)
 
     return None
-
-
-# ---------------------------------------------------------------------------
-# Data model
-# ---------------------------------------------------------------------------
-
-
-class InstallMethod(str, enum.Enum):
-    """How a client was detected on the system."""
-
-    BINARY = "binary"
-    PIP = "pip"
-    NPM = "npm"
-    BREW = "brew"
-    VSCODE_EXT = "vscode_ext"
-    APP_BUNDLE = "app_bundle"
-    JETBRAINS_PLUGIN = "jetbrains_plugin"
-    NEOVIM_PLUGIN = "neovim_plugin"
-
-
-@dataclass
-class DetectedClient:
-    """Result of detecting a single AI CLI agent."""
-
-    client_id: str = ""
-    display_name: str = ""
-    installed: bool = False
-    version: str = ""
-    install_method: str = ""
-    install_path: str = ""
-    proxy_configured: bool = False
-    proxy_url: str = ""
-    proxy_config_location: str = ""
-    proxy_config_type: str = ""  # ProxyConfigType value
-    setup_instructions: str = ""
-    website: str = ""
-    routing_active: bool = False  # env var present in ~/.lumen-argus/env
-
-    def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
-
-
-@dataclass
-class DetectionReport:
-    """Aggregate detection results for all agents."""
-
-    clients: list[DetectedClient] = field(default_factory=list)
-    # {var_name: [(value, file, line_num, client_tag), ...]}
-    shell_env_vars: dict[str, list[tuple[str, str, int, str]]] = field(default_factory=dict)
-    platform: str = ""
-    total_detected: int = 0
-    total_configured: int = 0
-    ci_environment: CIEnvironment | None = None
-
-    def to_dict(self) -> dict[str, Any]:
-        result = {
-            "platform": self.platform,
-            "total_detected": self.total_detected,
-            "total_configured": self.total_configured,
-            "clients": [c.to_dict() for c in self.clients],
-            "shell_env_vars": {
-                k: [{"value": e[0], "file": e[1], "line": e[2], "client": e[3]} for e in entries]
-                for k, entries in self.shell_env_vars.items()
-            },
-        }
-        if self.ci_environment:
-            result["ci_environment"] = self.ci_environment.to_dict()
-        return result
-
-
-# ---------------------------------------------------------------------------
-# Scanner functions
-# ---------------------------------------------------------------------------
-
-
-def _scan_binary(client: ClientDef) -> DetectedClient | None:
-    """Check if a CLI binary exists in PATH."""
-    for name in client.detect_binary:
-        path = shutil.which(name)
-        if path:
-            log.debug("binary found: %s → %s", name, path)
-            return DetectedClient(
-                client_id=client.id,
-                display_name=client.display_name,
-                installed=True,
-                install_method=InstallMethod.BINARY,
-                install_path=path,
-                proxy_config_type=client.proxy_config.config_type.value,
-                setup_instructions=client.proxy_config.setup_instructions,
-                website=client.website,
-            )
-    return None
-
-
-def _scan_pip_package(client: ClientDef) -> DetectedClient | None:
-    """Check if a pip package is installed (no subprocess — uses importlib.metadata)."""
-    if not client.detect_pip:
-        return None
-    try:
-        from importlib.metadata import version as pkg_version
-
-        ver = pkg_version(client.detect_pip)
-        log.debug("pip package found: %s==%s", client.detect_pip, ver)
-        return DetectedClient(
-            client_id=client.id,
-            display_name=client.display_name,
-            installed=True,
-            version=ver,
-            install_method=InstallMethod.PIP,
-            install_path="pip:%s" % client.detect_pip,
-            proxy_config_type=client.proxy_config.config_type.value,
-            setup_instructions=client.proxy_config.setup_instructions,
-            website=client.website,
-        )
-    except ImportError:
-        log.debug("importlib.metadata not available")
-        return None
-    except Exception as e:
-        # PackageNotFoundError inherits from ModuleNotFoundError on Python 3.9+
-        err_name = type(e).__name__
-        if "NotFound" in err_name or "PackageNotFound" in err_name:
-            log.debug("pip package %s not installed", client.detect_pip)
-        else:
-            log.warning("unexpected error checking pip package %s: %s", client.detect_pip, e, exc_info=True)
-        return None
-
-
-def _scan_vscode_extension(client: ClientDef) -> DetectedClient | None:
-    """Check if a VS Code extension is installed across all VS Code variants."""
-    if not client.detect_vscode_ext:
-        return None
-    ext_id_lower = client.detect_vscode_ext.lower()
-
-    for variant in _get_vscode_variants():
-        for ext_dir in variant.extensions:
-            ext_dir = os.path.expanduser(ext_dir)
-            if not os.path.isdir(ext_dir):
-                continue
-            # Extension dirs: <publisher>.<name>-<version>/
-            pattern = os.path.join(ext_dir, "%s-*" % ext_id_lower)
-            matches = glob.glob(pattern)
-            if matches:
-                # Take the newest version (last alphabetically)
-                match_path = sorted(matches)[-1]
-                dir_name = os.path.basename(match_path)
-                # Extract version from dir name: github.copilot-1.200.0 → 1.200.0
-                version = ""
-                dash_idx = dir_name.rfind("-")
-                if dash_idx > 0:
-                    version = dir_name[dash_idx + 1 :]
-                log.debug("VS Code extension found: %s in %s (%s)", client.detect_vscode_ext, variant.name, dir_name)
-                return DetectedClient(
-                    client_id=client.id,
-                    display_name=client.display_name,
-                    installed=True,
-                    version=version,
-                    install_method=InstallMethod.VSCODE_EXT,
-                    install_path=match_path,
-                    proxy_config_type=client.proxy_config.config_type.value,
-                    setup_instructions=client.proxy_config.setup_instructions,
-                    website=client.website,
-                )
-    return None
-
-
-def _scan_app_bundle(client: ClientDef) -> DetectedClient | None:
-    """Check for macOS .app bundle in /Applications."""
-    if not client.detect_app_name or platform.system() != "Darwin":
-        return None
-    app_path = "/Applications/%s" % client.detect_app_name
-    if os.path.isdir(app_path):
-        # Try to read version from Info.plist
-        version = ""
-        plist_path = os.path.join(app_path, "Contents", "Info.plist")
-        if os.path.exists(plist_path):
-            try:
-                import plistlib
-
-                with open(plist_path, "rb") as f:
-                    info = plistlib.load(f)
-                version = info.get("CFBundleShortVersionString", "")
-                log.debug("app bundle version: %s → %s", client.detect_app_name, version)
-            except Exception as e:
-                log.warning("failed to read Info.plist for %s: %s", client.detect_app_name, e)
-        log.debug("app bundle found: %s", app_path)
-        return DetectedClient(
-            client_id=client.id,
-            display_name=client.display_name,
-            installed=True,
-            version=version,
-            install_method=InstallMethod.APP_BUNDLE,
-            install_path=app_path,
-            proxy_config_type=client.proxy_config.config_type.value,
-            setup_instructions=client.proxy_config.setup_instructions,
-            website=client.website,
-        )
-    return None
-
-
-def _scan_jetbrains_plugin(client: ClientDef) -> DetectedClient | None:
-    """Check for JetBrains IDE plugins."""
-    if not client.detect_jetbrains_plugin:
-        return None
-
-    # JetBrains plugin dirs vary by product and OS
-    system = platform.system()
-    if system == "Darwin":
-        base = os.path.expanduser("~/Library/Application Support/JetBrains")
-    elif system == "Windows":
-        appdata = os.environ.get("APPDATA", "")
-        base = os.path.join(appdata, "JetBrains") if appdata else ""
-    else:
-        base = os.path.expanduser("~/.local/share/JetBrains")
-
-    if not os.path.isdir(base):
-        return None
-
-    # Search across all JetBrains products (IntelliJIdea, PyCharm, etc.)
-    try:
-        entries = os.listdir(base)
-    except OSError as e:
-        log.debug("could not list JetBrains dir %s: %s", base, e)
-        return None
-    for product_dir in entries:
-        plugin_dir = os.path.join(base, product_dir, "plugins", client.detect_jetbrains_plugin)
-        if os.path.isdir(plugin_dir):
-            log.debug("JetBrains plugin found: %s in %s", client.detect_jetbrains_plugin, product_dir)
-            return DetectedClient(
-                client_id=client.id,
-                display_name=client.display_name,
-                installed=True,
-                install_method=InstallMethod.JETBRAINS_PLUGIN,
-                install_path=plugin_dir,
-                proxy_config_type=client.proxy_config.config_type.value,
-                setup_instructions=client.proxy_config.setup_instructions,
-                website=client.website,
-            )
-    return None
-
-
-def _scan_npm_package(client: ClientDef) -> DetectedClient | None:
-    """Check if an npm global package is installed by reading package.json."""
-    if not client.detect_npm:
-        return None
-
-    # Common global node_modules locations
-    npm_prefixes = []
-    npm_root = os.environ.get("NPM_CONFIG_PREFIX", "")
-    if npm_root:
-        npm_prefixes.append(os.path.join(npm_root, "lib", "node_modules"))
-    # nvm-managed
-    nvm_dir = os.environ.get("NVM_DIR", os.path.expanduser("~/.nvm"))
-    if os.path.isdir(nvm_dir):
-        # Current node version's global modules
-        current = os.path.join(nvm_dir, "current", "lib", "node_modules")
-        if os.path.isdir(current):
-            npm_prefixes.append(current)
-    # fnm-managed (Fast Node Manager)
-    fnm_dir = os.environ.get("FNM_DIR", "")
-    if not fnm_dir:
-        # Default fnm dirs per platform
-        if platform.system() == "Darwin":
-            fnm_dir = os.path.expanduser("~/Library/Application Support/fnm")
-        else:
-            fnm_dir = os.path.expanduser("~/.local/share/fnm")
-    if os.path.isdir(fnm_dir):
-        fnm_current = os.path.join(fnm_dir, "node-versions")
-        if os.path.isdir(fnm_current):
-            # fnm symlinks current version — check aliases/default
-            fnm_default = os.path.join(fnm_dir, "aliases", "default")
-            if os.path.isdir(fnm_default):
-                modules = os.path.join(fnm_default, "installation", "lib", "node_modules")
-                if os.path.isdir(modules):
-                    npm_prefixes.append(modules)
-            # Also check FNM_MULTISHELL_PATH (set when fnm env is active)
-            fnm_ms = os.environ.get("FNM_MULTISHELL_PATH", "")
-            if fnm_ms:
-                modules = os.path.join(fnm_ms, "lib", "node_modules")
-                if os.path.isdir(modules):
-                    npm_prefixes.append(modules)
-    # volta-managed
-    volta_home = os.environ.get("VOLTA_HOME", os.path.expanduser("~/.volta"))
-    if os.path.isdir(volta_home):
-        # volta installs global packages in its own tool chain
-        volta_bin = os.path.join(volta_home, "tools", "image", "packages")
-        if os.path.isdir(volta_bin):
-            npm_prefixes.append(volta_bin)
-        # Also check node global modules under volta
-        volta_node = os.path.join(volta_home, "tools", "image", "node")
-        if os.path.isdir(volta_node):
-            try:
-                versions = sorted(os.listdir(volta_node))
-                if versions:
-                    modules = os.path.join(volta_node, versions[-1], "lib", "node_modules")
-                    if os.path.isdir(modules):
-                        npm_prefixes.append(modules)
-            except OSError as e:
-                log.debug("could not list volta node versions: %s", e)
-    # System defaults
-    npm_prefixes.extend(
-        [
-            "/opt/homebrew/lib/node_modules",  # Homebrew Node on Apple Silicon
-            "/usr/local/lib/node_modules",
-            "/usr/lib/node_modules",
-            os.path.expanduser("~/.npm-global/lib/node_modules"),
-        ]
-    )
-    # Windows npm global
-    if platform.system() == "Windows":
-        appdata = os.environ.get("APPDATA", "")
-        if appdata:
-            npm_prefixes.append(os.path.join(appdata, "npm", "node_modules"))
-
-    for prefix in npm_prefixes:
-        pkg_dir = os.path.join(prefix, client.detect_npm)
-        pkg_json = os.path.join(pkg_dir, "package.json")
-        if not os.path.isfile(pkg_json):
-            continue
-        version = ""
-        try:
-            with open(pkg_json, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            version = data.get("version", "")
-            log.debug("npm package found: %s@%s at %s", client.detect_npm, version, prefix)
-        except (json.JSONDecodeError, OSError) as e:
-            log.warning("could not read package.json for %s: %s", client.detect_npm, e)
-        return DetectedClient(
-            client_id=client.id,
-            display_name=client.display_name,
-            installed=True,
-            version=version,
-            install_method=InstallMethod.NPM,
-            install_path=pkg_dir,
-            proxy_config_type=client.proxy_config.config_type.value,
-            setup_instructions=client.proxy_config.setup_instructions,
-            website=client.website,
-        )
-    return None
-
-
-_BREW_CELLAR_PATHS = [
-    "/opt/homebrew/Cellar",  # Apple Silicon
-    "/usr/local/Cellar",  # Intel
-]
-
-
-def _scan_brew_package(client: ClientDef) -> DetectedClient | None:
-    """Check if a homebrew formula is installed (macOS only)."""
-    if not client.detect_brew or platform.system() != "Darwin":
-        return None
-
-    cellar_paths = _BREW_CELLAR_PATHS
-    for cellar in cellar_paths:
-        formula_dir = os.path.join(cellar, client.detect_brew)
-        if not os.path.isdir(formula_dir):
-            continue
-        # Version is the subdirectory name (e.g., /opt/homebrew/Cellar/aider/0.50.1/)
-        try:
-            versions = sorted(os.listdir(formula_dir))
-            version = versions[-1] if versions else ""
-            log.debug("brew formula found: %s@%s at %s", client.detect_brew, version, cellar)
-            return DetectedClient(
-                client_id=client.id,
-                display_name=client.display_name,
-                installed=True,
-                version=version,
-                install_method=InstallMethod.BREW,
-                install_path=formula_dir,
-                proxy_config_type=client.proxy_config.config_type.value,
-                setup_instructions=client.proxy_config.setup_instructions,
-                website=client.website,
-            )
-        except OSError as e:
-            log.warning("could not list brew cellar for %s: %s — trying next cellar", client.detect_brew, e)
-            continue
-    return None
-
-
-# Neovim plugin manager paths (checked in order)
-_NEOVIM_PLUGIN_DIRS = [
-    "~/.local/share/nvim/lazy",  # lazy.nvim (most popular)
-    "~/.local/share/nvim/plugged",  # vim-plug
-    "~/.local/share/nvim/site/pack/*/start",  # native packages (glob)
-    "~/.local/share/nvim/site/pack/*/opt",  # native opt packages
-]
-
-
-def _scan_neovim_plugin(client: ClientDef) -> DetectedClient | None:
-    """Check if a Neovim plugin is installed across common plugin managers."""
-    if not client.detect_neovim_plugin:
-        return None
-
-    for dir_pattern in _NEOVIM_PLUGIN_DIRS:
-        expanded = os.path.expanduser(dir_pattern)
-        if "*" in expanded:
-            # Glob for native pack dirs
-            parent_dirs = glob.glob(expanded)
-        else:
-            parent_dirs = [expanded] if os.path.isdir(expanded) else []
-
-        for parent in parent_dirs:
-            plugin_dir = os.path.join(parent, client.detect_neovim_plugin)
-            if os.path.isdir(plugin_dir):
-                log.debug("Neovim plugin found: %s at %s", client.detect_neovim_plugin, plugin_dir)
-                return DetectedClient(
-                    client_id=client.id,
-                    display_name=client.display_name,
-                    installed=True,
-                    install_method=InstallMethod.NEOVIM_PLUGIN,
-                    install_path=plugin_dir,
-                    proxy_config_type=client.proxy_config.config_type.value,
-                    setup_instructions=client.proxy_config.setup_instructions,
-                    website=client.website,
-                )
-    return None
-
-
-def _detect_version(client: ClientDef, detected: DetectedClient) -> str:
-    """Run --version command to get precise version. Returns version string or empty."""
-    if not client.version_command or detected.version:
-        return detected.version
-    try:
-        result = subprocess.run(
-            list(client.version_command),
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        output = (result.stdout or "") + (result.stderr or "")
-        match = _VERSION_RE.search(output)
-        if match:
-            version = match.group(1)
-            log.debug("version detected via command: %s → %s", client.version_command[0], version)
-            return version
-        log.debug("version command produced no match: %s → %r", client.version_command[0], output[:100])
-    except FileNotFoundError:
-        log.debug("version command not found: %s", client.version_command[0])
-    except subprocess.TimeoutExpired:
-        log.warning("version command timed out: %s", client.version_command[0])
-    except OSError as e:
-        log.warning("version command failed: %s — %s", client.version_command[0], e)
-    return ""
 
 
 # ---------------------------------------------------------------------------
@@ -872,7 +303,7 @@ def _extract_env_value(line: str, var_name: str) -> str:
 def _build_settings_cache() -> dict[str, tuple[dict[str, Any], str]]:
     """Load and parse all existing IDE settings files once. Returns {expanded_path: (settings, path)}."""
     cache: dict[str, tuple[dict[str, Any], str]] = {}
-    for variant in _get_vscode_variants():
+    for variant in get_vscode_variants():
         for settings_path in variant.settings:
             expanded = os.path.expanduser(settings_path)
             if expanded in cache:

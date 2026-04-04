@@ -13,7 +13,7 @@ import sys
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from lumen_argus_core.detect import DetectionReport
+    from lumen_argus_core.detect_models import DetectionReport
 
 __version__ = "0.1.0"
 

@@ -10,21 +10,33 @@ from unittest.mock import patch
 
 from lumen_argus_core.clients import CLIENT_REGISTRY, ClientDef, ProxyConfig, ProxyConfigType
 from lumen_argus_core.detect import (
+    _extract_env_value,
+    _get_powershell_profiles,
+    _scan_shell_profiles,
+    detect_ci_environment,
+    detect_installed_clients,
+)
+from lumen_argus_core.detect_models import (
     DetectedClient,
     DetectionReport,
     IDEVariant,
     InstallMethod,
-    _extract_env_value,
-    _get_powershell_profiles,
-    _get_vscode_variants,
-    _scan_binary,
-    _scan_brew_package,
-    _scan_neovim_plugin,
-    _scan_npm_package,
-    _scan_shell_profiles,
-    _scan_vscode_extension,
-    detect_ci_environment,
-    detect_installed_clients,
+    get_vscode_variants,
+)
+from lumen_argus_core.scanners import (
+    scan_binary as _scan_binary,
+)
+from lumen_argus_core.scanners import (
+    scan_brew_package as _scan_brew_package,
+)
+from lumen_argus_core.scanners import (
+    scan_neovim_plugin as _scan_neovim_plugin,
+)
+from lumen_argus_core.scanners import (
+    scan_npm_package as _scan_npm_package,
+)
+from lumen_argus_core.scanners import (
+    scan_vscode_extension as _scan_vscode_extension,
 )
 
 
@@ -154,7 +166,8 @@ class TestScanVSCodeExtension(unittest.TestCase):
             detect_vscode_ext="github.copilot",
         )
         with patch(
-            "lumen_argus_core.detect._VSCODE_VARIANTS", (IDEVariant(name="Test", extensions=(ext_dir,), settings=()),)
+            "lumen_argus_core.detect_models._VSCODE_VARIANTS",
+            (IDEVariant(name="Test", extensions=(ext_dir,), settings=()),),
         ):
             result = _scan_vscode_extension(client)
         self.assertIsNotNone(result)
@@ -181,7 +194,8 @@ class TestScanVSCodeExtension(unittest.TestCase):
             detect_vscode_ext="github.copilot",
         )
         with patch(
-            "lumen_argus_core.detect._VSCODE_VARIANTS", (IDEVariant(name="Test", extensions=(ext_dir,), settings=()),)
+            "lumen_argus_core.detect_models._VSCODE_VARIANTS",
+            (IDEVariant(name="Test", extensions=(ext_dir,), settings=()),),
         ):
             result = _scan_vscode_extension(client)
         self.assertIsNone(result)
@@ -207,7 +221,8 @@ class TestScanVSCodeExtension(unittest.TestCase):
             detect_vscode_ext="github.copilot",
         )
         with patch(
-            "lumen_argus_core.detect._VSCODE_VARIANTS", (IDEVariant(name="Test", extensions=(ext_dir,), settings=()),)
+            "lumen_argus_core.detect_models._VSCODE_VARIANTS",
+            (IDEVariant(name="Test", extensions=(ext_dir,), settings=()),),
         ):
             result = _scan_vscode_extension(client)
         self.assertEqual(result.version, "1.200.0")
@@ -435,7 +450,7 @@ class TestScanBrewPackage(unittest.TestCase):
             website="https://test.com",
             detect_brew="aider",
         )
-        with patch("lumen_argus_core.detect._BREW_CELLAR_PATHS", [cellar]):
+        with patch("lumen_argus_core.scanners._BREW_CELLAR_PATHS", [cellar]):
             result = _scan_brew_package(client)
         self.assertIsNotNone(result)
         self.assertEqual(result.version, "0.50.1")
@@ -508,7 +523,7 @@ class TestScanNeovimPlugin(unittest.TestCase):
             website="https://test.com",
             detect_neovim_plugin="copilot.vim",
         )
-        with patch("lumen_argus_core.detect._NEOVIM_PLUGIN_DIRS", [lazy_dir]):
+        with patch("lumen_argus_core.scanners._NEOVIM_PLUGIN_DIRS", [lazy_dir]):
             result = _scan_neovim_plugin(client)
         self.assertIsNotNone(result)
         self.assertEqual(result.install_method, InstallMethod.NEOVIM_PLUGIN)
@@ -533,7 +548,7 @@ class TestScanNeovimPlugin(unittest.TestCase):
             website="https://test.com",
             detect_neovim_plugin="copilot.vim",
         )
-        with patch("lumen_argus_core.detect._NEOVIM_PLUGIN_DIRS", [lazy_dir]):
+        with patch("lumen_argus_core.scanners._NEOVIM_PLUGIN_DIRS", [lazy_dir]):
             result = _scan_neovim_plugin(client)
         self.assertIsNone(result)
 
@@ -782,14 +797,14 @@ class TestWindowsPaths(unittest.TestCase):
     @patch("platform.system", return_value="Windows")
     def test_vscode_variants_includes_windows(self, _):
         with patch.dict(os.environ, {"APPDATA": "C:\\Users\\test\\AppData\\Roaming"}):
-            variants = _get_vscode_variants()
+            variants = get_vscode_variants()
         # Should include both Windows and standard variants
         names = [v.name for v in variants]
         self.assertTrue(any("Windows" in n for n in names))
 
     @patch("platform.system", return_value="Darwin")
     def test_vscode_variants_no_windows_on_mac(self, _):
-        variants = _get_vscode_variants()
+        variants = get_vscode_variants()
         names = [v.name for v in variants]
         self.assertFalse(any("Windows" in n for n in names))
 
