@@ -4,15 +4,14 @@ import json
 import unittest
 from unittest.mock import MagicMock, patch
 
-from lumen_argus.dashboard.api import (
-    _broadcast_sse,
-    _handle_config_update,
-    _handle_pipeline_update,
-    _handle_rule_clone,
-    _handle_rule_create,
-    _handle_rule_delete,
-    _handle_rule_update,
-    _handle_rules_bulk_update,
+from lumen_argus.dashboard.api_config import handle_config_update, handle_pipeline_update
+from lumen_argus.dashboard.api_helpers import broadcast_sse
+from lumen_argus.dashboard.api_rules import (
+    handle_rule_clone,
+    handle_rule_create,
+    handle_rule_delete,
+    handle_rule_update,
+    handle_rules_bulk_update,
 )
 from lumen_argus.dashboard.sse import SSEBroadcaster
 from lumen_argus.extensions import ExtensionRegistry
@@ -30,16 +29,16 @@ def _drain_queue(queue):
 
 
 class TestBroadcastSSEHelper(unittest.TestCase):
-    """Test the _broadcast_sse helper function."""
+    """Test the broadcast_sse helper function."""
 
     def test_no_extensions(self):
         """Should not raise when extensions is None."""
-        _broadcast_sse(None, "test", {"key": "value"})
+        broadcast_sse(None, "test", {"key": "value"})
 
     def test_no_broadcaster(self):
         """Should not raise when broadcaster is not set."""
         extensions = ExtensionRegistry()
-        _broadcast_sse(extensions, "test", {"key": "value"})
+        broadcast_sse(extensions, "test", {"key": "value"})
 
     def test_broadcasts_event(self):
         """Should call broadcaster.broadcast with correct args."""
@@ -49,7 +48,7 @@ class TestBroadcastSSEHelper(unittest.TestCase):
         extensions = ExtensionRegistry()
         extensions.set_sse_broadcaster(broadcaster)
 
-        _broadcast_sse(extensions, "rules", {"action": "created"})
+        broadcast_sse(extensions, "rules", {"action": "created"})
 
         output = _drain_queue(queue)
         self.assertIn("event: rules", output)
@@ -64,7 +63,7 @@ class TestBroadcastSSEHelper(unittest.TestCase):
         extensions = ExtensionRegistry()
         extensions.set_sse_broadcaster(broadcaster)
 
-        _broadcast_sse(extensions, "config")
+        broadcast_sse(extensions, "config")
 
         output = _drain_queue(queue)
         self.assertIn("event: config", output)
@@ -80,7 +79,7 @@ class TestBroadcastSSEHelper(unittest.TestCase):
         extensions.set_sse_broadcaster(broadcaster)
 
         # Should not raise
-        _broadcast_sse(extensions, "test")
+        broadcast_sse(extensions, "test")
 
 
 class TestPipelineSSEBroadcast(StoreTestCase):
@@ -172,7 +171,7 @@ class TestAPISSEBroadcast(StoreTestCase):
     def test_rule_create_broadcasts(self):
         extensions, broadcaster, queue = self._make_extensions()
         body = json.dumps({"name": "test_rule", "pattern": "secret_\\w+", "detector": "secrets"}).encode()
-        status, _ = _handle_rule_create(body, self.store, extensions)
+        status, _ = handle_rule_create(body, self.store, extensions)
         self.assertEqual(status, 201)
 
         output = _drain_queue(queue)
@@ -187,7 +186,7 @@ class TestAPISSEBroadcast(StoreTestCase):
         _drain_queue(queue)
 
         body = json.dumps({"severity": "warning"}).encode()
-        status, _ = _handle_rule_update("my_rule", body, self.store, extensions)
+        status, _ = handle_rule_update("my_rule", body, self.store, extensions)
         self.assertEqual(status, 200)
 
         output = _drain_queue(queue)
@@ -199,7 +198,7 @@ class TestAPISSEBroadcast(StoreTestCase):
         self.store.create_rule({"name": "del_rule", "pattern": "test", "source": "dashboard", "tier": "custom"})
         _drain_queue(queue)
 
-        status, _ = _handle_rule_delete("del_rule", self.store, extensions)
+        status, _ = handle_rule_delete("del_rule", self.store, extensions)
         self.assertEqual(status, 200)
 
         output = _drain_queue(queue)
@@ -208,7 +207,7 @@ class TestAPISSEBroadcast(StoreTestCase):
 
     def test_rule_delete_no_broadcast_on_404(self):
         extensions, broadcaster, queue = self._make_extensions()
-        status, _ = _handle_rule_delete("nonexistent", self.store, extensions)
+        status, _ = handle_rule_delete("nonexistent", self.store, extensions)
         self.assertEqual(status, 404)
 
         output = _drain_queue(queue)
@@ -221,7 +220,7 @@ class TestAPISSEBroadcast(StoreTestCase):
         _drain_queue(queue)
 
         body = json.dumps({"new_name": "orig_clone"}).encode()
-        status, _ = _handle_rule_clone("orig", body, self.store, extensions)
+        status, _ = handle_rule_clone("orig", body, self.store, extensions)
         self.assertEqual(status, 201)
 
         output = _drain_queue(queue)
@@ -235,7 +234,7 @@ class TestAPISSEBroadcast(StoreTestCase):
         _drain_queue(queue)
 
         body = json.dumps({"names": ["r1", "r2"], "update": {"severity": "low"}}).encode()
-        status, _ = _handle_rules_bulk_update(body, self.store, extensions)
+        status, _ = handle_rules_bulk_update(body, self.store, extensions)
         self.assertEqual(status, 200)
 
         output = _drain_queue(queue)
@@ -245,40 +244,40 @@ class TestAPISSEBroadcast(StoreTestCase):
     def test_bulk_update_no_broadcast_when_none_updated(self):
         extensions, broadcaster, queue = self._make_extensions()
         body = json.dumps({"names": ["nonexistent"], "update": {"severity": "low"}}).encode()
-        status, _ = _handle_rules_bulk_update(body, self.store, extensions)
+        status, _ = handle_rules_bulk_update(body, self.store, extensions)
         self.assertEqual(status, 200)
 
         output = _drain_queue(queue)
         self.assertNotIn("event: rules", output)
         broadcaster.unsubscribe(queue)
 
-    @patch("lumen_argus.dashboard.api._send_sighup")
+    @patch("lumen_argus.dashboard.api_config.send_sighup")
     def test_config_update_broadcasts(self, mock_sighup):
         extensions, broadcaster, queue = self._make_extensions()
         body = json.dumps({"default_action": "alert"}).encode()
-        status, _ = _handle_config_update(body, None, self.store, extensions)
+        status, _ = handle_config_update(body, None, self.store, extensions)
         self.assertIn(status, (200, 207))
 
         output = _drain_queue(queue)
         self.assertIn("event: config", output)
         broadcaster.unsubscribe(queue)
 
-    @patch("lumen_argus.dashboard.api._send_sighup")
+    @patch("lumen_argus.dashboard.api_config.send_sighup")
     def test_config_update_no_broadcast_on_failure(self, mock_sighup):
         extensions, broadcaster, queue = self._make_extensions()
         body = json.dumps({"invalid.nested.deep.key": "value"}).encode()
-        status, _ = _handle_config_update(body, None, self.store, extensions)
+        status, _ = handle_config_update(body, None, self.store, extensions)
         self.assertEqual(status, 400)
 
         output = _drain_queue(queue)
         self.assertNotIn("event: config", output)
         broadcaster.unsubscribe(queue)
 
-    @patch("lumen_argus.dashboard.api._send_sighup")
+    @patch("lumen_argus.dashboard.api_config.send_sighup")
     def test_pipeline_update_broadcasts(self, mock_sighup):
         extensions, broadcaster, queue = self._make_extensions()
         body = json.dumps({"default_action": "block"}).encode()
-        status, _ = _handle_pipeline_update(body, None, self.store, extensions)
+        status, _ = handle_pipeline_update(body, None, self.store, extensions)
         self.assertIn(status, (200, 207))
 
         output = _drain_queue(queue)

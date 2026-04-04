@@ -242,27 +242,27 @@ class TestAPIEndpoints(StoreTestCase):
     """Test rule analysis API handlers."""
 
     def test_get_without_crossfire(self):
-        from lumen_argus.dashboard.api import _handle_rule_analysis_get
+        from lumen_argus.dashboard.api_rules import handle_rule_analysis_get
 
         with patch("lumen_argus.rule_analysis.HAS_CROSSFIRE", False):
-            status, body = _handle_rule_analysis_get(self.store)
+            status, body = handle_rule_analysis_get(self.store)
         self.assertEqual(status, 200)
         data = json.loads(body)
         self.assertFalse(data["available"])
         self.assertIn("crossfire", data["message"])
 
     def test_get_no_results(self):
-        from lumen_argus.dashboard.api import _handle_rule_analysis_get
+        from lumen_argus.dashboard.api_rules import handle_rule_analysis_get
 
         with patch("lumen_argus.rule_analysis.HAS_CROSSFIRE", True):
-            status, body = _handle_rule_analysis_get(self.store)
+            status, body = handle_rule_analysis_get(self.store)
         self.assertEqual(status, 200)
         data = json.loads(body)
         self.assertTrue(data["available"])
         self.assertFalse(data["has_results"])
 
     def test_get_with_results(self):
-        from lumen_argus.dashboard.api import _handle_rule_analysis_get
+        from lumen_argus.dashboard.api_rules import handle_rule_analysis_get
 
         self.store.rule_analysis.save_analysis(
             "2026-03-26T10:00:00Z",
@@ -282,7 +282,7 @@ class TestAPIEndpoints(StoreTestCase):
             ),
         )
         with patch("lumen_argus.rule_analysis.HAS_CROSSFIRE", True):
-            status, body = _handle_rule_analysis_get(self.store)
+            status, body = handle_rule_analysis_get(self.store)
         self.assertEqual(status, 200)
         data = json.loads(body)
         self.assertTrue(data["available"])
@@ -290,38 +290,38 @@ class TestAPIEndpoints(StoreTestCase):
         self.assertEqual(data["summary"]["duplicates"], 1)
 
     def test_trigger_without_crossfire(self):
-        from lumen_argus.dashboard.api import _handle_rule_analysis_trigger
+        from lumen_argus.dashboard.api_rules import handle_rule_analysis_trigger
 
         with patch("lumen_argus.rule_analysis.HAS_CROSSFIRE", False):
-            status, body = _handle_rule_analysis_trigger(b"{}", self.store, None)
+            status, body = handle_rule_analysis_trigger(b"{}", self.store, None)
         self.assertEqual(status, 400)
         data = json.loads(body)
         self.assertEqual(data["error"], "crossfire_not_installed")
 
     def test_trigger_starts_background(self):
-        from lumen_argus.dashboard.api import _handle_rule_analysis_trigger
+        from lumen_argus.dashboard.api_rules import handle_rule_analysis_trigger
 
         with (
             patch("lumen_argus.rule_analysis.HAS_CROSSFIRE", True),
             patch("lumen_argus.rule_analysis.run_analysis_in_background") as mock_run,
         ):
-            status, body = _handle_rule_analysis_trigger(b"{}", self.store, None)
+            status, body = handle_rule_analysis_trigger(b"{}", self.store, None)
         self.assertEqual(status, 202)
         data = json.loads(body)
         self.assertEqual(data["status"], "started")
         mock_run.assert_called_once()
 
     def test_dismiss_missing_fields(self):
-        from lumen_argus.dashboard.api import _handle_rule_analysis_dismiss
+        from lumen_argus.dashboard.api_rules import handle_rule_analysis_dismiss
 
-        status, _body = _handle_rule_analysis_dismiss(json.dumps({"rule_a": "a"}).encode(), self.store)
+        status, _body = handle_rule_analysis_dismiss(json.dumps({"rule_a": "a"}).encode(), self.store)
         self.assertEqual(status, 400)
 
     def test_dismiss_success(self):
-        from lumen_argus.dashboard.api import _handle_rule_analysis_dismiss
+        from lumen_argus.dashboard.api_rules import handle_rule_analysis_dismiss
 
         self.store.rule_analysis.save_analysis("2026-01-01T00:00:00Z", 1.0, 10, 1, 0, 0, _EMPTY_RESULTS)
-        status, body = _handle_rule_analysis_dismiss(json.dumps({"rule_a": "a", "rule_b": "b"}).encode(), self.store)
+        status, body = handle_rule_analysis_dismiss(json.dumps({"rule_a": "a", "rule_b": "b"}).encode(), self.store)
         self.assertEqual(status, 200)
         data = json.loads(body)
         self.assertEqual(data["status"], "dismissed")
