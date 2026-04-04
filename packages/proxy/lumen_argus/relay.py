@@ -150,10 +150,7 @@ class ArgusRelay:
         """Stop the relay and clean up resources."""
         if self._health_task:
             self._health_task.cancel()
-            try:
-                await self._health_task
-            except asyncio.CancelledError:
-                pass
+            await asyncio.gather(self._health_task, return_exceptions=True)
         if self._engine_session:
             await self._engine_session.close()
         if self._upstream_session:
@@ -204,7 +201,7 @@ class ArgusRelay:
             try:
                 await self._check_engine()
             except asyncio.CancelledError:
-                return
+                raise
             except Exception:
                 log.debug("health check error", exc_info=True)
                 self._transition(RelayState.UNHEALTHY)

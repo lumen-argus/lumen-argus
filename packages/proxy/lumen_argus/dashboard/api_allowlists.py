@@ -62,6 +62,27 @@ def handle_allowlist_add(body: bytes, store: AnalyticsStore | None) -> tuple[int
         return json_response(400, {"error": str(e)})
 
 
+def _find_matching_findings(store: AnalyticsStore, pattern: str) -> tuple[int, list[dict[str, Any]]]:
+    matching: list[dict[str, Any]] = []
+    count = 0
+    findings, _ = store.get_findings_page(limit=200)
+    for f in findings:
+        preview = f.get("value_preview", "")
+        if not preview or not fnmatch.fnmatch(preview, pattern):
+            continue
+        count += 1
+        if len(matching) < 20:
+            matching.append(
+                {
+                    "id": f.get("id"),
+                    "finding_type": f.get("finding_type", ""),
+                    "value_preview": preview,
+                    "severity": f.get("severity", ""),
+                }
+            )
+    return count, matching
+
+
 def handle_allowlist_test(body: bytes, store: AnalyticsStore | None) -> tuple[int, bytes]:
     data = parse_json_body(body, "POST /api/v1/allowlists/test")
     if isinstance(data, tuple):
@@ -71,24 +92,11 @@ def handle_allowlist_test(body: bytes, store: AnalyticsStore | None) -> tuple[in
     if not pattern:
         return json_response(400, {"error": "pattern is required"})
     value_match = fnmatch.fnmatch(test_value, pattern) if test_value else False
-    matching: list[dict[str, Any]] = []
     matching_count = 0
+    matching: list[dict[str, Any]] = []
     if store:
         try:
-            findings, _ = store.get_findings_page(limit=200)
-            for f in findings:
-                preview = f.get("value_preview", "")
-                if preview and fnmatch.fnmatch(preview, pattern):
-                    matching_count += 1
-                    if len(matching) < 20:
-                        matching.append(
-                            {
-                                "id": f.get("id"),
-                                "finding_type": f.get("finding_type", ""),
-                                "value_preview": preview,
-                                "severity": f.get("severity", ""),
-                            }
-                        )
+            matching_count, matching = _find_matching_findings(store, pattern)
         except Exception as e:
             log.warning("POST /api/v1/allowlist/test: findings scan failed: %s", e)
     log.debug("POST /api/v1/allowlist/test: pattern='%s' matched=%d findings", pattern, matching_count)

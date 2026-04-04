@@ -22,6 +22,29 @@ _RULES_COLUMNS = (
     "created_by, updated_by"
 )
 
+_INSERT_RULE_SQL = (
+    "INSERT INTO rules "
+    "(namespace_id, name, pattern, detector, severity, action, enabled, "
+    "tier, source, description, tags, validator, entropy_context, "
+    "created_at, updated_at, created_by, updated_by) "
+    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+)
+
+_SELECT_RULES = "SELECT " + _RULES_COLUMNS + " FROM rules"
+
+
+def _row_to_rule(row: Any) -> dict[str, Any]:
+    """Convert a DB row to a rule dict with parsed tags and bool enabled."""
+    d = dict(row)
+    d["enabled"] = bool(d.get("enabled", 1))
+    tags = d.get("tags")
+    if isinstance(tags, str):
+        try:
+            d["tags"] = json.loads(tags)
+        except (json.JSONDecodeError, ValueError):
+            d["tags"] = []
+    return d
+
 
 class RulesRepository(BaseRepository):
     """Repository for rules CRUD operations."""
@@ -47,7 +70,7 @@ class RulesRepository(BaseRepository):
         self, detector: str | None = None, tier: str | None = None, namespace_id: int = 1
     ) -> list[dict[str, Any]]:
         """Return enabled rules, optionally filtered by detector/tier."""
-        query = "SELECT " + _RULES_COLUMNS + " FROM rules WHERE enabled = 1 AND namespace_id = ?"
+        query = _SELECT_RULES + " WHERE enabled = 1 AND namespace_id = ?"
         params: list[Any] = [namespace_id]
         if detector:
             query += " AND detector = ?"
@@ -58,17 +81,7 @@ class RulesRepository(BaseRepository):
         query += " ORDER BY id"
         with self._connect() as conn:
             rows = conn.execute(query, params).fetchall()
-        result: list[dict[str, Any]] = []
-        for r in rows:
-            d = dict(r)
-            d["enabled"] = bool(d.get("enabled", 1))
-            if "tags" in d and isinstance(d["tags"], str):
-                try:
-                    d["tags"] = json.loads(d["tags"])
-                except (json.JSONDecodeError, ValueError):
-                    d["tags"] = []
-            result.append(d)
-        return result
+        return [_row_to_rule(r) for r in rows]
 
     def get_page(
         self,
@@ -85,17 +98,43 @@ class RulesRepository(BaseRepository):
         """Paginated rules for dashboard. Returns (rules_list, total_count)."""
         conditions: list[str] = ["namespace_id = ?"]
         params: list[Any] = [namespace_id]
-        if search:
-            terms = [t.strip() for t in search.split(",") if t.strip()]
-            if len(terms) == 1:
-                conditions.append("(name LIKE ? OR description LIKE ?)")
-                params.extend(["%" + terms[0] + "%", "%" + terms[0] + "%"])
-            elif terms:
-                clauses = []
-                for t in terms:
-                    clauses.append("(name LIKE ? OR description LIKE ?)")
-                    params.extend(["%" + t + "%", "%" + t + "%"])
-                conditions.append("(" + " OR ".join(clauses) + ")")
+        self._add_search_conditions(search, conditions, params)
+        self._add_filter_conditions(detector, tier, enabled, severity, tag, conditions, params)
+        where = " WHERE " + " AND ".join(conditions)
+
+        with self._connect() as conn:
+            total = scalar(conn, "SELECT COUNT(*) FROM rules" + where, tuple(params))
+            rows = conn.execute(
+                _SELECT_RULES + where + " ORDER BY id LIMIT ? OFFSET ?",
+                [*params, limit, offset],
+            ).fetchall()
+        return [_row_to_rule(r) for r in rows], total
+
+    @staticmethod
+    def _add_search_conditions(search: str | None, conditions: list[str], params: list[Any]) -> None:
+        """Append LIKE clauses for comma-separated search terms."""
+        if not search:
+            return
+        terms = [t.strip() for t in search.split(",") if t.strip()]
+        if not terms:
+            return
+        clauses = []
+        for t in terms:
+            clauses.append("(name LIKE ? OR description LIKE ?)")
+            params.extend(["%" + t + "%", "%" + t + "%"])
+        conditions.append("(" + " OR ".join(clauses) + ")")
+
+    @staticmethod
+    def _add_filter_conditions(
+        detector: str | None,
+        tier: str | None,
+        enabled: bool | None,
+        severity: str | None,
+        tag: str | None,
+        conditions: list[str],
+        params: list[Any],
+    ) -> None:
+        """Append equality / LIKE clauses for optional filter fields."""
         if detector:
             conditions.append("detector = ?")
             params.append(detector)
@@ -113,43 +152,17 @@ class RulesRepository(BaseRepository):
             # Using %"tag"% to avoid substring false positives
             conditions.append("tags LIKE ?")
             params.append('%"' + tag.replace('"', "") + '"%')
-        where = " WHERE " + " AND ".join(conditions)
-
-        with self._connect() as conn:
-            total = scalar(conn, "SELECT COUNT(*) FROM rules" + where, tuple(params))
-            rows = conn.execute(
-                "SELECT " + _RULES_COLUMNS + " FROM rules" + where + " ORDER BY id LIMIT ? OFFSET ?",
-                [*params, limit, offset],
-            ).fetchall()
-        result: list[dict[str, Any]] = []
-        for r in rows:
-            d = dict(r)
-            d["enabled"] = bool(d.get("enabled", 1))
-            if "tags" in d and isinstance(d["tags"], str):
-                try:
-                    d["tags"] = json.loads(d["tags"])
-                except (json.JSONDecodeError, ValueError):
-                    d["tags"] = []
-            result.append(d)
-        return result, total
 
     def get_by_name(self, name: str, namespace_id: int = 1) -> dict[str, Any] | None:
         """Return a single rule by name."""
         with self._connect() as conn:
             row = conn.execute(
-                "SELECT " + _RULES_COLUMNS + " FROM rules WHERE name = ? AND namespace_id = ?",
+                _SELECT_RULES + " WHERE name = ? AND namespace_id = ?",
                 (name, namespace_id),
             ).fetchone()
         if not row:
             return None
-        d = dict(row)
-        d["enabled"] = bool(d.get("enabled", 1))
-        if isinstance(d.get("tags"), str):
-            try:
-                d["tags"] = json.loads(d["tags"])
-            except (json.JSONDecodeError, ValueError):
-                d["tags"] = []
-        return d
+        return _row_to_rule(row)
 
     def create(self, data: dict[str, Any], namespace_id: int = 1) -> dict[str, Any] | None:
         """Create a custom rule. Validates pattern regex. Returns created rule."""
@@ -170,11 +183,7 @@ class RulesRepository(BaseRepository):
             with self._connect() as conn:
                 try:
                     conn.execute(
-                        "INSERT INTO rules "
-                        "(namespace_id, name, pattern, detector, severity, action, enabled, "
-                        "tier, source, description, tags, validator, entropy_context, "
-                        "created_at, updated_at, created_by, updated_by) "
-                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        _INSERT_RULE_SQL,
                         (
                             namespace_id,
                             name,
@@ -334,109 +343,126 @@ class RulesRepository(BaseRepository):
         with self._adapter.write_lock():
             with self._connect() as conn:
                 for r in rules:
-                    name = r.get("name", "").strip()
-                    if not name:
-                        continue
-                    # Validate regex before storing
-                    pattern = r.get("pattern", "")
-                    if pattern:
-                        try:
-                            re.compile(pattern)
-                        except re.error:
-                            log.warning("rule '%s': invalid regex, skipping import", name)
-                            result["skipped"] += 1
-                            continue
-                    existing = conn.execute(
-                        "SELECT source, id FROM rules WHERE name = ? AND namespace_id = ?",
-                        (name, namespace_id),
-                    ).fetchone()
-
-                    if existing:
-                        source = existing[0]
-                        if source in ("dashboard", "yaml"):
-                            result["skipped"] += 1
-                            continue
-                        # Update existing import rule
-                        if force:
-                            conn.execute(
-                                "UPDATE rules SET pattern=?, detector=?, severity=?, "
-                                "action=?, enabled=1, description=?, tags=?, "
-                                "validator=?, entropy_context=?, "
-                                "updated_at=?, updated_by=? WHERE name=? AND namespace_id=?",
-                                (
-                                    r.get("pattern", ""),
-                                    r.get("detector", "secrets"),
-                                    r.get("severity", "high"),
-                                    r.get("action", ""),
-                                    r.get("description", ""),
-                                    json.dumps(r.get("tags", [])),
-                                    r.get("validator", ""),
-                                    1 if r.get("entropy_context", False) else 0,
-                                    now,
-                                    "cli",
-                                    name,
-                                    namespace_id,
-                                ),
-                            )
-                        else:
-                            # Preserve action and enabled
-                            conn.execute(
-                                "UPDATE rules SET pattern=?, detector=?, severity=?, "
-                                "description=?, tags=?, validator=?, entropy_context=?, "
-                                "updated_at=?, updated_by=? WHERE name=? AND namespace_id=?",
-                                (
-                                    r.get("pattern", ""),
-                                    r.get("detector", "secrets"),
-                                    r.get("severity", "high"),
-                                    r.get("description", ""),
-                                    json.dumps(r.get("tags", [])),
-                                    r.get("validator", ""),
-                                    1 if r.get("entropy_context", False) else 0,
-                                    now,
-                                    "cli",
-                                    name,
-                                    namespace_id,
-                                ),
-                            )
-                        result["updated"] += 1
-                    else:
-                        conn.execute(
-                            "INSERT INTO rules "
-                            "(namespace_id, name, pattern, detector, severity, action, enabled, "
-                            "tier, source, description, tags, validator, entropy_context, "
-                            "created_at, updated_at, created_by, updated_by) "
-                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                            (
-                                namespace_id,
-                                name,
-                                r.get("pattern", ""),
-                                r.get("detector", "secrets"),
-                                r.get("severity", "high"),
-                                r.get("action", ""),
-                                1,
-                                tier,
-                                "import",
-                                r.get("description", ""),
-                                json.dumps(r.get("tags", [])),
-                                r.get("validator", ""),
-                                1 if r.get("entropy_context", False) else 0,
-                                now,
-                                now,
-                                "cli",
-                                "cli",
-                            ),
-                        )
-                        result["created"] += 1
+                    self._import_single_rule(conn, r, tier, force, namespace_id, now, result)
 
         if result["created"] or result["updated"]:
             self._notify_rules_changed("bulk")
         return result
 
+    def _import_single_rule(
+        self,
+        conn: Any,
+        r: dict[str, Any],
+        tier: str,
+        force: bool,
+        namespace_id: int,
+        now: str,
+        result: dict[str, int],
+    ) -> None:
+        """Process one rule during bulk import. Mutates result counters."""
+        name = r.get("name", "").strip()
+        if not name:
+            return
+        pattern = r.get("pattern", "")
+        if pattern:
+            try:
+                re.compile(pattern)
+            except re.error:
+                log.warning("rule '%s': invalid regex, skipping import", name)
+                result["skipped"] += 1
+                return
+
+        existing = conn.execute(
+            "SELECT source, id FROM rules WHERE name = ? AND namespace_id = ?",
+            (name, namespace_id),
+        ).fetchone()
+
+        if existing:
+            self._import_update_existing(conn, existing, r, name, force, namespace_id, now, result)
+        else:
+            self._import_insert_new(conn, r, name, tier, namespace_id, now)
+            result["created"] += 1
+
+    @staticmethod
+    def _import_update_existing(
+        conn: Any,
+        existing: Any,
+        r: dict[str, Any],
+        name: str,
+        force: bool,
+        namespace_id: int,
+        now: str,
+        result: dict[str, int],
+    ) -> None:
+        """Update an existing rule during import; skip dashboard/yaml rules."""
+        source = existing[0]
+        if source in ("dashboard", "yaml"):
+            result["skipped"] += 1
+            return
+        common = (
+            r.get("pattern", ""),
+            r.get("detector", "secrets"),
+            r.get("severity", "high"),
+        )
+        tags_json = json.dumps(r.get("tags", []))
+        tail = (
+            r.get("description", ""),
+            tags_json,
+            r.get("validator", ""),
+            1 if r.get("entropy_context", False) else 0,
+            now,
+            "cli",
+            name,
+            namespace_id,
+        )
+        if force:
+            conn.execute(
+                "UPDATE rules SET pattern=?, detector=?, severity=?, "
+                "action=?, enabled=1, description=?, tags=?, "
+                "validator=?, entropy_context=?, "
+                "updated_at=?, updated_by=? WHERE name=? AND namespace_id=?",
+                (*common, r.get("action", ""), *tail),
+            )
+        else:
+            conn.execute(
+                "UPDATE rules SET pattern=?, detector=?, severity=?, "
+                "description=?, tags=?, validator=?, entropy_context=?, "
+                "updated_at=?, updated_by=? WHERE name=? AND namespace_id=?",
+                (*common, *tail),
+            )
+        result["updated"] += 1
+
+    @staticmethod
+    def _import_insert_new(conn: Any, r: dict[str, Any], name: str, tier: str, namespace_id: int, now: str) -> None:
+        """Insert a new rule during bulk import."""
+        conn.execute(
+            _INSERT_RULE_SQL,
+            (
+                namespace_id,
+                name,
+                r.get("pattern", ""),
+                r.get("detector", "secrets"),
+                r.get("severity", "high"),
+                r.get("action", ""),
+                1,
+                tier,
+                "import",
+                r.get("description", ""),
+                json.dumps(r.get("tags", [])),
+                r.get("validator", ""),
+                1 if r.get("entropy_context", False) else 0,
+                now,
+                now,
+                "cli",
+                "cli",
+            ),
+        )
+
     def export(
         self, tier: str | None = None, detector: str | None = None, namespace_id: int = 1
     ) -> list[dict[str, Any]]:
         """Export rules as dicts for JSON serialization."""
-        query = "SELECT " + _RULES_COLUMNS + " FROM rules"
+        query = _SELECT_RULES
         conditions: list[str] = ["namespace_id = ?"]
         params: list[Any] = [namespace_id]
         if tier:
@@ -450,17 +476,7 @@ class RulesRepository(BaseRepository):
 
         with self._connect() as conn:
             rows = conn.execute(query, params).fetchall()
-        result: list[dict[str, Any]] = []
-        for r in rows:
-            d = dict(r)
-            d["enabled"] = bool(d.get("enabled", 1))
-            if isinstance(d.get("tags"), str):
-                try:
-                    d["tags"] = json.loads(d["tags"])
-                except (json.JSONDecodeError, ValueError):
-                    d["tags"] = []
-            result.append(d)
-        return result
+        return [_row_to_rule(r) for r in rows]
 
     def get_stats(self, namespace_id: int = 1) -> dict[str, Any]:
         """Rule counts by tier, detector, enabled."""
@@ -539,7 +555,22 @@ class RulesRepository(BaseRepository):
 
         result: dict[str, list[str]] = {"created": [], "updated": [], "deleted": []}
         now = self._now()
+        yaml_by_name = self._parse_yaml_rules(custom_rules)
 
+        with self._adapter.write_lock():
+            with self._connect() as conn:
+                db_yaml = self._snapshot_yaml_names(conn, namespace_id)
+                self._delete_stale_yaml_rules(conn, db_yaml, yaml_by_name, namespace_id, result)
+                for name, rule in yaml_by_name.items():
+                    self._reconcile_single_yaml_rule(conn, name, rule, db_yaml, namespace_id, now, result)
+
+        if result["created"] or result["updated"] or result["deleted"]:
+            self._notify_rules_changed("bulk")
+        return result
+
+    @staticmethod
+    def _parse_yaml_rules(custom_rules: list[Any]) -> dict[str, Any]:
+        """Parse custom_rules list into {name: rule} dict, skipping invalid entries."""
         yaml_by_name: dict[str, Any] = {}
         for rule in custom_rules:
             if not isinstance(rule, dict):
@@ -549,96 +580,106 @@ class RulesRepository(BaseRepository):
                 log.warning("custom_rules: rule with missing 'name' skipped")
                 continue
             yaml_by_name[name] = rule
+        return yaml_by_name
 
-        with self._adapter.write_lock():
-            with self._connect() as conn:
-                # Snapshot YAML-sourced rules inside the lock to avoid TOCTOU
-                db_yaml: dict[str, bool] = {}
-                for row in conn.execute(
-                    "SELECT name FROM rules WHERE source = 'yaml' AND namespace_id = ?",
-                    (namespace_id,),
-                ).fetchall():
-                    db_yaml[row[0]] = True
+    @staticmethod
+    def _snapshot_yaml_names(conn: Any, namespace_id: int) -> set[str]:
+        """Return set of rule names with source='yaml' in the DB."""
+        rows = conn.execute(
+            "SELECT name FROM rules WHERE source = 'yaml' AND namespace_id = ?",
+            (namespace_id,),
+        ).fetchall()
+        return {row[0] for row in rows}
 
-                # Delete YAML rules no longer in config
-                for name in db_yaml:
-                    if name not in yaml_by_name:
-                        conn.execute(
-                            "DELETE FROM rules WHERE name = ? AND namespace_id = ? AND source = 'yaml'",
-                            (name, namespace_id),
-                        )
-                        result["deleted"].append(name)
+    @staticmethod
+    def _delete_stale_yaml_rules(
+        conn: Any,
+        db_yaml: set[str],
+        yaml_by_name: dict[str, Any],
+        namespace_id: int,
+        result: dict[str, list[str]],
+    ) -> None:
+        """Delete YAML-sourced rules no longer present in config."""
+        for name in db_yaml:
+            if name not in yaml_by_name:
+                conn.execute(
+                    "DELETE FROM rules WHERE name = ? AND namespace_id = ? AND source = 'yaml'",
+                    (name, namespace_id),
+                )
+                result["deleted"].append(name)
 
-                # Create or update YAML rules
-                for name, rule in yaml_by_name.items():
-                    pattern = str(rule.get("pattern", ""))
-                    if not pattern:
-                        continue
-                    try:
-                        re.compile(pattern)
-                    except re.error:
-                        log.warning("custom_rules '%s': invalid regex, skipping", name)
-                        continue
+    @staticmethod
+    def _reconcile_single_yaml_rule(
+        conn: Any,
+        name: str,
+        rule: dict[str, Any],
+        db_yaml: set[str],
+        namespace_id: int,
+        now: str,
+        result: dict[str, list[str]],
+    ) -> None:
+        """Create or update a single YAML rule during reconciliation."""
+        pattern = str(rule.get("pattern", ""))
+        if not pattern:
+            return
+        try:
+            re.compile(pattern)
+        except re.error:
+            log.warning("custom_rules '%s': invalid regex, skipping", name)
+            return
 
-                    if name in db_yaml:
-                        conn.execute(
-                            "UPDATE rules SET pattern=?, detector=?, severity=?, "
-                            "action=?, description=?, updated_at=?, updated_by=? "
-                            "WHERE name=? AND namespace_id=? AND source='yaml'",
-                            (
-                                pattern,
-                                str(rule.get("detector", "custom")),
-                                str(rule.get("severity", "high")),
-                                str(rule.get("action", "")),
-                                str(rule.get("description", "")),
-                                now,
-                                "config",
-                                name,
-                                namespace_id,
-                            ),
-                        )
-                        result["updated"].append(name)
-                    else:
-                        # Check if name conflicts with non-yaml rule
-                        existing = conn.execute(
-                            "SELECT source FROM rules WHERE name = ? AND namespace_id = ?",
-                            (name, namespace_id),
-                        ).fetchone()
-                        if existing:
-                            log.warning(
-                                "custom_rules '%s' conflicts with %s rule — skipping",
-                                name,
-                                existing[0],
-                            )
-                            continue
-                        conn.execute(
-                            "INSERT INTO rules "
-                            "(namespace_id, name, pattern, detector, severity, action, enabled, "
-                            "tier, source, description, tags, validator, entropy_context, "
-                            "created_at, updated_at, created_by, updated_by) "
-                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                            (
-                                namespace_id,
-                                name,
-                                pattern,
-                                str(rule.get("detector", "custom")),
-                                str(rule.get("severity", "high")),
-                                str(rule.get("action", "")),
-                                1,
-                                "custom",
-                                "yaml",
-                                str(rule.get("description", "")),
-                                "[]",
-                                "",
-                                0,
-                                now,
-                                now,
-                                "config",
-                                "config",
-                            ),
-                        )
-                        result["created"].append(name)
+        if name in db_yaml:
+            conn.execute(
+                "UPDATE rules SET pattern=?, detector=?, severity=?, "
+                "action=?, description=?, updated_at=?, updated_by=? "
+                "WHERE name=? AND namespace_id=? AND source='yaml'",
+                (
+                    pattern,
+                    str(rule.get("detector", "custom")),
+                    str(rule.get("severity", "high")),
+                    str(rule.get("action", "")),
+                    str(rule.get("description", "")),
+                    now,
+                    "config",
+                    name,
+                    namespace_id,
+                ),
+            )
+            result["updated"].append(name)
+            return
 
-        if result["created"] or result["updated"] or result["deleted"]:
-            self._notify_rules_changed("bulk")
-        return result
+        # Check if name conflicts with non-yaml rule
+        existing = conn.execute(
+            "SELECT source FROM rules WHERE name = ? AND namespace_id = ?",
+            (name, namespace_id),
+        ).fetchone()
+        if existing:
+            log.warning(
+                "custom_rules '%s' conflicts with %s rule — skipping",
+                name,
+                existing[0],
+            )
+            return
+        conn.execute(
+            _INSERT_RULE_SQL,
+            (
+                namespace_id,
+                name,
+                pattern,
+                str(rule.get("detector", "custom")),
+                str(rule.get("severity", "high")),
+                str(rule.get("action", "")),
+                1,
+                "custom",
+                "yaml",
+                str(rule.get("description", "")),
+                "[]",
+                "",
+                0,
+                now,
+                now,
+                "config",
+                "config",
+            ),
+        )
+        result["created"].append(name)

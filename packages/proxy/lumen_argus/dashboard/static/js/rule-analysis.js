@@ -181,8 +181,8 @@ function _raSection(title, items, type) {
   const h3 = document.createElement('h3');
   h3.textContent = title + ' (' + items.length + ')';
   section.appendChild(h3);
-  for (let i = 0; i < items.length; i++) {
-    section.appendChild(_raCard(items[i], type));
+  for (const item of items) {
+    section.appendChild(_raCard(item, type));
   }
   return section;
 }
@@ -190,8 +190,8 @@ function _raSection(title, items, type) {
 function _raCard(item, type) {
   const card = document.createElement('div');
   card.className = 'ra-card ra-card--' + type;
-  card.setAttribute('data-rule-a', item.rule_a);
-  card.setAttribute('data-rule-b', item.rule_b);
+  card.dataset.ruleA = item.rule_a;
+  card.dataset.ruleB = item.rule_b;
 
   // Header: rule names + metric
   const header = document.createElement('div');
@@ -251,7 +251,7 @@ function _raCard(item, type) {
   if (disableTarget) {
     const disBtn = document.createElement('div');
     disBtn.className = 'btn btn-sm btn-danger ra-disable-btn';
-    disBtn.setAttribute('data-rule', disableTarget);
+    disBtn.dataset.rule = disableTarget;
     disBtn.textContent = 'Disable ' + disableTarget;
     disBtn.addEventListener('click', _raDisableHandler);
     actions.appendChild(disBtn);
@@ -282,8 +282,8 @@ function _raCard(item, type) {
 }
 
 function _raDisableHandler() {
-  const btn = this;
-  const ruleName = btn.getAttribute('data-rule');
+  const btn = this;  // eslint-disable-line no-invalid-this
+  const ruleName = btn.dataset.rule;
   if (!ruleName) return;
   btn.textContent = 'Disabling...';
   btn.classList.add('disabled');
@@ -307,8 +307,7 @@ function _raClustersSection(clusters) {
   const h3 = document.createElement('h3');
   h3.textContent = 'Clusters (' + clusters.length + ')';
   section.appendChild(h3);
-  for (let i = 0; i < clusters.length; i++) {
-    const c = clusters[i];
+  for (const c of clusters) {
     const div = document.createElement('div');
     div.className = 'ra-cluster';
     const rSpan = document.createElement('span');
@@ -392,10 +391,10 @@ function _raStartPolling() {
 
         const terminal = document.getElementById('ra-terminal');
         if (terminal && s.log && s.log.length > 0) {
-          for (let i = 0; i < s.log.length; i++) {
+          for (const entry of s.log) {
             const line = document.createElement('div');
             line.className = 'ra-terminal-line';
-            line.textContent = s.log[i];
+            line.textContent = entry;
             terminal.appendChild(line);
           }
           _raLogCursor = s.log_offset;

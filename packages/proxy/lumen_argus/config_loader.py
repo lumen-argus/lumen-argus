@@ -74,7 +74,7 @@ def load_rules_bundle(path: str | None = None, pro: bool = False) -> tuple[list[
             from importlib.resources import files as _files
 
             pro_path = str(_files("lumen_argus_pro.rules").joinpath("pro.json"))
-        except (ImportError, ModuleNotFoundError):
+        except ImportError:
             # Fallback for edge cases (frozen apps, etc.)
             import importlib.resources as _resources
 

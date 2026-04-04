@@ -6,8 +6,8 @@ function _buildEventChips(container,selected){
   const sel=selected||['block','alert'];
   _eventOptions.forEach(function(opt){
     const chip=document.createElement('div');
-    chip.className='col-btn'+(sel.indexOf(opt.value)!==-1?' on':'');
-    chip.setAttribute('data-event',opt.value);
+    chip.className='col-btn'+(sel.includes(opt.value)?' on':'');
+    chip.dataset.event=opt.value;
     chip.textContent=opt.label;
     chip.addEventListener('click',function(){
       this.classList.toggle('on');
@@ -18,7 +18,7 @@ function _buildEventChips(container,selected){
 }
 function _getSelectedEvents(){
   const events=[];
-  document.querySelectorAll('#notif-events .col-btn.on').forEach(function(el){events.push(el.getAttribute('data-event'));});
+  document.querySelectorAll('#notif-events .col-btn.on').forEach(function(el){events.push(el.dataset.event);});
   return events;
 }
 function loadNotifications(){

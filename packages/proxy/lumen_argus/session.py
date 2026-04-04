@@ -215,7 +215,7 @@ def extract_session(
             if isinstance(user_id, str) and user_id.startswith("{"):
                 try:
                     user_id = json.loads(user_id)
-                except (json.JSONDecodeError, ValueError):
+                except ValueError:
                     log.debug("metadata.user_id looks like JSON but failed to parse")
             if isinstance(user_id, dict):
                 ctx.account_id = str(user_id.get("account_uuid", ""))[:256]

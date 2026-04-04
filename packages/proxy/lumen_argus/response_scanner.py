@@ -124,7 +124,7 @@ class ResponseScanner:
             ]
             log.debug("using %d hardcoded injection patterns (no DB rules)", len(self._injection_rules))
 
-    def scan(self, text: str, provider: str = "", model: str = "") -> list[Finding]:
+    def scan(self, text: str, _provider: str = "", _model: str = "") -> list[Finding]:
         """Scan response text and return findings.
 
         Args:

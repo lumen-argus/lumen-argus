@@ -90,7 +90,7 @@ def send_heartbeat() -> bool:
         with urllib.request.urlopen(req, timeout=10, context=ctx) as resp:
             try:
                 response_data = json.loads(resp.read())
-            except (json.JSONDecodeError, ValueError):
+            except ValueError:
                 response_data = {}
         log.debug("heartbeat sent to %s", dashboard_url)
         # Handle token rotation — proxy may issue a new token

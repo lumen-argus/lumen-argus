@@ -333,11 +333,10 @@ def uninstall_service() -> bool:
             log.info("launchd plist removed: %s", _LAUNCHD_PLIST_PATH)
             return True
 
-    elif system == "Linux":
-        if os.path.exists(_SYSTEMD_SERVICE_PATH):
-            os.remove(_SYSTEMD_SERVICE_PATH)
-            log.info("systemd unit removed: %s", _SYSTEMD_SERVICE_PATH)
-            return True
+    elif system == "Linux" and os.path.exists(_SYSTEMD_SERVICE_PATH):
+        os.remove(_SYSTEMD_SERVICE_PATH)
+        log.info("systemd unit removed: %s", _SYSTEMD_SERVICE_PATH)
+        return True
 
     return False
 

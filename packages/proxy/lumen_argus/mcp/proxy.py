@@ -384,7 +384,7 @@ async def run_http_bridge(
                     resp_msg = json.loads(resp_data)
                     if isinstance(resp_msg, dict):
                         should_forward = _handle_response(resp_msg, pending_requests, scanner, escalation_fn)
-                except (json.JSONDecodeError, ValueError):
+                except ValueError:
                     log.debug("MCP stdio: non-JSON response data, forwarding as-is")
 
                 if should_forward:
@@ -493,7 +493,7 @@ async def run_http_listener(
                         _jsonrpc_error(resp_msg.get("id"), "Unsolicited response rejected"),
                         status=400,
                     )
-        except (json.JSONDecodeError, ValueError):
+        except ValueError:
             log.debug("MCP HTTP: non-JSON response data, forwarding as-is")
 
         # Pass through Mcp-Session-Id
@@ -600,7 +600,7 @@ async def run_ws_bridge(
                         if isinstance(msg, dict):
                             if not _handle_response(msg, pending_requests, scanner, escalation_fn):
                                 continue  # drop unsolicited response
-                    except (json.JSONDecodeError, ValueError):
+                    except ValueError:
                         log.debug("MCP WS bridge: non-JSON response data, forwarding as-is")
 
                     sys.stdout.buffer.write(data + b"\n")

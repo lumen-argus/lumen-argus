@@ -260,7 +260,7 @@ def handle_rule_analysis_get(store: AnalyticsStore | None) -> tuple[int, bytes]:
 
 
 def handle_rule_analysis_trigger(
-    body: bytes, store: AnalyticsStore | None, extensions: ExtensionRegistry | None, config: Config | None = None
+    _body: bytes, store: AnalyticsStore | None, extensions: ExtensionRegistry | None, config: Config | None = None
 ) -> tuple[int, bytes]:
     """POST /api/v1/rules/analysis — trigger new analysis."""
     from lumen_argus.rule_analysis import HAS_CROSSFIRE, is_analysis_running, run_analysis_in_background

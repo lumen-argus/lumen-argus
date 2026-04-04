@@ -13,7 +13,7 @@ function _dirShort(wd){if(!wd)return '';const parts=wd.split('/');return parts.p
 function _loadSessionFilter(){
   fetch('/api/v1/sessions?limit=50').then(function(r){return r.json()}).then(function(d){
     const sel=document.getElementById('f-sess');const cur=sel.value;
-    while(sel.options.length>1)sel.removeChild(sel.lastChild);
+    while(sel.options.length>1)sel.lastChild.remove();
     (d.sessions||[]).forEach(function(s){
       const opt=document.createElement('option');opt.value=s.session_id;
       opt.textContent=_sessLabel(s);sel.appendChild(opt);});
@@ -21,7 +21,7 @@ function _loadSessionFilter(){
   }).catch(function(){});}
 function _fillSelect(elId,items){
   const sel=document.getElementById(elId),cur=sel.value;
-  while(sel.options.length>1)sel.removeChild(sel.lastChild);
+  while(sel.options.length>1)sel.lastChild.remove();
   Object.keys(items).sort(function(a,b){return a.localeCompare(b)}).forEach(function(v){
     const o=document.createElement('option');o.value=v;o.textContent=v;sel.appendChild(o);});
   sel.value=cur;

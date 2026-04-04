@@ -33,10 +33,7 @@ class SSEBroadcaster:
         """Cancel the heartbeat task."""
         if self._heartbeat_task:
             self._heartbeat_task.cancel()
-            try:
-                await self._heartbeat_task
-            except asyncio.CancelledError:
-                pass
+            await asyncio.gather(self._heartbeat_task, return_exceptions=True)
             self._heartbeat_task = None
 
     def subscribe(self) -> asyncio.Queue[str]:

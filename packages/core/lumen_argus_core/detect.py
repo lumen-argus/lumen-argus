@@ -202,7 +202,7 @@ def _read_env_file_vars() -> set[str]:
 # ---------------------------------------------------------------------------
 
 
-def _scan_shell_profiles(proxy_url: str = "") -> dict[str, list[tuple[str, str, int, str]]]:
+def _scan_shell_profiles(_proxy_url: str = "") -> dict[str, list[tuple[str, str, int, str]]]:
     """Scan shell profile files for proxy env vars.
 
     Returns {var_name: [(value, file_path, line_number, client_tag), ...]}

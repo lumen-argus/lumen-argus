@@ -135,8 +135,8 @@ class ChannelsRepository(BaseRepository):
 
         return self.get(channel_id, namespace_id=namespace_id)
 
-    def update(self, channel_id: int, data: dict[str, Any], namespace_id: int = 1) -> dict[str, Any] | None:
-        """Update channel fields. Only updates provided keys."""
+    @staticmethod
+    def _build_update_fields(data: dict[str, Any]) -> tuple[list[str], list[Any]]:
         updates: list[str] = []
         params: list[Any] = []
         for key in ("name", "type", "min_severity", "source"):
@@ -146,18 +146,18 @@ class ChannelsRepository(BaseRepository):
         if "enabled" in data:
             updates.append("enabled = ?")
             params.append(1 if data["enabled"] else 0)
-        if "config" in data:
-            config = data["config"]
-            if isinstance(config, str):
-                config = json.loads(config)
-            updates.append("config = ?")
-            params.append(json.dumps(config))
-        if "events" in data:
-            events = data["events"]
-            if isinstance(events, str):
-                events = json.loads(events)
-            updates.append("events = ?")
-            params.append(json.dumps(events))
+        for json_key in ("config", "events"):
+            if json_key in data:
+                val = data[json_key]
+                if isinstance(val, str):
+                    val = json.loads(val)
+                updates.append("%s = ?" % json_key)
+                params.append(json.dumps(val))
+        return updates, params
+
+    def update(self, channel_id: int, data: dict[str, Any], namespace_id: int = 1) -> dict[str, Any] | None:
+        """Update channel fields. Only updates provided keys."""
+        updates, params = self._build_update_fields(data)
 
         if not updates:
             return self.get(channel_id, namespace_id=namespace_id)

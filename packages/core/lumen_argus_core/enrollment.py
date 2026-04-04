@@ -135,7 +135,7 @@ def register_agent(server_url: str, agent_id: str, machine_id: str, token: str =
         with urllib.request.urlopen(req, timeout=15, context=ctx) as resp:
             try:
                 response_data: dict[str, Any] = json.loads(resp.read())
-            except (json.JSONDecodeError, ValueError):
+            except ValueError:
                 response_data = {}
     except urllib.error.HTTPError as e:
         if e.code == 402:
@@ -160,7 +160,7 @@ def deregister_agent(server_url: str, agent_id: str) -> None:
     try:
         ctx = ssl_context_for_proxy()
         urllib.request.urlopen(req, timeout=15, context=ctx)
-    except (urllib.error.URLError, urllib.error.HTTPError):
+    except urllib.error.URLError:
         log.warning("failed to deregister agent — server may be unreachable")
 
 

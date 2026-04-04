@@ -128,7 +128,7 @@ def _validate_transport_args(upstream: str | None, listen: str | None, cmd: list
         sys.exit(1)
 
 
-def _open_mcp_store(config: Any, mcp_cfg: Any) -> Any:
+def _open_mcp_store(config: Any, _mcp_cfg: Any) -> Any:
     """Open a single AnalyticsStore for tool lists and drift detection."""
     if not config.analytics.enabled:
         return None

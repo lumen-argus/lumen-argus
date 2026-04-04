@@ -28,8 +28,8 @@ function loadPipeline(){
     actWrap.appendChild(actLabel);
     const actSel=document.createElement('select');
     actSel.className='config-input pipeline-select';
-    actSel.setAttribute('data-config-key','default_action');
-    actSel.setAttribute('data-original',data.default_action);
+    actSel.dataset.configKey='default_action';
+    actSel.dataset.original=data.default_action;
     _pipelineActionOpts.forEach(function(a){
       const o=document.createElement('option');o.value=a;o.textContent=a;
       if(a===data.default_action)o.selected=true;actSel.appendChild(o);
@@ -70,8 +70,8 @@ function loadPipeline(){
     const parToggle=document.createElement('label');parToggle.className='pipeline-toggle';
     const parCb=document.createElement('input');parCb.type='checkbox';
     parCb.checked=!!data.parallel_batching;
-    parCb.setAttribute('data-config-key','parallel_batching');
-    parCb.setAttribute('data-original',String(!!data.parallel_batching));
+    parCb.dataset.configKey='parallel_batching';
+    parCb.dataset.original=String(!!data.parallel_batching);
     const parSlider=document.createElement('span');parSlider.className='pipeline-slider';
     parToggle.appendChild(parCb);parToggle.appendChild(parSlider);
     parTop.appendChild(parToggle);
@@ -113,8 +113,8 @@ function _pipelineStageRow(stage){
   const toggle=document.createElement('label');toggle.className='pipeline-toggle';
   const cb=document.createElement('input');cb.type='checkbox';
   cb.checked=stage.enabled;cb.disabled=!stage.available;
-  cb.setAttribute('data-stage',stage.name);
-  cb.setAttribute('data-original',String(stage.enabled));
+  cb.dataset.stage=stage.name;
+  cb.dataset.original=String(stage.enabled);
   cb.className='pipeline-cb';
   const slider=document.createElement('span');slider.className='pipeline-slider';
   toggle.appendChild(cb);toggle.appendChild(slider);
@@ -152,8 +152,8 @@ function _pipelineStageRow(stage){
       const subToggle=document.createElement('label');subToggle.className='pipeline-toggle pipeline-toggle-sm';
       const subCb=document.createElement('input');subCb.type='checkbox';
       subCb.checked=det.enabled;subCb.className='pipeline-cb';
-      subCb.setAttribute('data-detector',det.name);
-      subCb.setAttribute('data-original',String(det.enabled));
+      subCb.dataset.detector=det.name;
+      subCb.dataset.original=String(det.enabled);
       const subSlider=document.createElement('span');subSlider.className='pipeline-slider';
       subToggle.appendChild(subCb);subToggle.appendChild(subSlider);
       sub.appendChild(subToggle);
@@ -164,8 +164,8 @@ function _pipelineStageRow(stage){
 
       const subActionSel=document.createElement('select');
       subActionSel.className='pipeline-action-select config-input';
-      subActionSel.setAttribute('data-config-key','detectors.'+det.name+'.action');
-      subActionSel.setAttribute('data-original',det.action);
+      subActionSel.dataset.configKey='detectors.'+det.name+'.action';
+      subActionSel.dataset.original=det.action;
       ['default'].concat(_pipelineActionOpts).forEach(function(a){
         const o=document.createElement('option');o.value=a;o.textContent=a;
         subActionSel.appendChild(o);
@@ -194,8 +194,8 @@ function _pipelineStageRow(stage){
     ['base64','hex','url','unicode'].forEach(function(e){
       const item=document.createElement('label');item.className='pipeline-enc-item';
       const cb=document.createElement('input');cb.type='checkbox';cb.checked=enc[e];
-      cb.className='pipeline-enc-cb';cb.setAttribute('data-encoding',e);
-      cb.setAttribute('data-original',String(enc[e]));
+      cb.className='pipeline-enc-cb';cb.dataset.encoding=e;
+      cb.dataset.original=String(enc[e]);
       item.appendChild(cb);
       const lbl=document.createElement('span');lbl.textContent=e;item.appendChild(lbl);
       encToggles.appendChild(item);
@@ -212,8 +212,8 @@ function _pipelineStageRow(stage){
       const inp=document.createElement('input');inp.type='number';
       inp.className='pipeline-enc-input';inp.value=enc[s[0]];
       inp.min=s[2];inp.max=s[3];
-      inp.setAttribute('data-enc-setting',s[0]);
-      inp.setAttribute('data-original',String(enc[s[0]]));
+      inp.dataset.encSetting=s[0];
+      inp.dataset.original=String(enc[s[0]]);
       item.appendChild(inp);numRow.appendChild(item);
     });
     encWrap.appendChild(numRow);
@@ -228,17 +228,16 @@ function _savePipeline(statusEl){
 
   /* Default action */
   const actSel=document.querySelector('.pipeline-select[data-config-key="default_action"]');
-  if(actSel&&actSel.value!==actSel.getAttribute('data-original')){
+  if(actSel&&actSel.value!==actSel.dataset.original){
     changes.default_action=actSel.value;
   }
 
   /* Stage toggles — only include changed */
   const stageCbs=document.querySelectorAll('.pipeline-cb[data-stage]');
   const stageChanges={};
-  for(let i=0;i<stageCbs.length;i++){
-    const cb=stageCbs[i];
-    if(String(cb.checked)!==cb.getAttribute('data-original')){
-      stageChanges[cb.getAttribute('data-stage')]={enabled:cb.checked};
+  for(const cb of stageCbs){
+    if(String(cb.checked)!==cb.dataset.original){
+      stageChanges[cb.dataset.stage]={enabled:cb.checked};
     }
   }
   if(Object.keys(stageChanges).length)changes.stages=stageChanges;
@@ -246,20 +245,18 @@ function _savePipeline(statusEl){
   /* Detector toggles + action overrides — only include changed */
   const detCbs=document.querySelectorAll('.pipeline-cb[data-detector]');
   const detChanges={};
-  for(let j=0;j<detCbs.length;j++){
-    const dcb=detCbs[j];
-    if(String(dcb.checked)!==dcb.getAttribute('data-original')){
-      if(!detChanges[dcb.getAttribute('data-detector')])detChanges[dcb.getAttribute('data-detector')]={};
-      detChanges[dcb.getAttribute('data-detector')].enabled=dcb.checked;
+  for(const dcb of detCbs){
+    if(String(dcb.checked)!==dcb.dataset.original){
+      if(!detChanges[dcb.dataset.detector])detChanges[dcb.dataset.detector]={};
+      detChanges[dcb.dataset.detector].enabled=dcb.checked;
     }
   }
   const detActionSels=document.querySelectorAll('.pipeline-action-select');
-  for(let k=0;k<detActionSels.length;k++){
-    const sel=detActionSels[k];
-    const key=sel.getAttribute('data-config-key');
+  for(const sel of detActionSels){
+    const key=sel.dataset.configKey;
     if(!key)continue;
     const detName=key.split('.')[1]; /* detectors.secrets.action -> secrets */
-    if(sel.value!==sel.getAttribute('data-original')){
+    if(sel.value!==sel.dataset.original){
       if(!detChanges[detName])detChanges[detName]={};
       detChanges[detName].action=sel.value;
     }
@@ -269,24 +266,22 @@ function _savePipeline(statusEl){
   /* Encoding settings — only include changed */
   const encCbs=document.querySelectorAll('.pipeline-enc-cb');
   const encChanges={};
-  for(let m=0;m<encCbs.length;m++){
-    const ecb=encCbs[m];
-    if(String(ecb.checked)!==ecb.getAttribute('data-original')){
-      encChanges[ecb.getAttribute('data-encoding')]=ecb.checked;
+  for(const ecb of encCbs){
+    if(String(ecb.checked)!==ecb.dataset.original){
+      encChanges[ecb.dataset.encoding]=ecb.checked;
     }
   }
   const encInputs=document.querySelectorAll('.pipeline-enc-input');
-  for(let n=0;n<encInputs.length;n++){
-    const ei=encInputs[n];
-    if(ei.value!==ei.getAttribute('data-original')){
-      encChanges[ei.getAttribute('data-enc-setting')]=Number(ei.value);
+  for(const ei of encInputs){
+    if(ei.value!==ei.dataset.original){
+      encChanges[ei.dataset.encSetting]=Number(ei.value);
     }
   }
   if(Object.keys(encChanges).length)changes.encoding_settings=encChanges;
 
   /* Parallel batching toggle */
   const parCb=document.querySelector('input[data-config-key="parallel_batching"]');
-  if(parCb&&String(parCb.checked)!==parCb.getAttribute('data-original')){
+  if(parCb&&String(parCb.checked)!==parCb.dataset.original){
     changes.parallel_batching=parCb.checked;
   }
 

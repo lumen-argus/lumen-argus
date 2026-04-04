@@ -17,6 +17,19 @@ from lumen_argus.dashboard.api_helpers import (
 
 log = logging.getLogger("argus.dashboard.api")
 
+# Filter parameter names mapped to their query-string keys.
+# Each entry is (store_kwarg, query_param).
+_FINDING_FILTER_KEYS: list[tuple[str, str]] = [
+    ("severity", "severity"),
+    ("detector", "detector"),
+    ("provider", "provider"),
+    ("session_id", "session_id"),
+    ("account_id", "account_id"),
+    ("action", "action"),
+    ("finding_type", "finding_type"),
+    ("client_name", "client"),
+]
+
 
 def handle_findings_list(params: dict[str, str], store: AnalyticsStore | None) -> tuple[int, bytes]:
     if not store:
@@ -27,28 +40,11 @@ def handle_findings_list(params: dict[str, str], store: AnalyticsStore | None) -
         return result
     limit, offset = result
 
-    severity = params.get("severity") or None
-    detector = params.get("detector") or None
-    provider = params.get("provider") or None
-    session_id = params.get("session_id") or None
-    account_id = params.get("account_id") or None
-    action = params.get("action") or None
-    finding_type = params.get("finding_type") or None
-    client_name = params.get("client") or None
-    days = parse_days(params, default=0) or None
-
     findings, total = store.get_findings_page(
         limit=limit,
         offset=offset,
-        severity=severity,
-        detector=detector,
-        provider=provider,
-        session_id=session_id,
-        account_id=account_id,
-        action=action,
-        finding_type=finding_type,
-        client_name=client_name,
-        days=days,
+        **{kwarg: params.get(key) or None for kwarg, key in _FINDING_FILTER_KEYS},  # type: ignore[arg-type]
+        days=parse_days(params, default=0) or None,
     )
     return json_response(200, {"findings": findings, "total": total})
 

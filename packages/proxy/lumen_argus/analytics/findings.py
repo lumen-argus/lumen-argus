@@ -50,22 +50,33 @@ class FindingsRepository(BaseRepository):
         now = now_iso_ms()
         s = session  # shorthand
 
+        sess = (
+            (
+                s.account_id,
+                s.session_id,
+                s.device_id,
+                s.source_ip,
+                s.working_directory,
+                s.git_branch,
+                s.os_platform,
+                s.client_name,
+                s.client_version,
+                s.api_key_hash,
+            )
+            if s
+            else ("",) * 10
+        )
+
         rows = []
         for f in findings:
-            # Content hash: deterministic fingerprint for store-level dedup.
-            # Uses detector + type + hash(matched_value). The matched_value
-            # is only used transiently for hashing — never stored in the DB.
-            # This avoids collisions between different secrets with the same
-            # masked preview (e.g. two stripe keys both showing "sk_l****").
             mv_hash = hashlib.sha256(f.matched_value.encode()).hexdigest()[:16]
             hash_input = "%s|%s|%s" % (f.detector, f.type, mv_hash)
             content_hash = hashlib.sha256(hash_input.encode()).hexdigest()[:16]
-            # HMAC-SHA-256 of matched_value for cross-session secret tracking.
-            # Full 64 hex chars (256 bits), keyed — useless without the key file.
-            if self._hmac_key:
-                vh = hmac_mod.new(self._hmac_key, f.matched_value.encode(), hashlib.sha256).hexdigest()
-            else:
-                vh = ""
+            vh = (
+                hmac_mod.new(self._hmac_key, f.matched_value.encode(), hashlib.sha256).hexdigest()
+                if self._hmac_key
+                else ""
+            )
             rows.append(
                 (
                     namespace_id,
@@ -78,16 +89,7 @@ class FindingsRepository(BaseRepository):
                     provider,
                     model,
                     f.value_preview,
-                    s.account_id if s else "",
-                    s.session_id if s else "",
-                    s.device_id if s else "",
-                    s.source_ip if s else "",
-                    s.working_directory if s else "",
-                    s.git_branch if s else "",
-                    s.os_platform if s else "",
-                    s.client_name if s else "",
-                    s.client_version if s else "",
-                    s.api_key_hash if s else "",
+                    *sess,
                     content_hash,
                     vh,
                 )

@@ -63,7 +63,7 @@ _POISON_PATTERNS = [
     (
         "download_exec",
         re.compile(
-            r"download\s+and\s+(?:run|execute|install)" r"|fetch\s+and\s+(?:run|execute)",
+            r"download\s+and\s+(?:run|execute|install)|fetch\s+and\s+(?:run|execute)",
             re.IGNORECASE,
         ),
     ),

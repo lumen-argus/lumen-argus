@@ -573,7 +573,7 @@ def _parse_version(raw_token: str) -> str:
     return m.group(0) if m else after_slash
 
 
-def identify_client(user_agent: str, headers: dict[str, str] | None = None) -> tuple[str, str, str, str]:
+def identify_client(user_agent: str, _headers: dict[str, str] | None = None) -> tuple[str, str, str, str]:
     """Identify the AI CLI agent from request headers.
 
     Returns (client_id, display_name, version, raw_ua_token):

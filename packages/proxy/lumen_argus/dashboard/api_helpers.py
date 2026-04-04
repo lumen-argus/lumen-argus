@@ -93,7 +93,7 @@ def parse_json_body(body: bytes, context: str = "") -> dict[str, Any] | tuple[in
     """
     try:
         data = sanitize_user_input(json.loads(body))
-    except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
+    except (UnicodeDecodeError, ValueError):
         if context:
             log.debug("%s: invalid JSON body", context)
         return json_response(400, {"error": "invalid JSON"})

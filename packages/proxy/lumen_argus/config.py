@@ -1162,13 +1162,12 @@ def _apply_config(config: Config, data: dict[str, Any]) -> None:
 
     # Engine config (fault-isolation mode)
     engine_data = data.get("engine", {})
-    if isinstance(engine_data, dict):
-        if "port" in engine_data:
-            p = int(engine_data["port"])
-            if not 1 <= p <= 65535:
-                log.warning("engine.port %d out of range (1-65535), using default", p)
-            else:
-                config.engine.port = p
+    if isinstance(engine_data, dict) and "port" in engine_data:
+        p = int(engine_data["port"])
+        if not 1 <= p <= 65535:
+            log.warning("engine.port %d out of range (1-65535), using default", p)
+        else:
+            config.engine.port = p
 
     # Enrollment config (enterprise agent deployment)
     enrollment_data = data.get("enrollment", {})

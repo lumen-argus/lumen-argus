@@ -48,6 +48,69 @@ _VALID_CONFIG_KEYS = {
 _VALID_ACTIONS = ACTION_SET
 
 
+def _validate_int_range(value: str, name: str, lo: int, hi: int) -> None:
+    """Validate that *value* is an integer in [lo, hi]."""
+    try:
+        v = int(value)
+    except (ValueError, TypeError):
+        raise ValueError("%s must be an integer (%d-%d)" % (name, lo, hi))
+    if v < lo or v > hi:
+        raise ValueError("%s must be %d-%d" % (name, lo, hi))
+
+
+def _validate_boolean(value: str, label: str) -> str:
+    """Validate and normalize a boolean string."""
+    if value.lower() not in ("true", "false"):
+        raise ValueError("%s must be true or false" % label)
+    return value.lower()
+
+
+def _validate_action(value: str) -> None:
+    """Validate that *value* is a recognized action."""
+    if value not in _VALID_ACTIONS:
+        raise ValueError("action must be one of: %s" % ", ".join(sorted(_VALID_ACTIONS)))
+
+
+def _validate_bind(value: str) -> str:
+    """Validate and normalize a bind address."""
+    import ipaddress
+
+    addr = value.strip()
+    if addr not in ("localhost",):
+        try:
+            ipaddress.ip_address(addr)
+        except ValueError:
+            raise ValueError("bind must be a valid IP address or 'localhost'")
+    return addr
+
+
+def _validate_mode(value: str) -> None:
+    """Validate proxy mode."""
+    if value not in ("active", "passthrough"):
+        raise ValueError("mode must be 'active' or 'passthrough'")
+
+
+# Lookup table: key → (validator_fn, returns_new_value)
+# Validators that return a str replace the stored value; None means no replacement.
+_INT_RANGE_KEYS: dict[str, tuple[str, int, int]] = {
+    "proxy.timeout": ("timeout", 1, 300),
+    "proxy.port": ("port", 1, 65535),
+    "proxy.retries": ("retries", 0, 10),
+    "pipeline.stages.encoding_decode.max_depth": ("max_depth", 1, 5),
+    "pipeline.stages.encoding_decode.min_decoded_length": ("min_decoded_length", 1, 100),
+    "pipeline.stages.encoding_decode.max_decoded_length": ("max_decoded_length", 100, 1_000_000),
+}
+
+_ACTION_KEYS = {
+    "default_action",
+    "detectors.secrets.action",
+    "detectors.pii.action",
+    "detectors.proprietary.action",
+}
+
+_BOOLEAN_SUFFIXES = (".enabled", ".base64", ".hex", ".url", ".unicode")
+
+
 class ConfigOverridesRepository(BaseRepository):
     """Repository for config override CRUD operations."""
 
@@ -71,77 +134,20 @@ class ConfigOverridesRepository(BaseRepository):
             raise ValueError("Invalid config key: %s" % key)
 
         value = str(value)
-        if key == "proxy.timeout":
-            try:
-                v = int(value)
-            except (ValueError, TypeError):
-                raise ValueError("timeout must be an integer (1-300)")
-            if v < 1 or v > 300:
-                raise ValueError("timeout must be 1-300")
-        elif key == "proxy.port":
-            try:
-                v = int(value)
-            except (ValueError, TypeError):
-                raise ValueError("port must be an integer (1-65535)")
-            if v < 1 or v > 65535:
-                raise ValueError("port must be 1-65535")
-        elif key == "proxy.bind":
-            import ipaddress
 
-            addr = value.strip()
-            if addr not in ("localhost",):
-                try:
-                    ipaddress.ip_address(addr)
-                except ValueError:
-                    raise ValueError("bind must be a valid IP address or 'localhost'")
-            value = addr
+        if key in _INT_RANGE_KEYS:
+            name, lo, hi = _INT_RANGE_KEYS[key]
+            _validate_int_range(value, name, lo, hi)
+        elif key == "proxy.bind":
+            value = _validate_bind(value)
         elif key == "proxy.mode":
-            if value not in ("active", "passthrough"):
-                raise ValueError("mode must be 'active' or 'passthrough'")
-        elif key == "proxy.retries":
-            try:
-                v = int(value)
-            except (ValueError, TypeError):
-                raise ValueError("retries must be an integer (0-10)")
-            if v < 0 or v > 10:
-                raise ValueError("retries must be 0-10")
-        elif key in (
-            "default_action",
-            "detectors.secrets.action",
-            "detectors.pii.action",
-            "detectors.proprietary.action",
-        ):
-            if value not in _VALID_ACTIONS:
-                raise ValueError("action must be one of: %s" % ", ".join(sorted(_VALID_ACTIONS)))
+            _validate_mode(value)
+        elif key in _ACTION_KEYS:
+            _validate_action(value)
         elif key == "pipeline.parallel_batching":
-            if value.lower() not in ("true", "false"):
-                raise ValueError("parallel_batching must be true or false")
-            value = value.lower()
-        elif key.endswith((".enabled", ".base64", ".hex", ".url", ".unicode")):
-            if value.lower() not in ("true", "false"):
-                raise ValueError("%s must be true or false" % key)
-            value = value.lower()  # normalize
-        elif key == "pipeline.stages.encoding_decode.max_depth":
-            try:
-                v = int(value)
-            except (ValueError, TypeError):
-                raise ValueError("max_depth must be an integer (1-5)")
-            if v < 1 or v > 5:
-                raise ValueError("max_depth must be 1-5")
-        elif key == "pipeline.stages.encoding_decode.min_decoded_length":
-            try:
-                v = int(value)
-            except (ValueError, TypeError):
-                raise ValueError("min_decoded_length must be an integer (1-100)")
-            if v < 1 or v > 100:
-                raise ValueError("min_decoded_length must be 1-100")
-        elif key == "pipeline.stages.encoding_decode.max_decoded_length":
-            try:
-                v = int(value)
-            except (ValueError, TypeError):
-                raise ValueError("max_decoded_length must be an integer (100-1000000)")
-            if v < 100 or v > 1_000_000:
-                raise ValueError("max_decoded_length must be 100-1000000")
+            value = _validate_boolean(value, "parallel_batching")
+        elif key.endswith(_BOOLEAN_SUFFIXES):
+            value = _validate_boolean(value, key)
 
         now = self._now()
         with self._adapter.write_lock():

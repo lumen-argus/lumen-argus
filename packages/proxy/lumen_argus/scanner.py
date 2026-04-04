@@ -267,12 +267,13 @@ def scan_files(
             all_file_findings[filepath] = list(findings)
         if baseline:
             findings = filter_baseline(findings, filepath, baseline)
+        if not findings:
+            continue
 
-        if findings:
-            file_exit = _resolve_exit_code(findings, config)
-            if exit_code == 0 or file_exit < exit_code:
-                exit_code = file_exit
-            _print_findings(filepath, findings, file_exit, output_format)
+        file_exit = _resolve_exit_code(findings, config)
+        if exit_code == 0 or file_exit < exit_code:
+            exit_code = file_exit
+        _print_findings(filepath, findings, file_exit, output_format)
 
     if create_baseline_path:
         save_baseline(create_baseline_path, all_file_findings)

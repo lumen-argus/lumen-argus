@@ -71,7 +71,7 @@ class ProprietaryDetector(BaseDetector):
             findings.extend(self._scan_field(field, allowlist))
         return findings
 
-    def _scan_field(self, field: ScanField, allowlist: AllowlistMatcher) -> list[Finding]:
+    def _scan_field(self, field: ScanField, _allowlist: AllowlistMatcher) -> list[Finding]:
         findings: list[Finding] = []
 
         # Check source filename against file pattern blocklist

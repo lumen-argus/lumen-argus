@@ -13,6 +13,7 @@ import logging
 import os
 import secrets
 import time
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 from http.cookies import SimpleCookie
 from typing import TYPE_CHECKING, Any
@@ -36,6 +37,10 @@ _SESSION_TIMEOUT = 8 * 60 * 60
 
 # Max request body for API calls (2 MB)
 _MAX_API_BODY = 2 * 1024 * 1024
+
+# Duplicated string constants
+_LOGIN_PATH = "/login"
+_CONTENT_TYPE_JSON = "application/json"
 
 _LOGIN_HTML = """\
 <!DOCTYPE html>
@@ -122,7 +127,7 @@ def _validate_next_url(url: str) -> str:
     return url
 
 
-def _nosniff_response(status: int, body: bytes, content_type: str = "application/json") -> web.Response:
+def _nosniff_response(status: int, body: bytes, content_type: str = _CONTENT_TYPE_JSON) -> web.Response:
     """Create a response with X-Content-Type-Options: nosniff."""
     return web.Response(
         status=status,
@@ -296,8 +301,8 @@ class AsyncDashboardServer:
         app.router.add_get("/api/v1/findings/export", self._handle_findings_export)
         app.router.add_get("/api/v1/audit/export", self._handle_audit_export)
         app.router.add_get("/api/v1/logs/download", self._handle_logs_download)
-        app.router.add_get("/login", self._serve_login)
-        app.router.add_post("/login", self._handle_login)
+        app.router.add_get(_LOGIN_PATH, self._serve_login)
+        app.router.add_post(_LOGIN_PATH, self._handle_login)
         app.router.add_get("/logout", self._handle_logout)
         app.router.add_route("*", "/api/{tail:.*}", self._handle_api)
         app.router.add_get("/{tail:.*}", self._serve_dashboard)
@@ -316,68 +321,88 @@ class AsyncDashboardServer:
         resp.headers.setdefault("X-Content-Type-Options", "nosniff")
         return resp
 
+    async def _try_extension_auth(
+        self,
+        request: web.Request,
+    ) -> str | None:
+        """Try extension auth providers (OIDC, SSO, etc.). Return user string or None."""
+        if not self.extensions:
+            return None
+        for provider in self.extensions.get_auth_providers():
+            try:
+                user_info = await provider.authenticate(dict(request.headers))
+                if user_info:
+                    user_id = user_info.get("user_id", "unknown") if isinstance(user_info, dict) else "unknown"
+                    return "dashboard:%s" % user_id
+            except Exception:
+                log.warning("auth provider %s failed", type(provider).__name__, exc_info=True)
+        return None
+
+    async def _try_agent_auth(
+        self,
+        request: web.Request,
+    ) -> str | web.Response | None:
+        """Try agent auth (Bearer token). Return user string, error response, or None."""
+        if not self.extensions or not request.path.startswith("/api/"):
+            return None
+        agent_auth = self.extensions.get_agent_auth_provider()
+        if not agent_auth:
+            return None
+        try:
+            identity = await agent_auth.authenticate(dict(request.headers))
+            if identity:
+                request["agent_identity"] = identity
+                return "agent:%s" % identity.agent_id
+        except AuthenticationError as exc:
+            return _json_error(401, str(exc))
+        except Exception:
+            log.warning("agent auth provider failed", exc_info=True)
+        return None
+
     @web.middleware
     async def _auth_middleware(
         self,
         request: web.Request,
-        handler: Any,
+        handler: Callable[[web.Request], Awaitable[web.StreamResponse]],
     ) -> web.StreamResponse:
         path = request.path
 
         # Public paths
-        if path in ("/login", "/logout"):
-            resp: web.StreamResponse = await handler(request)
-            return resp
+        if path in (_LOGIN_PATH, "/logout"):
+            return await handler(request)
 
         # No password = open access
         if not self.password:
             request["user"] = "dashboard"
-            resp = await handler(request)
-            return resp
+            return await handler(request)
 
         # Check session cookie
         cookie = _parse_cookies(request)
         session_morsel = cookie.get("argus_session")
         if session_morsel and self.validate_session(session_morsel.value):
             request["user"] = "dashboard:admin"
-            resp = await handler(request)
-            return resp
+            return await handler(request)
 
         # Try extension auth providers (dashboard auth — OIDC, SSO, etc.)
-        if self.extensions:
-            for provider in self.extensions.get_auth_providers():
-                try:
-                    user_info = await provider.authenticate(dict(request.headers))
-                    if user_info:
-                        user_id = user_info.get("user_id", "unknown") if isinstance(user_info, dict) else "unknown"
-                        request["user"] = "dashboard:%s" % user_id
-                        resp = await handler(request)
-                        return resp
-                except Exception:
-                    log.warning("auth provider %s failed", type(provider).__name__, exc_info=True)
+        ext_user = await self._try_extension_auth(request)
+        if ext_user:
+            request["user"] = ext_user
+            return await handler(request)
 
         # Try agent auth provider (Bearer token from enrolled agents)
-        if self.extensions and path.startswith("/api/"):
-            agent_auth = self.extensions.get_agent_auth_provider()
-            if agent_auth:
-                try:
-                    identity = await agent_auth.authenticate(dict(request.headers))
-                    if identity:
-                        request["agent_identity"] = identity
-                        request["user"] = "agent:%s" % identity.agent_id
-                        resp = await handler(request)
-                        return resp
-                except AuthenticationError as exc:
-                    return _json_error(401, str(exc))
-                except Exception:
-                    log.warning("agent auth provider failed", exc_info=True)
+        agent_result = await self._try_agent_auth(request)
+        if isinstance(agent_result, web.Response):
+            return agent_result
+        if agent_result:
+            request["user"] = agent_result
+            return await handler(request)
 
         # API requests → 401 JSON
         if path.startswith("/api/") and "/export" not in path:
             return _json_error(401, "authentication_required")
 
         # Page requests → redirect to login
-        raise web.HTTPFound("/login?next=%s" % quote(path))
+        raise web.HTTPFound(_LOGIN_PATH + "?next=%s" % quote(path))
 
     @web.middleware
     async def _csrf_middleware(
@@ -391,7 +416,7 @@ class AsyncDashboardServer:
             return resp
 
         # Login form POST is exempted (no session yet)
-        if request.path == "/login":
+        if request.path == _LOGIN_PATH:
             resp = await handler(request)
             return resp
 
@@ -458,7 +483,7 @@ class AsyncDashboardServer:
             )
             raise response
 
-        fail_url = "/login?error=1"
+        fail_url = _LOGIN_PATH + "?error=1"
         if next_url and next_url != "/":
             fail_url += "&next=%s" % quote(next_url)
         raise web.HTTPFound(fail_url)
@@ -469,7 +494,7 @@ class AsyncDashboardServer:
         if session_morsel:
             self.invalidate_session(session_morsel.value)
 
-        response = web.HTTPFound("/login")
+        response = web.HTTPFound(_LOGIN_PATH)
         response.del_cookie("argus_session", path="/")
         response.del_cookie("csrf_token", path="/")
         raise response
@@ -492,7 +517,7 @@ class AsyncDashboardServer:
                         status, content_type, response_body = result
                     else:
                         status, response_body = result
-                        content_type = "application/json"
+                        content_type = _CONTENT_TYPE_JSON
                     return _nosniff_response(status, response_body, content_type)
             except Exception:
                 log.warning("plugin API handler failed for %s %s", method, path, exc_info=True)
@@ -578,7 +603,7 @@ class AsyncDashboardServer:
 
             if fmt == "json":
                 body = json.dumps(findings, indent=2).encode("utf-8")
-                return self._download_response(body, "application/json", "findings-%s.json" % now)
+                return self._download_response(body, _CONTENT_TYPE_JSON, "findings-%s.json" % now)
             body = _findings_to_csv(findings)
             return self._download_response(body, "text/csv; charset=utf-8", "findings-%s.csv" % now)
 
@@ -601,7 +626,7 @@ class AsyncDashboardServer:
 
         if fmt == "json":
             body = json.dumps(entries, indent=2).encode("utf-8")
-            return self._download_response(body, "application/json", "audit-%s.json" % now)
+            return self._download_response(body, _CONTENT_TYPE_JSON, "audit-%s.json" % now)
         body = _audit_to_csv(entries)
         return self._download_response(body, "text/csv; charset=utf-8", "audit-%s.csv" % now)
 

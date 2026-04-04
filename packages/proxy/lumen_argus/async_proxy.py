@@ -372,10 +372,7 @@ async def _handle_websocket(request: web.Request, server: "AsyncArgusProxy") -> 
             _done, pending = await asyncio.wait([task_c2s, task_s2c], return_when=asyncio.FIRST_COMPLETED)
             for task in pending:
                 task.cancel()
-                try:
-                    await task
-                except asyncio.CancelledError:
-                    pass
+            await asyncio.gather(*pending, return_exceptions=True)
 
             # On block: close both ends with policy violation code (1008)
             if _blocked.is_set():
@@ -952,7 +949,7 @@ async def _do_forward(
 
                     try:
                         await response.write_eof()
-                    except (ConnectionResetError, BrokenPipeError, OSError):
+                    except OSError:
                         log.debug("#%d client disconnected during write_eof", request_id)
 
                 else:

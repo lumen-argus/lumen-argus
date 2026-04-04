@@ -290,7 +290,7 @@ CREATE INDEX IF NOT EXISTS idx_rule_analysis_namespace ON rule_analysis(namespac
 """
 
 
-def build_ws_connections_schema(a: DatabaseAdapter) -> str:
+def build_ws_connections_schema(_a: DatabaseAdapter) -> str:
     # ws_connections uses REAL for timestamps (Unix epoch), not TEXT/TIMESTAMPTZ
     return """\
 CREATE TABLE IF NOT EXISTS ws_connections (

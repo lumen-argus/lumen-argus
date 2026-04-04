@@ -205,12 +205,12 @@ function loadSettings(){
     }
 
     /* === Plugin settings sections === */
-    for(let si=0;si<_settingsSections.length;si++){
+    for(const ss of _settingsSections){
       try{
-        const section=_settingsSections[si].render(cfg,status);
+        const section=ss.render(cfg,status);
         if(section)el.appendChild(section);
       }catch(e){
-        const errGrp=_mkSG(_settingsSections[si].name);
+        const errGrp=_mkSG(ss.name);
         const errMsg=document.createElement('div');errMsg.className='setting-row';
         errMsg.style.color='var(--critical)';
         errMsg.textContent='Failed to load section: '+e.message;
