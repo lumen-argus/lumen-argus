@@ -265,7 +265,7 @@ def read_env_file() -> list[tuple[str, str, str]]:
                 # Parse our own format: export VAR=value  # lumen-argus:managed client=<id>
                 # (no quoted values — we control the write format via write_env_file)
                 m = re.match(
-                    r"export\s+(\w+)=(\S+)\s+.*client=(\S+)",
+                    r"export\s+(\w+)=(\S+)\s+#\s+\S+\s+client=(\S+)",
                     line,
                 )
                 if m:
