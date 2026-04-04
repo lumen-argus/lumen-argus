@@ -407,7 +407,7 @@ def register(registry):
 |------|-----------|-------------|
 | `register_dashboard_pages(pages)` | `pages: list[dict]` | Register additional dashboard pages. Each page dict has `name`, `label`, `js`, `order`. Pages matching locked placeholders unlock them. |
 | `register_dashboard_css(css)` | `css: str` | Register additional CSS injected after community CSS. |
-| `register_dashboard_api(handler)` | `handler(path, method, body, store, audit_reader) -> (status, body) or None` | Register a plugin API handler. Called before community handler; return `None` to fall through. |
+| `register_dashboard_api(handler)` | `async handler(path, method, body, store, audit_reader, agent_identity) -> (status, body) or None` | Register a plugin API handler. Called before community handler; return `None` to fall through. `agent_identity` is `AgentIdentity | None`. |
 | `set_analytics_store(store)` | `store: AnalyticsStore` | Override the analytics store (Pro passes its extended store). |
 | `set_sse_broadcaster(broadcaster)` | `broadcaster: SSEBroadcaster` | Store the SSE broadcaster for plugin access. |
 | `register_auth_provider(provider)` | `provider.authenticate(headers) -> dict or None` | Register an auth provider (Enterprise: OAuth, SAML). |
@@ -443,3 +443,36 @@ Extensions interact with the proxy through the `ExtensionRegistry`:
 - `get_auth_providers()` -- List registered auth providers
 - `get_channel_types()` / `get_notifier_builder()` / `get_dispatcher()` / `get_channel_limit()` -- Notification infrastructure
 - `get_health_hook()` / `get_metrics_hook()` / `get_trace_request_hook()` -- Observability hooks
+
+---
+
+## Module structure
+
+### CLI and startup
+
+The proxy entry point (`cli.py`) is a thin argparse dispatcher. Server lifecycle is decomposed into focused modules:
+
+| Module | Responsibility |
+|--------|---------------|
+| `cli.py` | Argument parsing, command dispatch, thin `_run_*` handlers |
+| `startup.py` | Server construction, component wiring, async run loop |
+| `config_loader.py` | HMAC key, rules bundle loading, analytics init, DB config overrides |
+| `reload.py` | SIGHUP hot-reload (config, pipeline, scanners, channels) |
+| `mcp_cmd.py` | Standalone `lumen-argus mcp` CLI with own detector stack |
+
+### Dashboard API
+
+The dashboard REST API is split by domain. All handlers import shared utilities from `api_helpers.py`:
+
+| Module | Endpoints |
+|--------|-----------|
+| `dashboard/api.py` | Dispatcher + small inline handlers (ws, audit) |
+| `dashboard/api_helpers.py` | `json_response`, `parse_pagination`, `parse_json_body`, `require_store`, `broadcast_sse`, `send_sighup`, `mask_channel` |
+| `dashboard/api_findings.py` | Findings list/detail, sessions, stats |
+| `dashboard/api_rules.py` | Rules CRUD, bulk update, clone, analysis |
+| `dashboard/api_channels.py` | Notification channel CRUD, types, test, batch |
+| `dashboard/api_config.py` | Config/pipeline CRUD, status, license, logs, clients |
+| `dashboard/api_allowlists.py` | Allowlist CRUD and pattern testing |
+| `dashboard/api_mcp.py` | MCP tool list management |
+
+Pro extensions should import shared helpers from `lumen_argus.dashboard.api_helpers` (not from `api.py`). The public entry point `handle_community_api()` remains in `api.py`.
