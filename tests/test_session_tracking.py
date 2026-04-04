@@ -17,8 +17,6 @@ import hashlib
 import unittest
 from unittest.mock import MagicMock
 
-from lumen_argus_core.clients import identify_client
-
 from lumen_argus.models import AuditEntry, Finding, SessionContext
 from lumen_argus.session import (
     _GIT_BRANCH_PATTERNS,
@@ -31,6 +29,7 @@ from lumen_argus.session import (
 from lumen_argus.session import (
     extract_session as _extract_session,
 )
+from lumen_argus_core.clients import identify_client
 from tests.helpers import StoreTestCase
 
 

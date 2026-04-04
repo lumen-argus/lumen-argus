@@ -25,7 +25,7 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Install uv
-        uses: astral-sh/setup-uv@6b9c6063abd6010835c3c7f4a7d2c2bef6ef3eb6 # v5
+        uses: astral-sh/setup-uv@e58605a9b6da7c637471fab8847a5e5a6b8df081 # v5
 
       - name: Build
         env:
@@ -53,7 +53,7 @@ jobs:
           path: dist/
 
       - name: Install uv
-        uses: astral-sh/setup-uv@6b9c6063abd6010835c3c7f4a7d2c2bef6ef3eb6 # v5
+        uses: astral-sh/setup-uv@e58605a9b6da7c637471fab8847a5e5a6b8df081 # v5
 
       - name: Publish to TestPyPI
         run: uv publish --publish-url https://test.pypi.org/legacy/ dist/*
@@ -75,7 +75,7 @@ jobs:
           path: dist/
 
       - name: Install uv
-        uses: astral-sh/setup-uv@6b9c6063abd6010835c3c7f4a7d2c2bef6ef3eb6 # v5
+        uses: astral-sh/setup-uv@e58605a9b6da7c637471fab8847a5e5a6b8df081 # v5
 
       - name: Publish to PyPI
         run: uv publish dist/*

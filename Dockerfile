@@ -12,8 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev g
 # Copy source and install (only re-runs on code changes, gcc is cached)
 COPY packages/core/lumen_argus_core/ packages/core/lumen_argus_core/
 COPY packages/proxy/lumen_argus/ packages/proxy/lumen_argus/
-RUN pip install --no-cache-dir --prefix=/install packages/core/ \
-    && pip install --no-cache-dir --prefix=/install packages/proxy/ \
+RUN pip install --no-cache-dir --prefix=/install packages/core/ packages/proxy/ \
     && pip install --no-cache-dir --prefix=/install "crossfire-rules[re2] @ git+https://github.com/lumen-argus/crossfire.git"
 
 # ---- runtime stage ----
