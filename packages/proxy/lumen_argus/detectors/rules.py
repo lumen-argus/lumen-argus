@@ -190,13 +190,12 @@ class RulesDetector(BaseDetector):
 
         try:
             with self._store._adapter.write_lock():
-                conn = self._store._connect()
-                for rule_name, count in snapshot.items():
-                    conn.execute(
-                        "UPDATE rules SET hit_count = hit_count + ? WHERE name = ?",
-                        (count, rule_name),
-                    )
-                conn.commit()
+                with self._store._connect() as conn:
+                    for rule_name, count in snapshot.items():
+                        conn.execute(
+                            "UPDATE rules SET hit_count = rules.hit_count + ? WHERE name = ?",
+                            (count, rule_name),
+                        )
             log.debug("hit counts flushed: %d rules updated", len(snapshot))
         except Exception as e:
             log.warning("hit count flush failed: %s", e)

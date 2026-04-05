@@ -107,7 +107,7 @@ class FindingsRepository(BaseRepository):
                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
                     "ON CONFLICT(content_hash, session_id, namespace_id) "
                     "WHERE content_hash != '' "
-                    "DO UPDATE SET seen_count = seen_count + 1, "
+                    "DO UPDATE SET seen_count = findings.seen_count + 1, "
                     "timestamp = excluded.timestamp",
                     rows,
                 )

@@ -30,7 +30,7 @@ class MCPToolTrackingRepository(BaseRepository):
         if not tool_name:
             return
         now = self._now()
-        update_parts = ["last_seen = excluded.last_seen", "call_count = call_count + 1"]
+        update_parts = ["last_seen = excluded.last_seen", "call_count = mcp_detected_tools.call_count + 1"]
         if description:
             update_parts.append("description = excluded.description")
         if input_schema:
