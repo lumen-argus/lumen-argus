@@ -31,21 +31,23 @@ class EnrollmentRepository(BaseRepository):
         agent_version: str,
         enrolled_at: str,
     ) -> None:
-        """Register a new agent or update an existing one."""
+        """Register a new agent or replace the existing enrollment for this machine.
+
+        Re-enrolling the same machine generates a fresh agent_id (the PK), so we
+        can't UPSERT — PostgreSQL refuses to update a PK referenced by
+        enrollment_agent_tools.agent_id. Delete the prior row (cascades to
+        agent_tools) and insert anew.
+        """
         with self._adapter.write_lock():
             with self._connect() as conn:
+                conn.execute(
+                    "DELETE FROM enrollment_agents WHERE machine_id = ?",
+                    (machine_id,),
+                )
                 conn.execute(
                     """INSERT INTO enrollment_agents
                     (agent_id, machine_id, hostname, os, arch, agent_version, enrolled_at, status)
                     VALUES (?, ?, ?, ?, ?, ?, ?, 'active')
-                    ON CONFLICT(machine_id) DO UPDATE SET
-                        agent_id = excluded.agent_id,
-                        hostname = excluded.hostname,
-                        os = excluded.os,
-                        arch = excluded.arch,
-                        agent_version = excluded.agent_version,
-                        enrolled_at = excluded.enrolled_at,
-                        status = 'active'
                     """,
                     (agent_id, machine_id, hostname, os, arch, agent_version, enrolled_at),
                 )
