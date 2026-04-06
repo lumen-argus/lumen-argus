@@ -384,5 +384,129 @@ class TestRunToolPolicyEvaluator(unittest.TestCase):
         self.assertIsNone(_run_tool_policy_evaluator(Bad(), "tool", {}, "", {}))
 
 
+class FakeBroadcaster:
+    """Fake SSE broadcaster that records events."""
+
+    def __init__(self) -> None:
+        self.events: list[tuple[str, dict]] = []
+
+    def broadcast(self, event_type: str, data: dict) -> None:
+        self.events.append((event_type, data))
+
+
+class TestSSEBroadcast(unittest.TestCase):
+    """Test SSE event broadcasting from _check_tools_call pipeline."""
+
+    def _run(self, coro: Any) -> Any:
+        return asyncio.run(coro)
+
+    def test_allowed_call_broadcasts_event(self):
+        scanner = _make_scanner()
+        broadcaster = FakeBroadcaster()
+        msg = _make_tools_call()
+        self._run(_check_tools_call(msg, scanner, "block", None, None, sse_broadcaster=broadcaster))
+        self.assertEqual(len(broadcaster.events), 1)
+        event_type, data = broadcaster.events[0]
+        self.assertEqual(event_type, "mcp_tool_call")
+        self.assertEqual(data["decision"], "allowed")
+        self.assertEqual(data["tool_name"], "write_file")
+        self.assertIn("timestamp", data)
+
+    def test_blocked_call_broadcasts_event(self):
+        scanner = _make_scanner()
+        broadcaster = FakeBroadcaster()
+        evaluator = FakeEvaluator(FakePolicyDecision(action="block", policy_name="deny-all", reason="Denied"))
+        msg = _make_tools_call()
+        self._run(
+            _check_tools_call(
+                msg,
+                scanner,
+                "block",
+                None,
+                None,
+                tool_policy_evaluator=evaluator,
+                sse_broadcaster=broadcaster,
+            )
+        )
+        self.assertEqual(len(broadcaster.events), 1)
+        event_type, data = broadcaster.events[0]
+        self.assertEqual(event_type, "mcp_tool_call")
+        self.assertEqual(data["decision"], "blocked")
+        self.assertEqual(data["policy_name"], "deny-all")
+
+    def test_alert_broadcasts_event(self):
+        scanner = _make_scanner()
+        broadcaster = FakeBroadcaster()
+        evaluator = FakeEvaluator(FakePolicyDecision(action="alert", policy_name="monitor", reason="Logged"))
+        msg = _make_tools_call()
+        self._run(
+            _check_tools_call(
+                msg,
+                scanner,
+                "block",
+                None,
+                None,
+                tool_policy_evaluator=evaluator,
+                sse_broadcaster=broadcaster,
+            )
+        )
+        # Should get alert event + allowed event
+        decisions = [e[1]["decision"] for e in broadcaster.events]
+        self.assertIn("alerted", decisions)
+        self.assertIn("allowed", decisions)
+
+    def test_approval_broadcasts_requested_and_decided(self):
+        scanner = _make_scanner()
+        broadcaster = FakeBroadcaster()
+        evaluator = FakeEvaluator(FakePolicyDecision(action="approval", policy_name="require-approval"))
+        gate = FakeApprovalGate(FakeApprovalDecision(status="approved", approval_id="apr_1"))
+        msg = _make_tools_call()
+        self._run(
+            _check_tools_call(
+                msg,
+                scanner,
+                "block",
+                None,
+                None,
+                tool_policy_evaluator=evaluator,
+                approval_gate=gate,
+                sse_broadcaster=broadcaster,
+            )
+        )
+        types = [e[0] for e in broadcaster.events]
+        self.assertIn("mcp_approval_requested", types)
+        self.assertIn("mcp_approval_decided", types)
+        # No redundant mcp_tool_call/allowed — approval_decided is sufficient
+        self.assertNotIn("mcp_tool_call", types)
+        # Find the decided event
+        decided = [e for e in broadcaster.events if e[0] == "mcp_approval_decided"][0]
+        self.assertEqual(decided[1]["decision"], "approved")
+        self.assertEqual(decided[1]["approval_id"], "apr_1")
+
+    def test_no_broadcaster_does_not_fail(self):
+        scanner = _make_scanner()
+        msg = _make_tools_call()
+        # sse_broadcaster=None (default) should not raise
+        result = self._run(_check_tools_call(msg, scanner, "block", None, None, sse_broadcaster=None))
+        self.assertIsNone(result)
+
+    def test_broadcaster_includes_server_id(self):
+        scanner = _make_scanner()
+        broadcaster = FakeBroadcaster()
+        msg = _make_tools_call()
+        self._run(
+            _check_tools_call(
+                msg,
+                scanner,
+                "block",
+                None,
+                None,
+                server_id="npx @mcp/fs",
+                sse_broadcaster=broadcaster,
+            )
+        )
+        self.assertEqual(broadcaster.events[0][1]["server_id"], "npx @mcp/fs")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -74,6 +74,7 @@ def run_mcp(args: argparse.Namespace, extensions: ExtensionRegistry | None = Non
     escalation_fn = extensions.get_mcp_session_escalation()
     tool_policy_evaluator = extensions.get_tool_policy_evaluator()
     approval_gate = extensions.get_approval_gate()
+    sse_broadcaster = extensions.get_sse_broadcaster()
 
     # Determine action (CLI flag > config)
     action_override = getattr(args, "action", None)
@@ -115,6 +116,7 @@ def run_mcp(args: argparse.Namespace, extensions: ExtensionRegistry | None = Non
             tool_policy_evaluator,
             approval_gate,
             server_id,
+            sse_broadcaster,
         )
     elif listen:
         _run_http_listener(
@@ -126,6 +128,7 @@ def run_mcp(args: argparse.Namespace, extensions: ExtensionRegistry | None = Non
             tool_policy_evaluator,
             approval_gate,
             server_id,
+            sse_broadcaster,
         )
     else:
         _run_bridge(
@@ -136,6 +139,7 @@ def run_mcp(args: argparse.Namespace, extensions: ExtensionRegistry | None = Non
             tool_policy_evaluator,
             approval_gate,
             server_id,
+            sse_broadcaster,
         )
 
 
@@ -217,6 +221,7 @@ def _run_stdio(
     tool_policy_evaluator: Any = None,
     approval_gate: Any = None,
     server_id: str = "",
+    sse_broadcaster: Any = None,
 ) -> None:
     import asyncio
 
@@ -245,6 +250,7 @@ def _run_stdio(
             tool_policy_evaluator=tool_policy_evaluator,
             approval_gate=approval_gate,
             server_id=server_id,
+            sse_broadcaster=sse_broadcaster,
         )
     )
     sys.exit(exit_code)
@@ -259,6 +265,7 @@ def _run_http_listener(
     tool_policy_evaluator: Any = None,
     approval_gate: Any = None,
     server_id: str = "",
+    sse_broadcaster: Any = None,
 ) -> None:
     import asyncio
 
@@ -286,6 +293,7 @@ def _run_http_listener(
             tool_policy_evaluator=tool_policy_evaluator,
             approval_gate=approval_gate,
             server_id=server_id,
+            sse_broadcaster=sse_broadcaster,
         )
     )
 
@@ -298,6 +306,7 @@ def _run_bridge(
     tool_policy_evaluator: Any = None,
     approval_gate: Any = None,
     server_id: str = "",
+    sse_broadcaster: Any = None,
 ) -> None:
     import asyncio
 
@@ -316,6 +325,7 @@ def _run_bridge(
                 tool_policy_evaluator=tool_policy_evaluator,
                 approval_gate=approval_gate,
                 server_id=server_id,
+                sse_broadcaster=sse_broadcaster,
             )
         )
     else:
@@ -330,6 +340,7 @@ def _run_bridge(
                 tool_policy_evaluator=tool_policy_evaluator,
                 approval_gate=approval_gate,
                 server_id=server_id,
+                sse_broadcaster=sse_broadcaster,
             )
         )
     sys.exit(exit_code)

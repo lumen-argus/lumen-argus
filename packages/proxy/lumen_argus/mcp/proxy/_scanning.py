@@ -93,6 +93,47 @@ def _signal_escalation(
         return None
 
 
+def _broadcast_mcp_event(
+    broadcaster: Any,
+    event_type: str,
+    tool_name: str,
+    decision: str,
+    server_id: str = "",
+    session_id: str = "",
+    policy_name: str = "",
+    approval_id: str = "",
+    findings_count: int = 0,
+) -> None:
+    """Broadcast an MCP tool call event to SSE clients.
+
+    Event types: mcp_tool_call, mcp_approval_requested, mcp_approval_decided.
+    Safe to call when broadcaster is None (no-op).
+    Payload fields are explicitly enumerated — no open dict to prevent
+    accidental leakage of sensitive data (arguments, env, matched_value).
+    """
+    if broadcaster is None:
+        return
+    try:
+        from lumen_argus_core.time_utils import now_iso
+
+        payload: dict[str, Any] = {
+            "tool_name": tool_name,
+            "decision": decision,
+            "server_id": server_id,
+            "session_id": session_id,
+            "timestamp": now_iso(),
+        }
+        if policy_name:
+            payload["policy_name"] = policy_name
+        if approval_id:
+            payload["approval_id"] = approval_id
+        if findings_count:
+            payload["findings_count"] = findings_count
+        broadcaster.broadcast(event_type, payload)
+    except Exception:
+        log.debug("mcp: SSE broadcast failed for %s", event_type, exc_info=True)
+
+
 def _jsonrpc_error(msg_id: Any, message: str) -> dict[str, Any]:
     """Build a JSON-RPC 2.0 error response."""
     return {
@@ -112,6 +153,7 @@ async def _check_tools_call(
     tool_policy_evaluator: Any = None,
     approval_gate: Any = None,
     server_id: str = "",
+    sse_broadcaster: Any = None,
 ) -> dict[str, Any] | None:
     """Validate a tools/call request through the full scanning pipeline.
 
@@ -131,11 +173,28 @@ async def _check_tools_call(
     tool_name = msg.get("params", {}).get("name", "")
     arguments = msg.get("params", {}).get("arguments", {})
 
+    # Helper to broadcast + return error in one step
+    def _block(reason: str, policy: str = "", sse_decision: str = "blocked") -> dict[str, Any]:
+        _broadcast_mcp_event(
+            sse_broadcaster,
+            "mcp_tool_call",
+            tool_name,
+            sse_decision,
+            server_id=server_id,
+            session_id=session_id,
+            policy_name=policy,
+        )
+        return _jsonrpc_error(msg_id, reason)
+
     # 1. Session binding check
     if scanner.session_binding and not scanner.session_binding.validate_tool(tool_name):
         _signal_escalation(escalation_fn, "unknown_tool", session_id, {"tool": tool_name})
         if scanner.session_binding.should_block:
-            return _jsonrpc_error(msg_id, "Tool '%s' not in session baseline" % tool_name)
+            return _block("Tool '%s' not in session baseline" % tool_name, sse_decision="blocked")
+
+    # Track whether an SSE decision event was already broadcast (e.g., by approval gate)
+    # to avoid redundant mcp_tool_call/allowed at the end.
+    sse_decision_broadcast = False
 
     # 2. ABAC tool policy evaluation
     decision = _run_tool_policy_evaluator(
@@ -153,10 +212,19 @@ async def _check_tools_call(
         if decision_action == "block":
             log.info("mcp: tool call blocked by policy %r: %s (%s)", policy_name, tool_name, reason)
             _signal_escalation(escalation_fn, "block", session_id, {"tool": tool_name, "policy": policy_name})
-            return _jsonrpc_error(msg_id, reason or ("Blocked by policy: %s" % policy_name))
+            return _block(reason or ("Blocked by policy: %s" % policy_name), policy_name)
 
         if decision_action == "alert":
             log.warning("mcp: tool call alert: %s (policy: %s, reason: %s)", tool_name, policy_name, reason)
+            _broadcast_mcp_event(
+                sse_broadcaster,
+                "mcp_tool_call",
+                tool_name,
+                "alerted",
+                server_id=server_id,
+                session_id=session_id,
+                policy_name=policy_name,
+            )
 
         # 3. Approval gate
         if decision_action == "approval":
@@ -168,6 +236,15 @@ async def _check_tools_call(
                     tool_name,
                 )
             else:
+                _broadcast_mcp_event(
+                    sse_broadcaster,
+                    "mcp_approval_requested",
+                    tool_name,
+                    "pending",
+                    server_id=server_id,
+                    session_id=session_id,
+                    policy_name=policy_name,
+                )
                 approval = await _run_approval_gate(
                     approval_gate,
                     tool_name,
@@ -186,6 +263,17 @@ async def _check_tools_call(
                 else:
                     approval_status = getattr(approval, "status", "denied")
                     approval_id = getattr(approval, "approval_id", "")
+                    _broadcast_mcp_event(
+                        sse_broadcaster,
+                        "mcp_approval_decided",
+                        tool_name,
+                        approval_status,
+                        server_id=server_id,
+                        session_id=session_id,
+                        policy_name=policy_name,
+                        approval_id=approval_id,
+                    )
+                    sse_decision_broadcast = True
                     if approval_status != "approved":
                         log.info("mcp: tool call %s: %s (approval %s)", approval_status, tool_name, approval_id)
                         return _jsonrpc_error(
@@ -198,19 +286,38 @@ async def _check_tools_call(
     policy_findings = _run_policy_engine(policy_engine, tool_name, arguments)
     if policy_findings and any(f.action == "block" for f in policy_findings):
         _signal_escalation(escalation_fn, "block", session_id, {"tool": tool_name})
-        return _jsonrpc_error(msg_id, "Request blocked by policy: %s" % policy_findings[0].type)
+        return _block("Request blocked by policy: %s" % policy_findings[0].type)
 
     # 5. DLP argument scanning
     findings = scanner.scan_request(msg)
     if findings and action == "block":
         _signal_escalation(escalation_fn, "block", session_id, {"tool": tool_name})
-        return _jsonrpc_error(msg_id, "Request blocked by lumen-argus: sensitive data detected")
+        return _block("Request blocked by lumen-argus: sensitive data detected", sse_decision="blocked")
 
-    # Not blocked — signal near_miss or clean
+    # Not blocked — signal near_miss or clean and broadcast allowed event
     if findings:
         _signal_escalation(escalation_fn, "near_miss", session_id, {"tool": tool_name})
+        if not sse_decision_broadcast:
+            _broadcast_mcp_event(
+                sse_broadcaster,
+                "mcp_tool_call",
+                tool_name,
+                "alerted",
+                server_id=server_id,
+                session_id=session_id,
+                findings_count=len(findings),
+            )
     else:
         _signal_escalation(escalation_fn, "clean", session_id, {"tool": tool_name})
+        if not sse_decision_broadcast:
+            _broadcast_mcp_event(
+                sse_broadcaster,
+                "mcp_tool_call",
+                tool_name,
+                "allowed",
+                server_id=server_id,
+                session_id=session_id,
+            )
     return None
 
 

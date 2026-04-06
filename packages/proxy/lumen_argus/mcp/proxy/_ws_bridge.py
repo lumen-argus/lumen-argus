@@ -26,6 +26,7 @@ async def run_ws_bridge(
     tool_policy_evaluator: Any = None,
     approval_gate: Any = None,
     server_id: str = "",
+    sse_broadcaster: Any = None,
 ) -> int:
     """Run MCP proxy in WebSocket bridge mode (stdio client -> WS upstream).
 
@@ -78,6 +79,7 @@ async def run_ws_bridge(
                                 tool_policy_evaluator=tool_policy_evaluator,
                                 approval_gate=approval_gate,
                                 server_id=server_id,
+                                sse_broadcaster=sse_broadcaster,
                             )
                             if error:
                                 sys.stdout.buffer.write(json.dumps(error).encode() + b"\n")
