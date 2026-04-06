@@ -1,7 +1,11 @@
 """MCP server setup — wrap/unwrap MCP servers through lumen-argus scanning proxy.
 
 Rewrites AI tool config files (Claude Desktop, Claude Code, Cursor, etc.) to
-route stdio MCP servers through ``lumen-argus mcp -- <original-command>``.
+route MCP servers through lumen-argus for DLP scanning:
+
+- **Stdio servers**: ``lumen-argus mcp -- <original-command>``
+- **HTTP/WS servers**: ``lumen-argus mcp --upstream <original-url>``
+  (converts URL-based server to stdio bridge — AI tool manages lifecycle)
 
 All file modifications follow the same patterns as setup_wizard.py:
 timestamped backups, append-only manifest, idempotent operations.
@@ -82,11 +86,11 @@ def run_mcp_setup(
 
     if not candidates:
         if server_name or source_tool:
-            log.info("no matching unwrapped stdio MCP servers found")
-            print("No matching unwrapped stdio MCP servers found.")
+            log.info("no matching unwrapped MCP servers found")
+            print("No matching unwrapped MCP servers found.")
         else:
-            log.info("no unwrapped stdio MCP servers detected")
-            print("No unwrapped stdio MCP servers detected.")
+            log.info("no unwrapped MCP servers detected")
+            print("No unwrapped MCP servers detected.")
         return []
 
     log.info(
@@ -207,15 +211,23 @@ def wrap_mcp_server(
         return None
 
     command = server_def.get("command", "")
+    url = server_def.get("url", "")
     args = server_def.get("args", [])
-    if not command:
-        log.debug("server %s has no command (http/sse?) — skipping", server_name)
-        return None
 
     if not isinstance(args, list):
         args = []
 
-    detail = "wrapped %s: %s → %s mcp -- %s" % (server_name, command, _WRAPPER_COMMAND, command)
+    if command:
+        # Stdio server: wrap via mcp -- <cmd> <args>
+        detail = "wrapped %s: %s → %s mcp -- %s" % (server_name, command, _WRAPPER_COMMAND, command)
+        wrap_args = ["mcp", "--", command, *args]
+    elif url:
+        # HTTP/WS server: wrap via mcp --upstream <url> (bridge mode)
+        detail = "wrapped %s: %s → %s mcp --upstream %s" % (server_name, url, _WRAPPER_COMMAND, url)
+        wrap_args = ["mcp", "--upstream", url]
+    else:
+        log.debug("server %s has no command or url — skipping", server_name)
+        return None
 
     if dry_run:
         log.info("[dry-run] would wrap %s in %s", server_name, config_path)
@@ -231,7 +243,10 @@ def wrap_mcp_server(
 
     # Rewrite the server entry
     server_def["command"] = _WRAPPER_COMMAND
-    server_def["args"] = ["mcp", "--", command, *args]
+    server_def["args"] = wrap_args
+    if url:
+        # Remove url field — server is now a stdio bridge process
+        server_def.pop("url", None)
 
     _write_json_config(config_path, data)
     log.info("wrapped %s in %s (backup: %s)", server_name, config_path, backup_path)
@@ -277,23 +292,44 @@ def unwrap_mcp_server(
         return None
 
     args = server_def.get("args", [])
-    original_command, original_args = _extract_original(args)
+    original_url = ""
 
-    if not original_command:
-        log.warning("could not extract original command for %s — skipping", server_name)
+    if "--" in args:
+        # Stdio wrapping: restore original command + args
+        original_command, original_args = _extract_original(args)
+        if not original_command:
+            log.warning("could not extract original command for %s — skipping", server_name)
+            return None
+        detail = "unwrapped %s: %s mcp -- %s → %s" % (
+            server_name,
+            _WRAPPER_COMMAND,
+            original_command,
+            " ".join([original_command, *original_args]) if original_args else original_command,
+        )
+    elif "--upstream" in args:
+        # HTTP/WS bridge wrapping: restore original URL
+        original_url = _extract_original_url(args)
+        if not original_url:
+            log.warning("could not extract original URL for %s — skipping", server_name)
+            return None
+        original_command = ""
+        original_args = []
+        detail = "unwrapped %s: %s mcp --upstream → %s" % (server_name, _WRAPPER_COMMAND, original_url)
+    else:
+        log.warning("wrapped server %s has no -- or --upstream — skipping", server_name)
         return None
 
     backup_path = _backup_file(config_path)
 
-    detail = "unwrapped %s: %s mcp -- %s → %s" % (
-        server_name,
-        _WRAPPER_COMMAND,
-        original_command,
-        " ".join([original_command, *original_args]) if original_args else original_command,
-    )
-
-    server_def["command"] = original_command
-    server_def["args"] = original_args
+    if "--upstream" in args:
+        # HTTP/WS: restore url, remove command/args
+        server_def["url"] = original_url
+        server_def.pop("command", None)
+        server_def.pop("args", None)
+    else:
+        # Stdio: restore command/args
+        server_def["command"] = original_command
+        server_def["args"] = original_args
 
     _write_json_config(config_path, data)
     log.info("unwrapped %s in %s (backup: %s)", server_name, config_path, backup_path)
@@ -318,13 +354,21 @@ def _filter_wrappable(
     server_name: str,
     source_tool: str,
 ) -> list[MCPServerEntry]:
-    """Filter to unwrapped stdio servers, optionally by name and source."""
+    """Filter to unwrapped servers that can be wrapped, optionally by name and source.
+
+    Stdio servers are wrapped via ``mcp -- <cmd>``.
+    HTTP/WS servers are wrapped via ``mcp --upstream <url>`` (bridge mode).
+    """
     result = []
     for s in servers:
         if s.scanning_enabled:
             continue  # already wrapped
-        if s.transport != "stdio":
-            continue  # only stdio supported
+        if s.transport == "stdio" and not s.command:
+            continue  # malformed stdio entry
+        if s.transport in ("http", "ws") and not s.url:
+            continue  # malformed http/ws entry
+        if s.transport not in ("stdio", "http", "ws"):
+            continue  # unknown transport
         if server_name and s.name != server_name:
             continue
         if source_tool and s.source_tool != source_tool:
@@ -397,7 +441,7 @@ def _is_wrapped(server_def: dict[str, Any]) -> bool:
 
 
 def _extract_original(args: list[str]) -> tuple[str, list[str]]:
-    """Extract the original command and args from a wrapped args list.
+    """Extract the original command and args from a stdio-wrapped args list.
 
     Expects: ["mcp", "--", "original_cmd", "arg1", "arg2"]
     Returns: ("original_cmd", ["arg1", "arg2"])
@@ -409,6 +453,20 @@ def _extract_original(args: list[str]) -> tuple[str, list[str]]:
     if not remaining:
         return "", []
     return remaining[0], remaining[1:]
+
+
+def _extract_original_url(args: list[str]) -> str:
+    """Extract the original upstream URL from a bridge-wrapped args list.
+
+    Expects: ["mcp", "--upstream", "http://example.com/mcp"]
+    Returns: "http://example.com/mcp"
+    """
+    if "--upstream" not in args:
+        return ""
+    idx = args.index("--upstream")
+    if idx + 1 < len(args):
+        return args[idx + 1]
+    return ""
 
 
 def _source_tool_from_path(config_path: str) -> str:
@@ -425,10 +483,9 @@ def _source_tool_from_path(config_path: str) -> str:
 def _prompt_wrap(server: MCPServerEntry) -> bool:
     """Prompt user to wrap an MCP server. Returns True if approved."""
     source = server.source_tool.replace("_", " ").title()
+    identifier = server.command or server.url or server.transport
     try:
-        answer = input(
-            "  Wrap '%s' (%s, %s) through lumen-argus scanning? [y/N] " % (server.name, source, server.command)
-        )
+        answer = input("  Wrap '%s' (%s, %s) through lumen-argus scanning? [y/N] " % (server.name, source, identifier))
         return answer.strip().lower() in ("y", "yes")
     except (EOFError, KeyboardInterrupt):
         print()

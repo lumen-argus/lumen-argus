@@ -162,8 +162,26 @@ class TestParseMCPServer(unittest.TestCase):
             "/tmp/test.json",
         )
         self.assertTrue(entry.scanning_enabled)
+        self.assertEqual(entry.transport, "http")
         # No original command for HTTP bridge mode
         self.assertEqual(entry.original_command, "")
+        # Original URL extracted from --upstream
+        self.assertEqual(entry.original_url, "http://localhost:3000/mcp")
+
+    def test_upstream_wrapping_ws(self):
+        """WebSocket bridge mode extracts original ws:// URL."""
+        entry = _parse_mcp_server(
+            "ws-server",
+            {
+                "command": "lumen-argus",
+                "args": ["mcp", "--upstream", "ws://localhost:9000/mcp"],
+            },
+            self._source(),
+            "/tmp/test.json",
+        )
+        self.assertTrue(entry.scanning_enabled)
+        self.assertEqual(entry.transport, "ws")
+        self.assertEqual(entry.original_url, "ws://localhost:9000/mcp")
 
     def test_env_redacted_in_to_dict(self):
         """Env values must be redacted in serialized output."""

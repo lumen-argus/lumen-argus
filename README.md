@@ -90,7 +90,7 @@ lumen-argus detect --mcp
 # Auto-configure all detected tools
 lumen-argus setup
 
-# Wrap MCP servers through scanning proxy
+# Wrap MCP servers through scanning proxy (stdio + HTTP/WS)
 lumen-argus setup --mcp
 
 # Or configure manually:

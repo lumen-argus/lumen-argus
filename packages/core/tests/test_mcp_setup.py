@@ -10,6 +10,7 @@ from unittest.mock import patch
 from lumen_argus_core.detect_models import MCPServerEntry
 from lumen_argus_core.mcp_setup import (
     _extract_original,
+    _extract_original_url,
     _is_wrapped,
     _navigate_json_key,
     _write_json_config,
@@ -172,10 +173,43 @@ class TestWrapMCPServer(unittest.TestCase):
         change = wrap_mcp_server("/nonexistent/path.json", "fs", "mcpServers")
         self.assertIsNone(change)
 
-    def test_http_server_skipped(self):
-        """Servers with url but no command should be skipped."""
-        path = self._write_config({"mcpServers": {"remote": {"url": "http://localhost:3000"}}})
+    @patch("lumen_argus_core.mcp_setup._backup_file")
+    def test_wraps_http_server(self, mock_backup):
+        """HTTP servers are wrapped via --upstream bridge mode."""
+        mock_backup.return_value = "/tmp/backup"
+        path = self._write_config({"mcpServers": {"remote": {"url": "http://localhost:3000/mcp"}}})
+
         change = wrap_mcp_server(path, "remote", "mcpServers")
+
+        self.assertIsNotNone(change)
+        self.assertEqual(change.method, "mcp_wrap")
+        self.assertIn("--upstream", change.detail)
+
+        data = self._read_config(path)
+        server = data["mcpServers"]["remote"]
+        self.assertEqual(server["command"], "lumen-argus")
+        self.assertEqual(server["args"], ["mcp", "--upstream", "http://localhost:3000/mcp"])
+        self.assertNotIn("url", server)  # url field removed
+
+    @patch("lumen_argus_core.mcp_setup._backup_file")
+    def test_wraps_ws_server(self, mock_backup):
+        """WebSocket servers are wrapped via --upstream bridge mode."""
+        mock_backup.return_value = "/tmp/backup"
+        path = self._write_config({"mcpServers": {"ws-remote": {"url": "ws://localhost:9000/mcp"}}})
+
+        change = wrap_mcp_server(path, "ws-remote", "mcpServers")
+
+        self.assertIsNotNone(change)
+        data = self._read_config(path)
+        server = data["mcpServers"]["ws-remote"]
+        self.assertEqual(server["command"], "lumen-argus")
+        self.assertEqual(server["args"], ["mcp", "--upstream", "ws://localhost:9000/mcp"])
+        self.assertNotIn("url", server)
+
+    def test_no_command_no_url_skipped(self):
+        """Servers with neither command nor url should be skipped."""
+        path = self._write_config({"mcpServers": {"empty": {"description": "nothing"}}})
+        change = wrap_mcp_server(path, "empty", "mcpServers")
         self.assertIsNone(change)
 
     @patch("lumen_argus_core.mcp_setup._backup_file")
@@ -288,10 +322,80 @@ class TestUnwrapMCPServer(unittest.TestCase):
         change = unwrap_mcp_server(path, "fs", "mcpServers")
         self.assertIsNone(change)
 
+    @patch("lumen_argus_core.mcp_setup._backup_file")
+    def test_unwraps_http_server(self, mock_backup):
+        """Unwrapping HTTP bridge server restores original URL and removes command/args."""
+        mock_backup.return_value = "/tmp/backup"
+        path = self._write_config(
+            {
+                "mcpServers": {
+                    "remote": {
+                        "command": "lumen-argus",
+                        "args": ["mcp", "--upstream", "http://mcp-server:3000/mcp"],
+                    }
+                }
+            }
+        )
+
+        change = unwrap_mcp_server(path, "remote", "mcpServers")
+
+        self.assertIsNotNone(change)
+        self.assertEqual(change.method, "mcp_unwrap")
+        self.assertIn("--upstream", change.detail)
+
+        data = self._read_config(path)
+        server = data["mcpServers"]["remote"]
+        self.assertEqual(server["url"], "http://mcp-server:3000/mcp")
+        self.assertNotIn("command", server)
+        self.assertNotIn("args", server)
+
+    @patch("lumen_argus_core.mcp_setup._backup_file")
+    def test_unwraps_ws_server(self, mock_backup):
+        """Unwrapping WebSocket bridge server restores original ws:// URL."""
+        mock_backup.return_value = "/tmp/backup"
+        path = self._write_config(
+            {
+                "mcpServers": {
+                    "ws-remote": {
+                        "command": "lumen-argus",
+                        "args": ["mcp", "--upstream", "ws://localhost:9000/mcp"],
+                    }
+                }
+            }
+        )
+
+        change = unwrap_mcp_server(path, "ws-remote", "mcpServers")
+
+        self.assertIsNotNone(change)
+        data = self._read_config(path)
+        server = data["mcpServers"]["ws-remote"]
+        self.assertEqual(server["url"], "ws://localhost:9000/mcp")
+        self.assertNotIn("command", server)
+
     def test_server_not_found(self):
         path = self._write_config({"mcpServers": {}})
         change = unwrap_mcp_server(path, "nonexistent", "mcpServers")
         self.assertIsNone(change)
+
+
+class TestExtractOriginalUrl(unittest.TestCase):
+    """Test _extract_original_url for parsing HTTP bridge wrapped args."""
+
+    def test_standard_upstream(self):
+        url = _extract_original_url(["mcp", "--upstream", "http://localhost:3000/mcp"])
+        self.assertEqual(url, "http://localhost:3000/mcp")
+
+    def test_ws_upstream(self):
+        url = _extract_original_url(["mcp", "--upstream", "ws://localhost:9000/mcp"])
+        self.assertEqual(url, "ws://localhost:9000/mcp")
+
+    def test_no_upstream(self):
+        url = _extract_original_url(["mcp", "--", "npx", "server"])
+        self.assertEqual(url, "")
+
+    def test_upstream_at_end_no_value(self):
+        url = _extract_original_url(["mcp", "--upstream"])
+        self.assertEqual(url, "")
 
 
 class TestWriteJsonConfig(unittest.TestCase):
@@ -344,6 +448,10 @@ class TestRunMCPSetup(unittest.TestCase):
         with open(path, "w") as f:
             json.dump(data, f)
         return path
+
+    def _read_config(self, path):
+        with open(path) as f:
+            return json.load(f)
 
     @patch("lumen_argus_core.mcp_setup._save_manifest")
     @patch("lumen_argus_core.mcp_setup._backup_file")
@@ -470,28 +578,61 @@ class TestRunMCPSetup(unittest.TestCase):
         self.assertEqual(len(changes), 1)
         self.assertIn("target", changes[0].detail)
 
+    @patch("lumen_argus_core.mcp_setup._save_manifest")
+    @patch("lumen_argus_core.mcp_setup._backup_file")
     @patch("lumen_argus_core.mcp_setup.detect_mcp_servers")
-    def test_skips_http_servers(self, mock_detect):
+    def test_wraps_mixed_stdio_and_http(self, mock_detect, mock_backup, mock_manifest):
+        """Both stdio and HTTP servers should be wrapped in one run."""
+        mock_backup.return_value = "/tmp/backup"
+        cfg_path = self._write_config(
+            {
+                "mcpServers": {
+                    "local": {"command": "npx", "args": ["@mcp/fs"]},
+                    "remote": {"url": "http://localhost:3000/mcp"},
+                }
+            }
+        )
+
         from lumen_argus_core.detect_models import MCPDetectionReport
 
         mock_detect.return_value = MCPDetectionReport(
             servers=[
                 MCPServerEntry(
+                    name="local",
+                    transport="stdio",
+                    command="npx",
+                    args=["@mcp/fs"],
+                    source_tool="test",
+                    config_path=cfg_path,
+                    scope="global",
+                ),
+                MCPServerEntry(
                     name="remote",
                     transport="http",
-                    url="http://localhost:3000",
+                    url="http://localhost:3000/mcp",
                     source_tool="test",
-                    config_path="/tmp/c.json",
+                    config_path=cfg_path,
                     scope="global",
                 ),
             ],
             platform="test",
-            total_detected=1,
+            total_detected=2,
             total_scanning=0,
         )
 
-        changes = run_mcp_setup(non_interactive=True)
-        self.assertEqual(len(changes), 0)
+        with patch("lumen_argus_core.mcp_setup._get_json_key_for_config", return_value="mcpServers"):
+            changes = run_mcp_setup(non_interactive=True)
+
+        self.assertEqual(len(changes), 2)
+
+        data = self._read_config(cfg_path)
+        # Stdio wrapped
+        self.assertEqual(data["mcpServers"]["local"]["command"], "lumen-argus")
+        self.assertIn("--", data["mcpServers"]["local"]["args"])
+        # HTTP wrapped via bridge
+        self.assertEqual(data["mcpServers"]["remote"]["command"], "lumen-argus")
+        self.assertIn("--upstream", data["mcpServers"]["remote"]["args"])
+        self.assertNotIn("url", data["mcpServers"]["remote"])
 
     @patch("lumen_argus_core.mcp_setup.detect_mcp_servers")
     def test_skips_already_wrapped(self, mock_detect):
@@ -571,6 +712,57 @@ class TestUndoMCPSetup(unittest.TestCase):
             data = json.load(f)
         self.assertEqual(data["mcpServers"]["fs"]["command"], "npx")
         self.assertEqual(data["mcpServers"]["fs"]["args"], ["@mcp/fs"])
+
+    @patch("lumen_argus_core.mcp_setup._save_manifest")
+    @patch("lumen_argus_core.mcp_setup._backup_file")
+    @patch("lumen_argus_core.mcp_setup.detect_mcp_servers")
+    def test_unwraps_http_server(self, mock_detect, mock_backup, mock_manifest):
+        """Undo should restore HTTP server URL from bridge wrapping."""
+        mock_backup.return_value = "/tmp/backup"
+        cfg_path = os.path.join(self.tmpdir, "http_config.json")
+        with open(cfg_path, "w") as f:
+            json.dump(
+                {
+                    "mcpServers": {
+                        "remote": {
+                            "command": "lumen-argus",
+                            "args": ["mcp", "--upstream", "http://mcp-server:3000/mcp"],
+                        },
+                    }
+                },
+                f,
+            )
+
+        from lumen_argus_core.detect_models import MCPDetectionReport
+
+        mock_detect.return_value = MCPDetectionReport(
+            servers=[
+                MCPServerEntry(
+                    name="remote",
+                    transport="stdio",
+                    scanning_enabled=True,
+                    original_url="http://mcp-server:3000/mcp",
+                    source_tool="test",
+                    config_path=cfg_path,
+                    scope="global",
+                ),
+            ],
+            platform="test",
+            total_detected=1,
+            total_scanning=1,
+        )
+
+        with patch("lumen_argus_core.mcp_setup._get_json_key_for_config", return_value="mcpServers"):
+            count = undo_mcp_setup()
+
+        self.assertEqual(count, 1)
+
+        with open(cfg_path) as f:
+            data = json.load(f)
+        server = data["mcpServers"]["remote"]
+        self.assertEqual(server["url"], "http://mcp-server:3000/mcp")
+        self.assertNotIn("command", server)
+        self.assertNotIn("args", server)
 
     @patch("lumen_argus_core.mcp_setup.detect_mcp_servers")
     def test_nothing_to_unwrap(self, mock_detect):

@@ -797,6 +797,7 @@ def _parse_mcp_server(
     scanning_enabled = False
     original_command = ""
     original_args: list[str] = []
+    original_url = ""
 
     if transport == "stdio" and command in _WRAPPER_COMMANDS and args and args[0] == "mcp":
         if "--" in args:
@@ -808,8 +809,16 @@ def _parse_mcp_server(
                 original_command = remaining[0]
                 original_args = remaining[1:]
         elif "--upstream" in args:
-            # HTTP bridge mode: lumen-argus mcp --upstream <url>
+            # HTTP/WS bridge mode: lumen-argus mcp --upstream <url>
             scanning_enabled = True
+            upstream_idx = args.index("--upstream")
+            if upstream_idx + 1 < len(args):
+                original_url = args[upstream_idx + 1]
+                # Restore transport to match the original server type
+                if original_url.startswith(("ws://", "wss://")):
+                    transport = "ws"
+                else:
+                    transport = "http"
 
     return MCPServerEntry(
         name=name,
@@ -824,4 +833,5 @@ def _parse_mcp_server(
         scanning_enabled=scanning_enabled,
         original_command=original_command,
         original_args=original_args,
+        original_url=original_url,
     )

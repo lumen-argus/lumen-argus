@@ -44,8 +44,9 @@ class MCPServerEntry:
     config_path: str = ""  # Absolute path to config file
     scope: str = ""  # "global" | "project"
     scanning_enabled: bool = False  # True if wrapped through lumen-argus mcp
-    original_command: str = ""  # If wrapped: original command
-    original_args: list[str] = field(default_factory=list)  # If wrapped: original args
+    original_command: str = ""  # If wrapped (stdio): original command
+    original_args: list[str] = field(default_factory=list)  # If wrapped (stdio): original args
+    original_url: str = ""  # If wrapped (HTTP/WS bridge): original upstream URL
 
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
@@ -95,9 +96,6 @@ def format_mcp_table(report: MCPDetectionReport, setup_command: str = "lumen-arg
         if s.scanning_enabled:
             marker = "+"
             status = "scanning"
-        elif s.transport != "stdio":
-            marker = "o"
-            status = "%s (setup not supported yet)" % s.transport
         else:
             marker = "-"
             status = "not scanned"

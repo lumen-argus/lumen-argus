@@ -133,8 +133,10 @@ Wrapping rewrites the config file so `{"command": "npx", "args": [...]}` becomes
 `{"command": "lumen-argus", "args": ["mcp", "--", "npx", ...]}`. The original
 config is backed up to `~/.lumen-argus/setup/backups/`.
 
-Only stdio MCP servers are supported for wrapping. HTTP/SSE servers are detected
-but cannot be wrapped yet.
+Both stdio and HTTP/WS MCP servers can be wrapped:
+
+- **Stdio servers**: config rewrites `command` to `lumen-argus mcp -- <original-command>`
+- **HTTP/WS servers**: config converts URL to stdio bridge: `lumen-argus mcp --upstream <original-url>` — the AI tool manages the bridge process lifecycle
 
 ### Proxy configuration check
 
