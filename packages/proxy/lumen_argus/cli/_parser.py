@@ -198,6 +198,7 @@ def _add_detect_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentP
     detect_parser.add_argument("--versions", action="store_true", help="Detect versions (slower, runs subprocesses)")
     detect_parser.add_argument("--json", action="store_true", help="Output as JSON")
     detect_parser.add_argument("--audit", action="store_true", help="Audit proxy configuration compliance")
+    detect_parser.add_argument("--mcp", action="store_true", help="Include MCP servers from AI tool config files")
     detect_parser.add_argument(
         "--check-quiet",
         action="store_true",

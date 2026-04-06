@@ -256,6 +256,7 @@ lumen-argus detect [OPTIONS]
 | `--versions` | `bool` | `false` | Detect versions by running `--version` subprocesses (slower). |
 | `--json` | `bool` | `false` | Output as JSON for CI/automation. |
 | `--audit` | `bool` | `false` | Audit proxy compliance — shows [OK]/[FAIL] per tool. |
+| `--mcp` | `bool` | `false` | Include MCP servers discovered from AI tool config files (Claude Desktop, Claude Code, Cursor, Windsurf, Cline, Roo Code). |
 | `--check-quiet` | `bool` | `false` | Shell hook mode: prints warning to stderr if unconfigured tools found, silent otherwise. Designed for `eval` in shell profiles (<100ms). |
 | `--proxy-url` | `str` | `http://localhost:8080` | Expected proxy URL to check against. |
 
@@ -270,6 +271,12 @@ lumen-argus detect --versions
 
 # JSON output for CI
 lumen-argus detect --json
+
+# Detect MCP servers configured in AI tools
+lumen-argus detect --mcp
+
+# MCP detection with JSON output
+lumen-argus detect --mcp --json
 
 # Compliance audit
 lumen-argus detect --audit

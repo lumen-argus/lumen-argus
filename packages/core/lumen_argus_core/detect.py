@@ -19,6 +19,9 @@ from lumen_argus_core.detect_models import (
     CIEnvironment,
     DetectedClient,
     DetectionReport,
+    MCPConfigSource,
+    MCPDetectionReport,
+    MCPServerEntry,
     get_vscode_variants,
 )
 from lumen_argus_core.scanners import (
@@ -519,3 +522,180 @@ def _check_config_file(config_path: str, config_key: str, proxy_url: str) -> tup
     except (json.JSONDecodeError, OSError) as e:
         log.debug("could not read config file %s: %s", expanded, e)
     return None
+
+
+# ---------------------------------------------------------------------------
+# MCP server detection
+# ---------------------------------------------------------------------------
+
+# Commands that indicate the MCP server is wrapped through lumen-argus
+_WRAPPER_COMMANDS = {"lumen-argus", "lumen-argus-agent"}
+
+
+def detect_mcp_servers(
+    project_dirs: list[str] | None = None,
+) -> MCPDetectionReport:
+    """Detect MCP servers configured in AI tool config files.
+
+    Reads mcpServers entries from Claude Desktop, Claude Code, Cursor,
+    Windsurf, Cline, Roo Code, and VS Code config files.
+
+    Args:
+        project_dirs: Additional directories to scan for project-level
+            .mcp.json files.  CWD is always included.
+
+    Returns:
+        MCPDetectionReport with all discovered MCP servers.
+    """
+    from lumen_argus_core.mcp_configs import GLOBAL_MCP_SOURCES, PROJECT_MCP_SOURCES
+
+    servers: list[MCPServerEntry] = []
+    checked: list[str] = []
+
+    # Global sources
+    for source in GLOBAL_MCP_SOURCES:
+        for cfg_path in source.config_paths:
+            expanded = os.path.expanduser(cfg_path)
+            checked.append(expanded)
+            entries = _read_mcp_config(expanded, source)
+            servers.extend(entries)
+
+    # Project sources
+    dirs = [os.getcwd()]
+    if project_dirs:
+        dirs.extend(project_dirs)
+    seen_dirs: set[str] = set()
+    for d in dirs:
+        real = os.path.realpath(d)
+        if real in seen_dirs:
+            continue
+        seen_dirs.add(real)
+        for source in PROJECT_MCP_SOURCES:
+            for cfg_path in source.config_paths:
+                expanded = os.path.join(real, cfg_path)
+                checked.append(expanded)
+                entries = _read_mcp_config(expanded, source)
+                servers.extend(entries)
+
+    total_scanning = sum(1 for s in servers if s.scanning_enabled)
+
+    report = MCPDetectionReport(
+        servers=servers,
+        platform="%s %s" % (platform.system(), platform.machine()),
+        total_detected=len(servers),
+        total_scanning=total_scanning,
+        config_files_checked=checked,
+    )
+
+    log.info(
+        "MCP detection: %d server(s) found, %d scanning-enabled",
+        len(servers),
+        total_scanning,
+    )
+    return report
+
+
+def _read_mcp_config(
+    config_path: str,
+    source: MCPConfigSource,
+) -> list[MCPServerEntry]:
+    """Read MCP servers from a single config file."""
+    if not os.path.isfile(config_path):
+        return []
+
+    data = load_jsonc(config_path)
+    if not data:
+        return []
+
+    # Navigate dot-path keys (e.g. "mcp.servers")
+    obj: Any = data
+    for key in source.json_key.split("."):
+        if isinstance(obj, dict):
+            obj = obj.get(key)
+        else:
+            obj = None
+            break
+
+    if not isinstance(obj, dict):
+        return []
+
+    entries: list[MCPServerEntry] = []
+    for name, server_def in obj.items():
+        if not isinstance(server_def, dict):
+            continue
+        entry = _parse_mcp_server(name, server_def, source, config_path)
+        if entry:
+            entries.append(entry)
+
+    if entries:
+        log.debug(
+            "MCP: %d server(s) from %s (%s)",
+            len(entries),
+            source.display_name,
+            config_path,
+        )
+    return entries
+
+
+def _parse_mcp_server(
+    name: str,
+    server_def: dict[str, Any],
+    source: MCPConfigSource,
+    config_path: str,
+) -> MCPServerEntry | None:
+    """Parse a single MCP server definition into an MCPServerEntry."""
+    command = server_def.get("command", "")
+    url = server_def.get("url", "")
+    args = server_def.get("args", [])
+    env = server_def.get("env", {})
+
+    if not isinstance(args, list):
+        args = []
+    if not isinstance(env, dict):
+        env = {}
+
+    # Determine transport
+    if command:
+        transport = "stdio"
+    elif url:
+        if url.startswith(("http://", "https://")):
+            transport = "http"
+        elif url.startswith(("ws://", "wss://")):
+            transport = "ws"
+        else:
+            transport = "http"
+    else:
+        return None  # no command or url — skip
+
+    # Check if already wrapped through lumen-argus mcp
+    scanning_enabled = False
+    original_command = ""
+    original_args: list[str] = []
+
+    if transport == "stdio" and command in _WRAPPER_COMMANDS and args and args[0] == "mcp":
+        if "--" in args:
+            # stdio mode: lumen-argus mcp -- <original-command> <original-args>
+            scanning_enabled = True
+            separator_idx = args.index("--")
+            remaining = args[separator_idx + 1 :]
+            if remaining:
+                original_command = remaining[0]
+                original_args = remaining[1:]
+        elif "--upstream" in args:
+            # HTTP bridge mode: lumen-argus mcp --upstream <url>
+            scanning_enabled = True
+
+    return MCPServerEntry(
+        name=name,
+        transport=transport,
+        command=command if not scanning_enabled else "",
+        args=args if not scanning_enabled else [],
+        url=url,
+        env=env,
+        source_tool=source.tool_id,
+        config_path=config_path,
+        scope=source.scope,
+        scanning_enabled=scanning_enabled,
+        original_command=original_command,
+        original_args=original_args,
+    )

@@ -87,6 +87,17 @@ that tool.
     Runs `--version` subprocesses for CLI tools and reads `Info.plist` for app
     bundles. Slower but gives exact version numbers.
 
+=== "MCP Servers"
+
+    ```bash
+    lumen-argus detect --mcp
+    ```
+    Discovers MCP servers configured in AI tool config files (Claude Desktop,
+    Claude Code, Cursor, Windsurf, Cline, Roo Code). Shows transport type
+    (stdio/http), source tool, and whether the server is already wrapped
+    through `lumen-argus mcp` for scanning. Combine with `--json` for
+    machine-readable output.
+
 ### Proxy configuration check
 
 Detection checks two sources to determine if a tool is routed through the proxy:

@@ -83,6 +83,9 @@ Then point your AI tool at the proxy. **27 agents supported** — auto-detect an
 # Auto-detect installed AI tools
 lumen-argus detect
 
+# Detect MCP servers from AI tool configs
+lumen-argus detect --mcp
+
 # Auto-configure all detected tools
 lumen-argus setup
 

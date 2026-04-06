@@ -13,7 +13,7 @@ import sys
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from lumen_argus_core.detect_models import DetectionReport
+    from lumen_argus_core.detect_models import DetectionReport, MCPDetectionReport
 
 __version__ = "0.1.0"
 
@@ -36,6 +36,7 @@ def _build_parser() -> argparse.ArgumentParser:
     detect_parser.add_argument("--versions", action="store_true", help="Detect versions (slower, runs subprocesses)")
     detect_parser.add_argument("--json", action="store_true", help="Output as JSON")
     detect_parser.add_argument("--audit", action="store_true", help="Audit proxy configuration compliance")
+    detect_parser.add_argument("--mcp", action="store_true", help="Include MCP servers from AI tool config files")
     detect_parser.add_argument(
         "--check-quiet",
         action="store_true",
@@ -180,6 +181,13 @@ def _detect_table(report: DetectionReport, proxy_url: str) -> None:
         print("Run 'lumen-argus-agent setup' to configure remaining tools.")
 
 
+def _detect_mcp_table(mcp_report: MCPDetectionReport) -> None:
+    """Output MCP server detection results."""
+    from lumen_argus_core.detect_models import format_mcp_table
+
+    print(format_mcp_table(mcp_report, setup_command="lumen-argus-agent setup --mcp"))
+
+
 def _run_detect(args: argparse.Namespace) -> None:
     from lumen_argus_core.detect import detect_installed_clients
 
@@ -190,12 +198,25 @@ def _run_detect(args: argparse.Namespace) -> None:
 
     if args.check_quiet:
         _detect_check_quiet(report)
-    elif args.json:
-        print(json.dumps(report.to_dict(), indent=2))
+        return
+
+    mcp_report = None
+    if getattr(args, "mcp", False):
+        from lumen_argus_core.detect import detect_mcp_servers
+
+        mcp_report = detect_mcp_servers()
+
+    if args.json:
+        result = report.to_dict()
+        if mcp_report:
+            result["mcp_servers"] = mcp_report.to_dict()
+        print(json.dumps(result, indent=2))
     elif args.audit:
         _detect_audit(report)
     else:
         _detect_table(report, args.proxy_url)
+        if mcp_report:
+            _detect_mcp_table(mcp_report)
 
 
 def _run_setup(args: argparse.Namespace) -> None:

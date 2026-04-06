@@ -13,6 +13,107 @@ import re
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
+# ---------------------------------------------------------------------------
+# MCP server detection models
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class MCPConfigSource:
+    """Where to find MCP server configuration for a specific AI tool."""
+
+    tool_id: str  # "claude_desktop", "claude_code", "cursor", etc.
+    display_name: str  # "Claude Desktop", "Claude Code", etc.
+    config_paths: tuple[str, ...]  # Platform-resolved paths (may have fallbacks)
+    json_key: str  # "mcpServers" or "mcp.servers" (dot-path for nested)
+    scope: str  # "global" | "project"
+    supports_http: bool = True  # True if tool supports url-based MCP servers
+
+
+@dataclass
+class MCPServerEntry:
+    """A single MCP server discovered from an AI tool's config file."""
+
+    name: str = ""  # Key from mcpServers dict (e.g. "filesystem")
+    transport: str = ""  # "stdio" | "http" | "sse"
+    command: str = ""  # stdio: "npx", "python", etc.
+    args: list[str] = field(default_factory=list)  # stdio: server args
+    url: str = ""  # http/sse: "http://localhost:3000/mcp"
+    env: dict[str, str] = field(default_factory=dict)  # env vars for server
+    source_tool: str = ""  # "claude_desktop" | "cursor" | etc.
+    config_path: str = ""  # Absolute path to config file
+    scope: str = ""  # "global" | "project"
+    scanning_enabled: bool = False  # True if wrapped through lumen-argus mcp
+    original_command: str = ""  # If wrapped: original command
+    original_args: list[str] = field(default_factory=list)  # If wrapped: original args
+
+    def to_dict(self) -> dict[str, Any]:
+        d = asdict(self)
+        # Never leak env values — they commonly contain API keys and tokens
+        if d.get("env"):
+            d["env"] = dict.fromkeys(d["env"], "[REDACTED]")
+        return d
+
+
+@dataclass
+class MCPDetectionReport:
+    """Aggregate MCP server detection results."""
+
+    servers: list[MCPServerEntry] = field(default_factory=list)
+    platform: str = ""
+    total_detected: int = 0
+    total_scanning: int = 0  # Count with scanning_enabled=True
+    config_files_checked: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "platform": self.platform,
+            "total_detected": self.total_detected,
+            "total_scanning": self.total_scanning,
+            "config_files_checked": self.config_files_checked,
+            "servers": [s.to_dict() for s in self.servers],
+        }
+
+
+# ---------------------------------------------------------------------------
+# Client detection models
+# ---------------------------------------------------------------------------
+
+
+def format_mcp_table(report: MCPDetectionReport, setup_command: str = "lumen-argus setup --mcp") -> str:
+    """Format MCP detection results as a human-readable table.
+
+    Shared by proxy and agent CLIs to avoid duplication.
+    """
+    lines: list[str] = []
+    if report.total_detected == 0:
+        lines.append("\nMCP Servers: none detected")
+        return "\n".join(lines)
+
+    lines.append("\nMCP Servers (%d detected, %d scanning):\n" % (report.total_detected, report.total_scanning))
+    for s in report.servers:
+        if s.scanning_enabled:
+            marker = "+"
+            status = "scanning"
+        elif s.transport != "stdio":
+            marker = "o"
+            status = "%s (setup not supported yet)" % s.transport
+        else:
+            marker = "-"
+            status = "not scanned"
+        source = s.source_tool.replace("_", " ").title()
+        lines.append("  [%s] %-20s %-7s %-20s %s" % (marker, s.name, s.transport, source, status))
+
+    unscanned = report.total_detected - report.total_scanning
+    if unscanned > 0:
+        lines.append("\nRun '%s' to scan unprotected MCP servers." % setup_command)
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Client detection models
+# ---------------------------------------------------------------------------
+
 
 class InstallMethod(str, enum.Enum):
     """How a client was detected on the system."""

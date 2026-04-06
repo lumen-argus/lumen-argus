@@ -11,7 +11,7 @@ import sys
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from lumen_argus_core.detect_models import DetectionReport
+    from lumen_argus_core.detect_models import DetectionReport, MCPDetectionReport
 
 
 def run_detect(args: argparse.Namespace) -> None:
@@ -35,8 +35,17 @@ def run_detect(args: argparse.Namespace) -> None:
             )
         return
 
+    mcp_report: MCPDetectionReport | None = None
+    if getattr(args, "mcp", False):
+        from lumen_argus_core.detect import detect_mcp_servers
+
+        mcp_report = detect_mcp_servers()
+
     if args.json:
-        print(json.dumps(report.to_dict(), indent=2))
+        result = report.to_dict()
+        if mcp_report:
+            result["mcp_servers"] = mcp_report.to_dict()
+        print(json.dumps(result, indent=2))
         return
 
     if args.audit:
@@ -44,6 +53,9 @@ def run_detect(args: argparse.Namespace) -> None:
         return
 
     _print_standard(report, args.proxy_url)
+
+    if mcp_report:
+        _print_mcp(mcp_report)
 
 
 def _print_audit(report: "DetectionReport") -> None:
@@ -93,3 +105,10 @@ def _print_standard(report: "DetectionReport", proxy_url: str) -> None:
     print("\n%d/%d configured for proxy (%s)" % (report.total_configured, report.total_detected, proxy_url))
     if report.total_configured < report.total_detected:
         print("Run 'lumen-argus setup' to configure remaining tools.")
+
+
+def _print_mcp(mcp_report: "MCPDetectionReport") -> None:
+    """MCP server detection output."""
+    from lumen_argus_core.detect_models import format_mcp_table
+
+    print(format_mcp_table(mcp_report, setup_command="lumen-argus setup --mcp"))
