@@ -138,6 +138,13 @@ Both stdio and HTTP/WS MCP servers can be wrapped:
 - **Stdio servers**: config rewrites `command` to `lumen-argus mcp -- <original-command>`
 - **HTTP/WS servers**: config converts URL to stdio bridge: `lumen-argus mcp --upstream <original-url>` — the AI tool manages the bridge process lifecycle
 
+When enrolled with a Pro proxy, fleet policies from `~/.lumen-argus/mcp_policies.json`
+are enforced during wrapping:
+
+- **`blocked`** servers are skipped with a warning
+- **`must_scan`** servers are auto-wrapped without prompting
+- **`allowed`** and **`review`** servers follow normal interactive/non-interactive flow
+
 ### Proxy configuration check
 
 Detection checks two sources to determine if a tool is routed through the proxy:

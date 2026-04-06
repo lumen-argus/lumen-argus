@@ -22,6 +22,7 @@ from typing import Any
 
 from lumen_argus_core.detect import detect_mcp_servers, load_jsonc
 from lumen_argus_core.detect_models import MCPServerEntry
+from lumen_argus_core.fleet_policies import FleetPolicies, load_fleet_policies
 from lumen_argus_core.mcp_configs import GLOBAL_MCP_SOURCES, PROJECT_MCP_SOURCES
 from lumen_argus_core.setup_wizard import SetupChange, _backup_file, _save_manifest
 from lumen_argus_core.time_utils import now_iso
@@ -82,6 +83,7 @@ def run_mcp_setup(
         List of SetupChange records for each wrapped server.
     """
     report = detect_mcp_servers()
+    policies = load_fleet_policies()
     candidates = _filter_wrappable(report.servers, server_name, source_tool)
 
     if not candidates:
@@ -93,15 +95,37 @@ def run_mcp_setup(
             print("No unwrapped MCP servers detected.")
         return []
 
+    # Apply fleet policies: separate blocked, must_scan, and normal servers
+    blocked, must_scan, normal = _apply_fleet_policies(candidates, policies)
+
+    # Warn about blocked servers
+    for server, reason in blocked:
+        log.warning("fleet policy blocks %s: %s", server.name, reason)
+        print("  [!] %s — blocked by fleet policy%s" % (server.name, " (%s)" % reason if reason else ""))
+
+    candidates = must_scan + normal
+
+    if not candidates:
+        if not blocked:
+            log.info("no wrappable MCP servers after fleet policy filtering")
+            print("No wrappable MCP servers found.")
+        return []
+
+    must_scan_names = {s.name for s in must_scan}
+
     log.info(
-        "found %d wrappable MCP server(s)%s",
+        "found %d wrappable MCP server(s)%s%s",
         len(candidates),
+        " (%d must_scan)" % len(must_scan) if must_scan else "",
         " [dry-run]" if dry_run else "",
     )
 
     changes: list[SetupChange] = []
     for server in candidates:
-        if not non_interactive and not dry_run:
+        if server.name in must_scan_names:
+            # must_scan servers are auto-wrapped without prompting
+            log.info("auto-wrapping %s (fleet policy: must_scan)", server.name)
+        elif not non_interactive and not dry_run:
             if not _prompt_wrap(server):
                 log.debug("user skipped %s (%s)", server.name, server.source_tool)
                 continue
@@ -347,6 +371,37 @@ def unwrap_mcp_server(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _apply_fleet_policies(
+    servers: list[MCPServerEntry],
+    policies: FleetPolicies | None,
+) -> tuple[list[tuple[MCPServerEntry, str]], list[MCPServerEntry], list[MCPServerEntry]]:
+    """Partition servers by fleet policy: blocked, must_scan, normal.
+
+    Returns:
+        Tuple of (blocked_with_reason, must_scan, normal).
+    """
+    if not policies:
+        return [], [], list(servers)
+
+    blocked: list[tuple[MCPServerEntry, str]] = []
+    must_scan: list[MCPServerEntry] = []
+    normal: list[MCPServerEntry] = []
+
+    for server in servers:
+        policy = policies.get_server_policy(server.name)
+        if policy == "blocked":
+            sp = next((sp for sp in policies.server_policies if sp.server_name == server.name), None)
+            reason = sp.reason if sp else ""
+            blocked.append((server, reason))
+        elif policy == "must_scan":
+            must_scan.append(server)
+        else:
+            # allowed, review, or no specific policy → normal flow
+            normal.append(server)
+
+    return blocked, must_scan, normal
 
 
 def _filter_wrappable(
