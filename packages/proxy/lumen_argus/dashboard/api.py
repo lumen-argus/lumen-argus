@@ -227,6 +227,15 @@ def _dispatch_api(
             return json_response(400, {"error": "invalid entry ID"})
         return api_mcp.handle_mcp_tools_delete(entry_id_int, store)
 
+    if path == "/api/v1/mcp/detected-tools" and method == "GET":
+        return api_mcp.handle_mcp_detected_tools(store)
+
+    if path == "/api/v1/mcp/tool-calls" and method == "GET":
+        return api_mcp.handle_mcp_tool_calls(params, store)
+
+    if path == "/api/v1/mcp/baselines" and method == "GET":
+        return api_mcp.handle_mcp_baselines(store)
+
     # --- Config mutation ---
 
     if path == "/api/v1/config" and method == "PUT":

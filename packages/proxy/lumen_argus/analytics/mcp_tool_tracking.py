@@ -129,6 +129,17 @@ class MCPToolTrackingRepository(BaseRepository):
             ).fetchone()
         return dict(row) if row else None
 
+    def get_all_baselines(self, namespace_id: int = 1) -> list[dict[str, Any]]:
+        """Get all stored baselines. Single query — no N+1."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT tool_name, definition_hash, description, param_names, "
+                "first_seen, last_seen, drift_count FROM mcp_tool_baselines "
+                "WHERE namespace_id = ? ORDER BY tool_name",
+                (namespace_id,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
     def record_baseline(
         self,
         tool_name: str,

@@ -1,4 +1,4 @@
-"""MCP tool list API handlers."""
+"""MCP tool list and analytics API handlers."""
 
 from __future__ import annotations
 
@@ -79,3 +79,40 @@ def handle_mcp_tools_delete(entry_id: int, store: AnalyticsStore | None) -> tupl
 
     log.info("DELETE /api/v1/mcp/tools/%d: deleted", entry_id)
     return json_response(200, {"deleted": True})
+
+
+# --- MCP analytics endpoints ---
+
+
+def handle_mcp_detected_tools(store: AnalyticsStore | None) -> tuple[int, bytes]:
+    """Return all MCP tools seen in proxy traffic."""
+    log.debug("GET /api/v1/mcp/detected-tools")
+    if not store:
+        return json_response(200, {"tools": [], "total": 0})
+    tools = store.get_mcp_detected_tools()
+    return json_response(200, {"tools": tools, "total": len(tools)})
+
+
+def handle_mcp_tool_calls(params: dict[str, str], store: AnalyticsStore | None) -> tuple[int, bytes]:
+    """Return MCP tool call history with optional filtering."""
+    log.debug("GET /api/v1/mcp/tool-calls")
+    if not store:
+        return json_response(200, {"calls": [], "total": 0})
+
+    try:
+        limit = min(int(params.get("limit", 100)), 100)
+    except (ValueError, TypeError):
+        return json_response(400, {"error": "invalid limit parameter"})
+
+    session_id = params.get("session_id") or None
+    calls = store.get_mcp_tool_calls(session_id=session_id, limit=limit)
+    return json_response(200, {"calls": calls, "total": len(calls)})
+
+
+def handle_mcp_baselines(store: AnalyticsStore | None) -> tuple[int, bytes]:
+    """Return all MCP tool baselines for drift detection."""
+    log.debug("GET /api/v1/mcp/baselines")
+    if not store:
+        return json_response(200, {"baselines": [], "total": 0})
+    baselines = store.get_all_mcp_baselines()
+    return json_response(200, {"baselines": baselines, "total": len(baselines)})

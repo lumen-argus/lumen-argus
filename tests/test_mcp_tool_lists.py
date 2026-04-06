@@ -160,5 +160,97 @@ class TestMCPToolListAPI(StoreTestCase):
         self.assertEqual(mcp_stage["mcp_tools"]["allowed_count"], 0)
 
 
+class TestMCPAnalyticsAPI(StoreTestCase):
+    """Test MCP analytics API endpoints (detected-tools, tool-calls, baselines)."""
+
+    def test_detected_tools_empty(self):
+        status, body = handle_community_api("/api/v1/mcp/detected-tools", "GET", b"", self.store)
+        self.assertEqual(status, 200)
+        data = json.loads(body)
+        self.assertEqual(data["tools"], [])
+        self.assertEqual(data["total"], 0)
+
+    def test_detected_tools_with_data(self):
+        self.store.record_mcp_tool_seen("read_file", description="Read a file", input_schema='{"type":"object"}')
+        self.store.record_mcp_tool_seen("write_file", description="Write a file")
+
+        status, body = handle_community_api("/api/v1/mcp/detected-tools", "GET", b"", self.store)
+        self.assertEqual(status, 200)
+        data = json.loads(body)
+        self.assertEqual(data["total"], 2)
+        names = {t["tool_name"] for t in data["tools"]}
+        self.assertEqual(names, {"read_file", "write_file"})
+
+    def test_tool_calls_empty(self):
+        status, body = handle_community_api("/api/v1/mcp/tool-calls", "GET", b"", self.store)
+        self.assertEqual(status, 200)
+        data = json.loads(body)
+        self.assertEqual(data["calls"], [])
+        self.assertEqual(data["total"], 0)
+
+    def test_tool_calls_with_data(self):
+        self.store.record_mcp_tool_call("read_file", session_id="sess1", status="allowed", finding_count=0)
+        self.store.record_mcp_tool_call("write_file", session_id="sess1", status="blocked", finding_count=1)
+
+        status, body = handle_community_api("/api/v1/mcp/tool-calls", "GET", b"", self.store)
+        self.assertEqual(status, 200)
+        data = json.loads(body)
+        self.assertEqual(data["total"], 2)
+
+    def test_tool_calls_filter_by_session(self):
+        self.store.record_mcp_tool_call("read_file", session_id="sess1", status="allowed", finding_count=0)
+        self.store.record_mcp_tool_call("write_file", session_id="sess2", status="allowed", finding_count=0)
+
+        status, body = handle_community_api("/api/v1/mcp/tool-calls?session_id=sess1", "GET", b"", self.store)
+        self.assertEqual(status, 200)
+        data = json.loads(body)
+        self.assertEqual(data["total"], 1)
+        self.assertEqual(data["calls"][0]["session_id"], "sess1")
+
+    def test_tool_calls_limit(self):
+        for i in range(5):
+            self.store.record_mcp_tool_call("tool_%d" % i, session_id="s", status="allowed", finding_count=0)
+
+        _status, body = handle_community_api("/api/v1/mcp/tool-calls?limit=2", "GET", b"", self.store)
+        data = json.loads(body)
+        self.assertEqual(data["total"], 2)
+
+    def test_baselines_empty(self):
+        status, body = handle_community_api("/api/v1/mcp/baselines", "GET", b"", self.store)
+        self.assertEqual(status, 200)
+        data = json.loads(body)
+        self.assertEqual(data["baselines"], [])
+        self.assertEqual(data["total"], 0)
+
+    def test_baselines_with_data(self):
+        self.store.record_mcp_tool_seen("read_file")
+        self.store.record_mcp_tool_baseline("read_file", "abc123", "Read a file", ["path"])
+
+        status, body = handle_community_api("/api/v1/mcp/baselines", "GET", b"", self.store)
+        self.assertEqual(status, 200)
+        data = json.loads(body)
+        self.assertEqual(data["total"], 1)
+        self.assertEqual(data["baselines"][0]["tool_name"], "read_file")
+        self.assertEqual(data["baselines"][0]["definition_hash"], "abc123")
+
+    def test_detected_tools_no_store(self):
+        status, body = handle_community_api("/api/v1/mcp/detected-tools", "GET", b"", None)
+        self.assertEqual(status, 200)
+        data = json.loads(body)
+        self.assertEqual(data["tools"], [])
+
+    def test_tool_calls_no_store(self):
+        status, body = handle_community_api("/api/v1/mcp/tool-calls", "GET", b"", None)
+        self.assertEqual(status, 200)
+        data = json.loads(body)
+        self.assertEqual(data["calls"], [])
+
+    def test_baselines_no_store(self):
+        status, body = handle_community_api("/api/v1/mcp/baselines", "GET", b"", None)
+        self.assertEqual(status, 200)
+        data = json.loads(body)
+        self.assertEqual(data["baselines"], [])
+
+
 if __name__ == "__main__":
     unittest.main()

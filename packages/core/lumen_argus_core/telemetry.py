@@ -63,6 +63,8 @@ def send_heartbeat() -> bool:
         if c.installed
     ]
 
+    mcp_servers = _detect_mcp_for_heartbeat()
+
     payload = json.dumps(
         {
             "agent_id": enrollment["agent_id"],
@@ -72,6 +74,7 @@ def send_heartbeat() -> bool:
             "hostname": platform.node(),
             "protection_enabled": prot_status.get("enabled", False),
             "tools": tools,
+            "mcp_servers": mcp_servers,
             "policy_version": enrollment.get("enrolled_at", ""),
             "watch_daemon_running": _check_watch_daemon(),
             "heartbeat_at": now_iso(),
@@ -126,6 +129,31 @@ def _check_watch_daemon() -> bool:
         return bool(status.get("installed", False))
     except Exception:
         return False
+
+
+def _detect_mcp_for_heartbeat() -> list[dict[str, object]]:
+    """Detect MCP servers and return a safe subset for heartbeat payload.
+
+    Only includes name, transport, source_tool, scope, and scanning_enabled.
+    Never sends command, args, env, or urls — they may contain secrets or paths.
+    """
+    try:
+        from lumen_argus_core.detect import detect_mcp_servers
+
+        report = detect_mcp_servers()
+        return [
+            {
+                "name": s.name,
+                "transport": s.transport,
+                "source_tool": s.source_tool,
+                "scope": s.scope,
+                "scanning_enabled": s.scanning_enabled,
+            }
+            for s in report.servers
+        ]
+    except Exception:
+        log.debug("MCP detection failed during heartbeat — skipping", exc_info=True)
+        return []
 
 
 def _get_version() -> str:

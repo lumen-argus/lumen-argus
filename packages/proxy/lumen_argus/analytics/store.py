@@ -468,6 +468,9 @@ class AnalyticsStore:
     def get_mcp_tool_baseline(self, tool_name: str, namespace_id: int = 1) -> dict[str, Any] | None:
         return self.mcp_tool_tracking.get_baseline(tool_name, namespace_id=namespace_id)
 
+    def get_all_mcp_baselines(self, namespace_id: int = 1) -> list[dict[str, Any]]:
+        return self.mcp_tool_tracking.get_all_baselines(namespace_id=namespace_id)
+
     def record_mcp_tool_baseline(
         self,
         tool_name: str,
