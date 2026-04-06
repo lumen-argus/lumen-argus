@@ -41,6 +41,7 @@ class MCPServerEntry:
     url: str = ""  # http/sse: "http://localhost:3000/mcp"
     env: dict[str, str] = field(default_factory=dict)  # env vars for server
     source_tool: str = ""  # "claude_desktop" | "cursor" | etc.
+    source_display_name: str = ""  # Human-readable source (e.g. "Claude Code Plugin (serena)")
     config_path: str = ""  # Absolute path to config file
     scope: str = ""  # "global" | "project"
     scanning_enabled: bool = False  # True if wrapped through lumen-argus mcp
@@ -99,7 +100,7 @@ def format_mcp_table(report: MCPDetectionReport, setup_command: str = "lumen-arg
         else:
             marker = "-"
             status = "not scanned"
-        source = s.source_tool.replace("_", " ").title()
+        source = s.source_display_name or s.source_tool.replace("_", " ").title()
         lines.append("  [%s] %-20s %-7s %-20s %s" % (marker, s.name, s.transport, source, status))
 
     unscanned = report.total_detected - report.total_scanning

@@ -828,6 +828,7 @@ def _parse_mcp_server(
         url=url,
         env=env,
         source_tool=source.tool_id,
+        source_display_name=source.display_name,
         config_path=config_path,
         scope=source.scope,
         scanning_enabled=scanning_enabled,
