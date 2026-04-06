@@ -279,6 +279,11 @@ class TestReadMCPConfig(unittest.TestCase):
         self.assertEqual(entries[0].name, "good")
 
 
+def _no_plugins():
+    """Patch helper: suppress real plugin detection in tests."""
+    return patch("lumen_argus_core.detect._detect_claude_code_plugins", return_value=([], []))
+
+
 class TestDetectMCPServers(unittest.TestCase):
     """Test detect_mcp_servers end-to-end."""
 
@@ -292,7 +297,8 @@ class TestDetectMCPServers(unittest.TestCase):
         """With no config files found, returns empty report."""
         with patch("lumen_argus_core.mcp_configs.GLOBAL_MCP_SOURCES", ()):
             with patch("lumen_argus_core.mcp_configs.PROJECT_MCP_SOURCES", ()):
-                report = detect_mcp_servers()
+                with _no_plugins():
+                    report = detect_mcp_servers()
         self.assertIsInstance(report, MCPDetectionReport)
         self.assertIsInstance(report.servers, list)
         self.assertTrue(report.platform)
@@ -320,7 +326,8 @@ class TestDetectMCPServers(unittest.TestCase):
 
         with patch("lumen_argus_core.mcp_configs.GLOBAL_MCP_SOURCES", (source,)):
             with patch("lumen_argus_core.mcp_configs.PROJECT_MCP_SOURCES", ()):
-                report = detect_mcp_servers()
+                with _no_plugins():
+                    report = detect_mcp_servers()
 
         self.assertEqual(report.total_detected, 2)
         self.assertEqual(report.total_scanning, 0)
@@ -344,7 +351,8 @@ class TestDetectMCPServers(unittest.TestCase):
 
         with patch("lumen_argus_core.mcp_configs.GLOBAL_MCP_SOURCES", ()):
             with patch("lumen_argus_core.mcp_configs.PROJECT_MCP_SOURCES", (source,)):
-                report = detect_mcp_servers(project_dirs=[project_dir])
+                with _no_plugins():
+                    report = detect_mcp_servers(project_dirs=[project_dir])
 
         # Should find the project-level server (may also check CWD)
         project_servers = [s for s in report.servers if s.scope == "project"]
@@ -377,7 +385,8 @@ class TestDetectMCPServers(unittest.TestCase):
 
         with patch("lumen_argus_core.mcp_configs.GLOBAL_MCP_SOURCES", (source,)):
             with patch("lumen_argus_core.mcp_configs.PROJECT_MCP_SOURCES", ()):
-                report = detect_mcp_servers()
+                with _no_plugins():
+                    report = detect_mcp_servers()
 
         self.assertEqual(report.total_detected, 2)
         self.assertEqual(report.total_scanning, 1)
@@ -401,7 +410,8 @@ class TestDetectMCPServers(unittest.TestCase):
         real_cfg = os.path.realpath(cfg_path)
         with patch("lumen_argus_core.mcp_configs.GLOBAL_MCP_SOURCES", ()):
             with patch("lumen_argus_core.mcp_configs.PROJECT_MCP_SOURCES", (source,)):
-                report = detect_mcp_servers(project_dirs=[project_dir, project_dir])
+                with _no_plugins():
+                    report = detect_mcp_servers(project_dirs=[project_dir, project_dir])
 
         project_servers = [s for s in report.servers if os.path.realpath(s.config_path) == real_cfg]
         self.assertEqual(len(project_servers), 1)
@@ -429,6 +439,292 @@ class TestDetectMCPServers(unittest.TestCase):
         self.assertEqual(d["servers"][0]["name"], "fs")
         # Should be JSON-serializable
         json.dumps(d)
+
+
+class TestClaudeCodeDetection(unittest.TestCase):
+    """Test Claude Code MCP server detection from ~/.claude.json."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir)
+
+    def test_detects_servers_from_claude_json(self):
+        """~/.claude.json mcpServers should be detected."""
+        cfg_path = os.path.join(self.tmpdir, ".claude.json")
+        with open(cfg_path, "w") as f:
+            json.dump(
+                {
+                    "mcpServers": {
+                        "github": {
+                            "type": "stdio",
+                            "command": "docker",
+                            "args": ["run", "-i", "--rm", "ghcr.io/github/github-mcp-server"],
+                            "env": {},
+                        }
+                    },
+                    "numStartups": 100,
+                },
+                f,
+            )
+
+        source = MCPConfigSource(
+            tool_id="claude_code",
+            display_name="Claude Code",
+            config_paths=(cfg_path,),
+            json_key="mcpServers",
+            scope="global",
+        )
+
+        with patch("lumen_argus_core.mcp_configs.GLOBAL_MCP_SOURCES", (source,)):
+            with patch("lumen_argus_core.mcp_configs.PROJECT_MCP_SOURCES", ()):
+                with _no_plugins():
+                    report = detect_mcp_servers()
+
+        self.assertEqual(report.total_detected, 1)
+        server = report.servers[0]
+        self.assertEqual(server.name, "github")
+        self.assertEqual(server.command, "docker")
+        self.assertEqual(server.source_tool, "claude_code")
+
+    def test_both_claude_json_and_settings_json(self):
+        """Servers from both ~/.claude.json and ~/.claude/settings.json are detected."""
+        claude_json = os.path.join(self.tmpdir, ".claude.json")
+        with open(claude_json, "w") as f:
+            json.dump({"mcpServers": {"github": {"command": "docker", "args": ["run", "ghcr.io/github/mcp"]}}}, f)
+
+        settings_json = os.path.join(self.tmpdir, "settings.json")
+        with open(settings_json, "w") as f:
+            json.dump({"mcpServers": {"local-tool": {"command": "python", "args": ["tool.py"]}}}, f)
+
+        source = MCPConfigSource(
+            tool_id="claude_code",
+            display_name="Claude Code",
+            config_paths=(claude_json, settings_json),
+            json_key="mcpServers",
+            scope="global",
+        )
+
+        with patch("lumen_argus_core.mcp_configs.GLOBAL_MCP_SOURCES", (source,)):
+            with patch("lumen_argus_core.mcp_configs.PROJECT_MCP_SOURCES", ()):
+                with _no_plugins():
+                    report = detect_mcp_servers()
+
+        self.assertEqual(report.total_detected, 2)
+        names = {s.name for s in report.servers}
+        self.assertEqual(names, {"github", "local-tool"})
+
+    def test_claude_json_with_non_mcp_keys_ignored(self):
+        """Non-mcpServers keys in ~/.claude.json are ignored."""
+        cfg_path = os.path.join(self.tmpdir, ".claude.json")
+        with open(cfg_path, "w") as f:
+            json.dump(
+                {
+                    "numStartups": 212,
+                    "installMethod": "native",
+                    "hooks": {"PreToolUse": []},
+                    "enabledPlugins": {"serena@claude-plugins-official": True},
+                },
+                f,
+            )
+
+        source = MCPConfigSource(
+            tool_id="claude_code",
+            display_name="Claude Code",
+            config_paths=(cfg_path,),
+            json_key="mcpServers",
+            scope="global",
+        )
+
+        with patch("lumen_argus_core.mcp_configs.GLOBAL_MCP_SOURCES", (source,)):
+            with patch("lumen_argus_core.mcp_configs.PROJECT_MCP_SOURCES", ()):
+                with _no_plugins():
+                    report = detect_mcp_servers()
+
+        self.assertEqual(report.total_detected, 0)
+
+
+class TestClaudeCodePluginDetection(unittest.TestCase):
+    """Test detection of MCP servers provided by Claude Code plugins."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+        self.claude_dir = os.path.join(self.tmpdir, ".claude")
+        self.plugins_dir = os.path.join(self.claude_dir, "plugins")
+        self.cache_dir = os.path.join(self.plugins_dir, "cache")
+        os.makedirs(self.cache_dir)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir)
+
+    def _write_json(self, path, data):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as f:
+            json.dump(data, f)
+
+    def _setup_plugin(self, plugin_id, mcp_data, enabled=True):
+        """Create installed plugin with .mcp.json and enable it."""
+        parts = plugin_id.split("@")
+        name = parts[0]
+        marketplace = parts[1] if len(parts) > 1 else "default"
+        install_path = os.path.join(self.cache_dir, marketplace, name, "unknown")
+        os.makedirs(install_path, exist_ok=True)
+
+        # Write .mcp.json
+        self._write_json(os.path.join(install_path, ".mcp.json"), mcp_data)
+
+        # Write installed_plugins.json
+        installed_path = os.path.join(self.plugins_dir, "installed_plugins.json")
+        if os.path.isfile(installed_path):
+            with open(installed_path) as f:
+                installed = json.load(f)
+        else:
+            installed = {"version": 2, "plugins": {}}
+        installed["plugins"][plugin_id] = [{"scope": "user", "installPath": install_path, "version": "unknown"}]
+        self._write_json(installed_path, installed)
+
+        # Write settings.json with enabledPlugins
+        settings_path = os.path.join(self.claude_dir, "settings.json")
+        if os.path.isfile(settings_path):
+            with open(settings_path) as f:
+                settings = json.load(f)
+        else:
+            settings = {}
+        settings.setdefault("enabledPlugins", {})[plugin_id] = enabled
+        self._write_json(settings_path, settings)
+
+        return install_path
+
+    def test_detects_plugin_stdio_server(self):
+        """Plugin with stdio MCP server (top-level keys, no wrapper)."""
+        self._setup_plugin(
+            "serena@claude-plugins-official",
+            {"serena": {"command": "uvx", "args": ["--from", "git+https://github.com/oraios/serena", "serena"]}},
+        )
+
+        with patch("lumen_argus_core.detect.os.path.expanduser") as mock_expand:
+            mock_expand.side_effect = lambda p: p.replace("~", self.tmpdir)
+            with patch("lumen_argus_core.mcp_configs.GLOBAL_MCP_SOURCES", ()):
+                with patch("lumen_argus_core.mcp_configs.PROJECT_MCP_SOURCES", ()):
+                    report = detect_mcp_servers()
+
+        plugin_servers = [s for s in report.servers if s.source_tool == "claude_code_plugin"]
+        self.assertEqual(len(plugin_servers), 1)
+        self.assertEqual(plugin_servers[0].name, "serena")
+        self.assertEqual(plugin_servers[0].command, "uvx")
+        self.assertEqual(plugin_servers[0].transport, "stdio")
+        self.assertIn("serena", plugin_servers[0].config_path)
+
+    def test_detects_plugin_http_server(self):
+        """Plugin with HTTP MCP server (top-level keys)."""
+        self._setup_plugin(
+            "greptile@claude-plugins-official",
+            {"greptile": {"type": "http", "url": "https://api.greptile.com/mcp"}},
+        )
+
+        with patch("lumen_argus_core.detect.os.path.expanduser") as mock_expand:
+            mock_expand.side_effect = lambda p: p.replace("~", self.tmpdir)
+            with patch("lumen_argus_core.mcp_configs.GLOBAL_MCP_SOURCES", ()):
+                with patch("lumen_argus_core.mcp_configs.PROJECT_MCP_SOURCES", ()):
+                    report = detect_mcp_servers()
+
+        plugin_servers = [s for s in report.servers if s.source_tool == "claude_code_plugin"]
+        self.assertEqual(len(plugin_servers), 1)
+        self.assertEqual(plugin_servers[0].name, "greptile")
+        self.assertEqual(plugin_servers[0].transport, "http")
+        self.assertEqual(plugin_servers[0].url, "https://api.greptile.com/mcp")
+
+    def test_detects_plugin_with_mcpservers_wrapper(self):
+        """Plugin .mcp.json using mcpServers wrapper key."""
+        self._setup_plugin(
+            "playwright@skills",
+            {
+                "mcpServers": {
+                    "pw-testrail": {"command": "npx", "args": ["tsx", "index.ts"]},
+                    "pw-browserstack": {"command": "npx", "args": ["tsx", "bs.ts"]},
+                }
+            },
+        )
+
+        with patch("lumen_argus_core.detect.os.path.expanduser") as mock_expand:
+            mock_expand.side_effect = lambda p: p.replace("~", self.tmpdir)
+            with patch("lumen_argus_core.mcp_configs.GLOBAL_MCP_SOURCES", ()):
+                with patch("lumen_argus_core.mcp_configs.PROJECT_MCP_SOURCES", ()):
+                    report = detect_mcp_servers()
+
+        plugin_servers = [s for s in report.servers if s.source_tool == "claude_code_plugin"]
+        self.assertEqual(len(plugin_servers), 2)
+        names = {s.name for s in plugin_servers}
+        self.assertEqual(names, {"pw-testrail", "pw-browserstack"})
+
+    def test_skips_disabled_plugins(self):
+        """Disabled plugins should not have their MCP servers detected."""
+        self._setup_plugin(
+            "serena@claude-plugins-official",
+            {"serena": {"command": "uvx", "args": ["serena"]}},
+            enabled=False,
+        )
+
+        with patch("lumen_argus_core.detect.os.path.expanduser") as mock_expand:
+            mock_expand.side_effect = lambda p: p.replace("~", self.tmpdir)
+            with patch("lumen_argus_core.mcp_configs.GLOBAL_MCP_SOURCES", ()):
+                with patch("lumen_argus_core.mcp_configs.PROJECT_MCP_SOURCES", ()):
+                    report = detect_mcp_servers()
+
+        plugin_servers = [s for s in report.servers if s.source_tool == "claude_code_plugin"]
+        self.assertEqual(len(plugin_servers), 0)
+
+    def test_skips_plugins_without_mcp_json(self):
+        """Plugins that don't have .mcp.json should be skipped silently."""
+        install_path = os.path.join(self.cache_dir, "marketplace", "no-mcp", "unknown")
+        os.makedirs(install_path, exist_ok=True)
+        # No .mcp.json created
+
+        self._write_json(
+            os.path.join(self.plugins_dir, "installed_plugins.json"),
+            {"version": 2, "plugins": {"no-mcp@marketplace": [{"installPath": install_path, "version": "unknown"}]}},
+        )
+        self._write_json(
+            os.path.join(self.claude_dir, "settings.json"),
+            {"enabledPlugins": {"no-mcp@marketplace": True}},
+        )
+
+        with patch("lumen_argus_core.detect.os.path.expanduser") as mock_expand:
+            mock_expand.side_effect = lambda p: p.replace("~", self.tmpdir)
+            with patch("lumen_argus_core.mcp_configs.GLOBAL_MCP_SOURCES", ()):
+                with patch("lumen_argus_core.mcp_configs.PROJECT_MCP_SOURCES", ()):
+                    report = detect_mcp_servers()
+
+        self.assertEqual(report.total_detected, 0)
+
+    def test_no_installed_plugins_json(self):
+        """Missing installed_plugins.json should not crash."""
+        # Don't create any files
+        with patch("lumen_argus_core.detect.os.path.expanduser") as mock_expand:
+            mock_expand.side_effect = lambda p: p.replace("~", self.tmpdir)
+            with patch("lumen_argus_core.mcp_configs.GLOBAL_MCP_SOURCES", ()):
+                with patch("lumen_argus_core.mcp_configs.PROJECT_MCP_SOURCES", ()):
+                    report = detect_mcp_servers()
+
+        self.assertEqual(report.total_detected, 0)
+
+    def test_display_name_includes_plugin_name(self):
+        """Display name should include the plugin name for clarity."""
+        self._setup_plugin(
+            "serena@claude-plugins-official",
+            {"serena": {"command": "uvx", "args": ["serena"]}},
+        )
+
+        with patch("lumen_argus_core.detect.os.path.expanduser") as mock_expand:
+            mock_expand.side_effect = lambda p: p.replace("~", self.tmpdir)
+            with patch("lumen_argus_core.mcp_configs.GLOBAL_MCP_SOURCES", ()):
+                with patch("lumen_argus_core.mcp_configs.PROJECT_MCP_SOURCES", ()):
+                    report = detect_mcp_servers()
+
+        # The source_tool should be claude_code_plugin (tool_id for grouping)
+        server = report.servers[0]
+        self.assertEqual(server.source_tool, "claude_code_plugin")
 
 
 class TestVSCodeDetection(unittest.TestCase):
@@ -470,7 +766,8 @@ class TestVSCodeDetection(unittest.TestCase):
 
         with patch("lumen_argus_core.mcp_configs.GLOBAL_MCP_SOURCES", (source,)):
             with patch("lumen_argus_core.mcp_configs.PROJECT_MCP_SOURCES", ()):
-                report = detect_mcp_servers()
+                with _no_plugins():
+                    report = detect_mcp_servers()
 
         self.assertEqual(report.total_detected, 2)
         names = {s.name for s in report.servers}
@@ -506,7 +803,8 @@ class TestVSCodeDetection(unittest.TestCase):
 
         with patch("lumen_argus_core.mcp_configs.GLOBAL_MCP_SOURCES", ()):
             with patch("lumen_argus_core.mcp_configs.PROJECT_MCP_SOURCES", (source,)):
-                report = detect_mcp_servers(project_dirs=[project_dir])
+                with _no_plugins():
+                    report = detect_mcp_servers(project_dirs=[project_dir])
 
         project_servers = [s for s in report.servers if s.scope == "project"]
         self.assertTrue(len(project_servers) >= 1)
@@ -542,7 +840,8 @@ class TestVSCodeDetection(unittest.TestCase):
 
         with patch("lumen_argus_core.mcp_configs.GLOBAL_MCP_SOURCES", (source,)):
             with patch("lumen_argus_core.mcp_configs.PROJECT_MCP_SOURCES", ()):
-                report = detect_mcp_servers()
+                with _no_plugins():
+                    report = detect_mcp_servers()
 
         self.assertEqual(report.total_detected, 1)
         server = report.servers[0]

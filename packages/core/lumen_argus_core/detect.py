@@ -577,6 +577,11 @@ def detect_mcp_servers(
                 entries = _read_mcp_config(expanded, source)
                 servers.extend(entries)
 
+    # Claude Code plugin-provided MCP servers
+    plugin_servers, plugin_checked = _detect_claude_code_plugins()
+    servers.extend(plugin_servers)
+    checked.extend(plugin_checked)
+
     total_scanning = sum(1 for s in servers if s.scanning_enabled)
 
     report = MCPDetectionReport(
@@ -593,6 +598,91 @@ def detect_mcp_servers(
         total_scanning,
     )
     return report
+
+
+def _detect_claude_code_plugins() -> tuple[list[MCPServerEntry], list[str]]:
+    """Detect MCP servers provided by Claude Code plugins.
+
+    Reads ~/.claude/plugins/installed_plugins.json for install paths,
+    then checks each plugin's .mcp.json for MCP server definitions.
+    Only returns servers from plugins enabled in ~/.claude/settings.json.
+
+    Returns:
+        Tuple of (servers, checked_paths).
+    """
+    plugins_json = os.path.expanduser(os.path.join("~", ".claude", "plugins", "installed_plugins.json"))
+    settings_json = os.path.expanduser(os.path.join("~", ".claude", "settings.json"))
+
+    checked: list[str] = [plugins_json, settings_json]
+    if not os.path.isfile(plugins_json):
+        return [], checked
+
+    # Load enabled plugins from settings
+    enabled_plugins: dict[str, bool] = {}
+    settings = load_jsonc(settings_json)
+    if settings:
+        enabled_plugins = settings.get("enabledPlugins", {})
+
+    # Load installed plugins
+    installed = load_jsonc(plugins_json)
+    if not installed:
+        return [], checked
+
+    plugins = installed.get("plugins", {})
+    if not isinstance(plugins, dict):
+        return [], checked
+
+    servers: list[MCPServerEntry] = []
+
+    for plugin_id, entries in plugins.items():
+        if not enabled_plugins.get(plugin_id, False):
+            continue
+        if not isinstance(entries, list) or not entries:
+            continue
+
+        # Use first (most recent) entry
+        first = entries[0]
+        if not isinstance(first, dict):
+            continue
+        install_path = first.get("installPath", "")
+        if not install_path:
+            continue
+
+        mcp_path = os.path.join(install_path, ".mcp.json")
+        checked.append(mcp_path)
+        if not os.path.isfile(mcp_path):
+            continue
+
+        data = load_jsonc(mcp_path)
+        if not data:
+            continue
+
+        # Plugin .mcp.json has two formats:
+        # 1. {"mcpServers": {"name": {...}}}  — wrapper key
+        # 2. {"name": {...}}                  — top-level server names
+        server_defs = data.get("mcpServers", data)
+        if not isinstance(server_defs, dict):
+            continue
+
+        plugin_name = plugin_id.split("@")[0]
+        plugin_source = MCPConfigSource(
+            tool_id="claude_code_plugin",
+            display_name="Claude Code Plugin (%s)" % plugin_name,
+            config_paths=(),
+            json_key="mcpServers",
+            scope="global",
+        )
+
+        for name, server_def in server_defs.items():
+            if not isinstance(server_def, dict):
+                continue
+            entry = _parse_mcp_server(name, server_def, plugin_source, mcp_path)
+            if entry:
+                servers.append(entry)
+
+    if servers:
+        log.debug("MCP: %d server(s) from Claude Code plugins", len(servers))
+    return servers, checked
 
 
 def _read_mcp_config(

@@ -38,6 +38,7 @@ lumen-argus sits between your AI tool and the provider, scanning every outbound 
 - **Encoding-aware scanning** — catches base64, hex, URL, Unicode encoded secrets
 - **Response scanning** — detect secrets and prompt injection in API responses (async, zero latency)
 - **MCP proxy** — scan MCP traffic across stdio, HTTP, and WebSocket transports (`lumen-argus mcp`)
+- **MCP detection** — discover MCP servers from 8 AI tools + Claude Code plugins (user-configured and plugin-provided)
 - **WebSocket proxy** — bidirectional frame scanning on same port (opt-in, `ws://localhost:8080/ws?url=ws://target`)
 - **8 PII detectors** with validation (Luhn, SSN ranges, IBAN checksums)
 - **Proprietary code** detection (file patterns + keyword matching)
@@ -242,6 +243,24 @@ lumen-argus mcp --upstream ws://localhost:9000/mcp
 - **Environment restriction** — subprocess mode strips secrets from child process environment
 
 Configurable tool allow/block lists via `mcp:` config section or dashboard API. Pro adds ABAC tool policies (glob matching on tool name, server, arguments, context), human-in-the-loop approval gate, and risk classification. MCP over HTTP is automatically detected and scanned by the main proxy — no config needed. `lumen-argus mcp` covers all other transports: stdio subprocess for local MCP servers, HTTP bridge for remote servers, HTTP reverse proxy for centralized enterprise scanning, and WebSocket bridge for WS-based MCP servers.
+
+**MCP server detection** (`lumen-argus detect --mcp`) discovers servers from 8 AI tools plus Claude Code plugins:
+
+| Source | Config Location | JSON Key |
+|--------|----------------|----------|
+| Claude Desktop | `~/Library/Application Support/Claude/claude_desktop_config.json` | `mcpServers` |
+| Claude Code (user) | `~/.claude.json` | `mcpServers` |
+| Claude Code (settings) | `~/.claude/settings.json` | `mcpServers` |
+| Claude Code (project) | `<cwd>/.mcp.json` | `mcpServers` |
+| Claude Code (plugins) | `~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/.mcp.json` | `mcpServers` or top-level |
+| Cursor | `~/.cursor/mcp.json` | `mcpServers` |
+| Windsurf | `~/.windsurf/mcp.json` | `mcpServers` |
+| Cline | `~/.cline/mcp_servers.json` | `mcpServers` |
+| Roo Code | `~/.roo-code/mcp.json` | `mcpServers` |
+| VS Code (global) | `~/Library/Application Support/Code/User/mcp.json` | `servers` |
+| VS Code (workspace) | `<cwd>/.vscode/mcp.json` | `servers` |
+
+Plugin detection reads `~/.claude/plugins/installed_plugins.json` for install paths and `~/.claude/settings.json` for enabled status. Only enabled plugins are scanned. Both `.mcp.json` formats are supported: top-level server names (serena, greptile) and `mcpServers` wrapper key (playwright).
 
 ## Rules Engine
 

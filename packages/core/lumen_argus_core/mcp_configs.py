@@ -71,7 +71,10 @@ _CLAUDE_DESKTOP = MCPConfigSource(
 _CLAUDE_CODE_GLOBAL = MCPConfigSource(
     tool_id="claude_code",
     display_name="Claude Code",
-    config_paths=(_home(".claude", "settings.json"),),
+    config_paths=(
+        _home(".claude.json"),
+        _home(".claude", "settings.json"),
+    ),
     json_key="mcpServers",
     scope="global",
 )

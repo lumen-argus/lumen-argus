@@ -92,11 +92,23 @@ that tool.
     ```bash
     lumen-argus detect --mcp
     ```
-    Discovers MCP servers configured in AI tool config files (Claude Desktop,
-    Claude Code, Cursor, Windsurf, Cline, Roo Code). Shows transport type
-    (stdio/http), source tool, and whether the server is already wrapped
-    through `lumen-argus mcp` for scanning. Combine with `--json` for
-    machine-readable output.
+    Discovers MCP servers from 8 AI tools plus Claude Code plugins:
+
+    - **Claude Desktop** — `~/Library/Application Support/Claude/claude_desktop_config.json`
+    - **Claude Code** — `~/.claude.json` (user-configured servers), `~/.claude/settings.json`, `.mcp.json` (project)
+    - **Claude Code plugins** — reads `~/.claude/plugins/installed_plugins.json`, only enabled plugins
+    - **Cursor** — `~/.cursor/mcp.json`
+    - **Windsurf** — `~/.windsurf/mcp.json`
+    - **VS Code** — `~/Library/Application Support/Code/User/mcp.json` (global), `.vscode/mcp.json` (workspace)
+    - **Cline** — `~/.cline/mcp_servers.json`
+    - **Roo Code** — `~/.roo-code/mcp.json`
+
+    Shows transport type (stdio/http/ws), source tool, and whether the server
+    is already wrapped through `lumen-argus mcp` for scanning. Combine with
+    `--json` for machine-readable output.
+
+    Cloud MCP servers (e.g., `claude.ai Gmail`) are Anthropic-hosted and have
+    no local config — they are not detectable.
 
 ### MCP server wrapping
 

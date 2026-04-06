@@ -186,6 +186,16 @@ Both paths share:
 
 Controlled by `mcp_arguments` and `mcp_responses` pipeline stages (enabled by default).
 
+**MCP server detection** (`detect_mcp_servers()` in `packages/core/lumen_argus_core/detect.py`):
+
+Discovers MCP servers from AI tool config files. Three source types:
+
+1. **Global config sources** — Claude Desktop, Claude Code (`~/.claude.json` + `~/.claude/settings.json`), Cursor, Windsurf, Cline, Roo Code, VS Code (`mcp.json`). Each has platform-specific paths (macOS, Linux, Windows). Registered in `mcp_configs.py`.
+2. **Project-scoped sources** — Claude Code `.mcp.json` and VS Code `.vscode/mcp.json`. Checked in CWD + explicit `project_dirs`.
+3. **Claude Code plugins** — Reads `~/.claude/plugins/installed_plugins.json` for install paths, cross-references `~/.claude/settings.json` `enabledPlugins` for active status, then reads `.mcp.json` at each plugin's install path. Handles both `.mcp.json` formats: top-level server names (e.g., `{"serena": {"command": "uvx", ...}}`) and `mcpServers` wrapper key (e.g., `{"mcpServers": {"pw-testrail": {...}}}`).
+
+Wrapped detection: servers using `lumen-argus mcp --` or `--upstream` are detected as `scanning_enabled=True`. Env values redacted in serialized output.
+
 ### WebSocket Proxy
 
 **Modules:** `lumen_argus/ws_proxy.py` (scanner), `lumen_argus/async_proxy.py` (relay)
