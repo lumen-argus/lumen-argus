@@ -22,6 +22,9 @@ async def run_http_bridge(
     scanner: MCPScanner,
     policy_engine: Any = None,
     escalation_fn: Any = None,
+    tool_policy_evaluator: Any = None,
+    approval_gate: Any = None,
+    server_id: str = "",
 ) -> int:
     """Run MCP proxy in HTTP bridge mode (stdio client -> HTTP upstream).
 
@@ -63,7 +66,16 @@ async def run_http_bridge(
                 method = msg.get("method", "")
 
                 if method == "tools/call":
-                    error = _check_tools_call(msg, scanner, action, policy_engine, escalation_fn)
+                    error = await _check_tools_call(
+                        msg,
+                        scanner,
+                        action,
+                        policy_engine,
+                        escalation_fn,
+                        tool_policy_evaluator=tool_policy_evaluator,
+                        approval_gate=approval_gate,
+                        server_id=server_id,
+                    )
                     if error:
                         sys.stdout.buffer.write(json.dumps(error).encode() + b"\n")
                         sys.stdout.buffer.flush()

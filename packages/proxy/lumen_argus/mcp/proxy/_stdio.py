@@ -24,6 +24,9 @@ async def run_stdio_proxy(
     env: dict[str, str] | None = None,
     policy_engine: Any = None,
     escalation_fn: Any = None,
+    tool_policy_evaluator: Any = None,
+    approval_gate: Any = None,
+    server_id: str = "",
 ) -> int:
     """Run MCP proxy in stdio subprocess mode.
 
@@ -93,7 +96,16 @@ async def run_stdio_proxy(
                 method = m.get("method", "")
 
                 if method == "tools/call":
-                    error = _check_tools_call(m, scanner, action, policy_engine, escalation_fn)
+                    error = await _check_tools_call(
+                        m,
+                        scanner,
+                        action,
+                        policy_engine,
+                        escalation_fn,
+                        tool_policy_evaluator=tool_policy_evaluator,
+                        approval_gate=approval_gate,
+                        server_id=server_id,
+                    )
                     if error:
                         await _write_stdout(json.dumps(error).encode() + b"\n")
                         continue

@@ -174,6 +174,16 @@ Both paths share:
 - **Block action**: returns JSON-RPC error (`-32600`)
 - Findings have `mcp.` location prefix (e.g., `mcp.tools/call.write_file.arguments`)
 
+**Tool call validation pipeline** (`_check_tools_call` in `mcp/proxy/_scanning.py`):
+
+1. **Session binding** — validates tool name against `tools/list` baseline
+2. **ABAC tool policy evaluation** (Pro) — `get_tool_policy_evaluator()` hook. Evaluates tool against YAML/DB/fleet policies with glob matching on tool name, server ID, arguments, and context. Returns allow/block/alert/approval.
+3. **Approval gate** (Pro) — `get_approval_gate()` hook. If policy action is `approval`, suspends the tool call and waits for admin decision via dashboard. Fail-open: gate failure allows the call with error-level logging.
+4. **Legacy policy engine** (Pro) — `get_mcp_policy_engine()` hook. Pattern-based rule matching.
+5. **DLP argument scanning** — runs configured detectors (secrets, PII) on serialized arguments.
+
+`server_id` is populated from the command (stdio) or upstream URL (bridges) and passed to the evaluator and gate for server-scoped policy matching.
+
 Controlled by `mcp_arguments` and `mcp_responses` pipeline stages (enabled by default).
 
 ### WebSocket Proxy
@@ -430,6 +440,17 @@ def register(registry):
 | `set_trace_request_hook(hook)` | `hook(method, path) -> context manager` | Wraps full request lifecycle for OpenTelemetry tracing. |
 
 All observability hooks are fully guarded — exceptions never break requests.
+
+### MCP tool policy hooks
+
+| Hook | Signature | Description |
+|------|-----------|-------------|
+| `set_tool_policy_evaluator(evaluator)` | `evaluator.evaluate(tool_name, arguments, server_id, context) -> PolicyDecision` | ABAC tool policy evaluation. Returns decision with action (allow/block/alert/approval), policy name, reason. |
+| `get_tool_policy_evaluator()` | `-> evaluator or None` | Retrieve registered evaluator. Called in `_check_tools_call()` pipeline. |
+| `set_approval_gate(gate)` | `gate.request_approval(tool_name, arguments, server_id, session_id, identity, client_name, policy) -> ApprovalDecision` | Human-in-the-loop approval. Suspends tool call until admin decides. |
+| `get_approval_gate()` | `-> gate or None` | Retrieve registered gate. Called when policy action is `approval`. |
+
+Both hooks are fail-open: evaluator/gate exceptions allow the tool call with error-level logging.
 
 ### Registry methods
 

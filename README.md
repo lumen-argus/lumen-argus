@@ -241,7 +241,7 @@ lumen-argus mcp --upstream ws://localhost:9000/mcp
 - **Session binding** — validates `tools/call` against tool inventory from first `tools/list` (opt-in)
 - **Environment restriction** — subprocess mode strips secrets from child process environment
 
-Configurable tool allow/block lists via `mcp:` config section or dashboard API. MCP over HTTP is automatically detected and scanned by the main proxy — no config needed. `lumen-argus mcp` covers all other transports: stdio subprocess for local MCP servers, HTTP bridge for remote servers, HTTP reverse proxy for centralized enterprise scanning, and WebSocket bridge for WS-based MCP servers.
+Configurable tool allow/block lists via `mcp:` config section or dashboard API. Pro adds ABAC tool policies (glob matching on tool name, server, arguments, context), human-in-the-loop approval gate, and risk classification. MCP over HTTP is automatically detected and scanned by the main proxy — no config needed. `lumen-argus mcp` covers all other transports: stdio subprocess for local MCP servers, HTTP bridge for remote servers, HTTP reverse proxy for centralized enterprise scanning, and WebSocket bridge for WS-based MCP servers.
 
 ## Rules Engine
 

@@ -28,6 +28,49 @@ def _run_policy_engine(policy_engine: Any, tool_name: str, arguments: dict[str, 
         return []
 
 
+def _run_tool_policy_evaluator(
+    evaluator: Any,
+    tool_name: str,
+    arguments: dict[str, Any],
+    server_id: str,
+    context: dict[str, Any],
+) -> Any | None:
+    """Run ABAC tool policy evaluator. Returns PolicyDecision or None.
+
+    Returns None if no evaluator registered or evaluator raises.
+    """
+    if evaluator is None:
+        return None
+    try:
+        return evaluator.evaluate(tool_name, arguments, server_id, context)
+    except Exception as exc:
+        log.warning("mcp: tool policy evaluator raised %s", exc)
+        return None
+
+
+async def _run_approval_gate(
+    gate: Any,
+    tool_name: str,
+    arguments: dict[str, Any],
+    server_id: str,
+    session_id: str,
+    identity: str,
+    client_name: str,
+    policy: Any,
+) -> Any | None:
+    """Request approval via the approval gate. Returns ApprovalDecision or None.
+
+    Returns None if no gate registered or gate raises.
+    """
+    if gate is None:
+        return None
+    try:
+        return await gate.request_approval(tool_name, arguments, server_id, session_id, identity, client_name, policy)
+    except Exception as exc:
+        log.error("mcp: approval gate raised %s — tool call allowed (fail-open)", exc)
+        return None
+
+
 def _signal_escalation(
     escalation_fn: Any, signal_type: str, session_id: str, details: dict[str, Any] | None = None
 ) -> str | None:
@@ -59,15 +102,25 @@ def _jsonrpc_error(msg_id: Any, message: str) -> dict[str, Any]:
     }
 
 
-def _check_tools_call(
+async def _check_tools_call(
     msg: dict[str, Any],
     scanner: MCPScanner,
     action: str,
     policy_engine: Any,
     escalation_fn: Any,
     session_id: str = "",
+    tool_policy_evaluator: Any = None,
+    approval_gate: Any = None,
+    server_id: str = "",
 ) -> dict[str, Any] | None:
-    """Validate a tools/call request: session binding -> policy engine -> scanner.
+    """Validate a tools/call request through the full scanning pipeline.
+
+    Pipeline order:
+    1. Session binding check (existing)
+    2. ABAC tool policy evaluation (Pro — via tool_policy_evaluator hook)
+    3. Approval gate if policy action == "approval" (Pro — via approval_gate hook)
+    4. Legacy policy engine check (existing Pro hook)
+    5. DLP argument scanning (existing)
 
     Returns a JSON-RPC error dict if the call should be blocked, or None if
     it should be forwarded. Fires escalation signals as side effects.
@@ -78,19 +131,76 @@ def _check_tools_call(
     tool_name = msg.get("params", {}).get("name", "")
     arguments = msg.get("params", {}).get("arguments", {})
 
-    # Session binding check
+    # 1. Session binding check
     if scanner.session_binding and not scanner.session_binding.validate_tool(tool_name):
         _signal_escalation(escalation_fn, "unknown_tool", session_id, {"tool": tool_name})
         if scanner.session_binding.should_block:
             return _jsonrpc_error(msg_id, "Tool '%s' not in session baseline" % tool_name)
 
-    # Pro policy engine check
+    # 2. ABAC tool policy evaluation
+    decision = _run_tool_policy_evaluator(
+        tool_policy_evaluator,
+        tool_name,
+        arguments,
+        server_id=server_id,
+        context={"session_id": session_id},
+    )
+    if decision is not None:
+        decision_action = getattr(decision, "action", None)
+        policy_name = getattr(decision, "policy_name", "")
+        reason = getattr(decision, "reason", "")
+
+        if decision_action == "block":
+            log.info("mcp: tool call blocked by policy %r: %s (%s)", policy_name, tool_name, reason)
+            _signal_escalation(escalation_fn, "block", session_id, {"tool": tool_name, "policy": policy_name})
+            return _jsonrpc_error(msg_id, reason or ("Blocked by policy: %s" % policy_name))
+
+        if decision_action == "alert":
+            log.warning("mcp: tool call alert: %s (policy: %s, reason: %s)", tool_name, policy_name, reason)
+
+        # 3. Approval gate
+        if decision_action == "approval":
+            matched_policy = getattr(decision, "matched_policy", None) or policy_name
+            if approval_gate is None:
+                log.warning(
+                    "mcp: policy %r requires approval for %s but no gate registered — allowing (fail-open)",
+                    policy_name,
+                    tool_name,
+                )
+            else:
+                approval = await _run_approval_gate(
+                    approval_gate,
+                    tool_name,
+                    arguments,
+                    server_id=server_id,
+                    session_id=session_id,
+                    identity="",
+                    client_name="",
+                    policy=matched_policy,
+                )
+                if approval is None:
+                    log.error(
+                        "mcp: approval gate failed for %s — allowing (fail-open)",
+                        tool_name,
+                    )
+                else:
+                    approval_status = getattr(approval, "status", "denied")
+                    approval_id = getattr(approval, "approval_id", "")
+                    if approval_status != "approved":
+                        log.info("mcp: tool call %s: %s (approval %s)", approval_status, tool_name, approval_id)
+                        return _jsonrpc_error(
+                            msg_id,
+                            "Tool call %s: %s (approval %s)" % (approval_status, tool_name, approval_id),
+                        )
+                    log.info("mcp: tool call approved: %s (approval %s)", tool_name, approval_id)
+
+    # 4. Legacy policy engine check
     policy_findings = _run_policy_engine(policy_engine, tool_name, arguments)
     if policy_findings and any(f.action == "block" for f in policy_findings):
         _signal_escalation(escalation_fn, "block", session_id, {"tool": tool_name})
         return _jsonrpc_error(msg_id, "Request blocked by policy: %s" % policy_findings[0].type)
 
-    # Scanner check
+    # 5. DLP argument scanning
     findings = scanner.scan_request(msg)
     if findings and action == "block":
         _signal_escalation(escalation_fn, "block", session_id, {"tool": tool_name})

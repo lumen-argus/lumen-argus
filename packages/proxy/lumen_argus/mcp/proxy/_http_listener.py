@@ -28,6 +28,9 @@ async def run_http_listener(
     scanner: MCPScanner,
     policy_engine: Any = None,
     escalation_fn: Any = None,
+    tool_policy_evaluator: Any = None,
+    approval_gate: Any = None,
+    server_id: str = "",
 ) -> int:
     """Run MCP proxy in HTTP reverse proxy mode (HTTP listener -> HTTP upstream).
 
@@ -97,7 +100,17 @@ async def run_http_listener(
         pending_requests: dict[Any, Any] = {}  # single request/response — local scope
 
         if isinstance(msg, dict) and method == "tools/call":
-            error = _check_tools_call(msg, scanner, action, policy_engine, escalation_fn, session_id)
+            error = await _check_tools_call(
+                msg,
+                scanner,
+                action,
+                policy_engine,
+                escalation_fn,
+                session_id,
+                tool_policy_evaluator=tool_policy_evaluator,
+                approval_gate=approval_gate,
+                server_id=server_id,
+            )
             if error:
                 return web.json_response(error, status=400)
 

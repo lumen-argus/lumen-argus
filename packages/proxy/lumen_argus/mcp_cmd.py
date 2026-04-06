@@ -72,6 +72,8 @@ def run_mcp(args: argparse.Namespace, extensions: ExtensionRegistry | None = Non
         extensions.load_plugins()
     policy_engine = extensions.get_mcp_policy_engine()
     escalation_fn = extensions.get_mcp_session_escalation()
+    tool_policy_evaluator = extensions.get_tool_policy_evaluator()
+    approval_gate = extensions.get_approval_gate()
 
     # Determine action (CLI flag > config)
     action_override = getattr(args, "action", None)
@@ -98,13 +100,43 @@ def run_mcp(args: argparse.Namespace, extensions: ExtensionRegistry | None = Non
         store=mcp_store if (mcp_cfg and mcp_cfg.detect_drift) else None,
     )
 
+    # Derive server_id for ABAC policy matching (command name for stdio, URL for bridges)
+    server_id = " ".join(cmd) if cmd else (upstream or "")
+
     # Dispatch to appropriate transport mode
     if cmd:
-        _run_stdio(args, cmd, scanner, mcp_cfg, policy_engine, escalation_fn)
+        _run_stdio(
+            args,
+            cmd,
+            scanner,
+            mcp_cfg,
+            policy_engine,
+            escalation_fn,
+            tool_policy_evaluator,
+            approval_gate,
+            server_id,
+        )
     elif listen:
-        _run_http_listener(listen, upstream, scanner, policy_engine, escalation_fn)
+        _run_http_listener(
+            listen,
+            upstream,
+            scanner,
+            policy_engine,
+            escalation_fn,
+            tool_policy_evaluator,
+            approval_gate,
+            server_id,
+        )
     else:
-        _run_bridge(upstream, scanner, policy_engine, escalation_fn)
+        _run_bridge(
+            upstream,
+            scanner,
+            policy_engine,
+            escalation_fn,
+            tool_policy_evaluator,
+            approval_gate,
+            server_id,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -175,7 +207,17 @@ def _build_session_binding(mcp_cfg: Any) -> Any:
     return None
 
 
-def _run_stdio(args: Any, cmd: list[str], scanner: Any, mcp_cfg: Any, policy_engine: Any, escalation_fn: Any) -> None:
+def _run_stdio(
+    args: Any,
+    cmd: list[str],
+    scanner: Any,
+    mcp_cfg: Any,
+    policy_engine: Any,
+    escalation_fn: Any,
+    tool_policy_evaluator: Any = None,
+    approval_gate: Any = None,
+    server_id: str = "",
+) -> None:
     import asyncio
 
     from lumen_argus.mcp.proxy import run_stdio_proxy
@@ -194,12 +236,30 @@ def _run_stdio(args: Any, cmd: list[str], scanner: Any, mcp_cfg: Any, policy_eng
         env = filter_env(extra_vars=extra_vars, config_allowlist=env_allowlist)
 
     exit_code = asyncio.run(
-        run_stdio_proxy(cmd, scanner, env=env, policy_engine=policy_engine, escalation_fn=escalation_fn)
+        run_stdio_proxy(
+            cmd,
+            scanner,
+            env=env,
+            policy_engine=policy_engine,
+            escalation_fn=escalation_fn,
+            tool_policy_evaluator=tool_policy_evaluator,
+            approval_gate=approval_gate,
+            server_id=server_id,
+        )
     )
     sys.exit(exit_code)
 
 
-def _run_http_listener(listen: str, upstream: str | None, scanner: Any, policy_engine: Any, escalation_fn: Any) -> None:
+def _run_http_listener(
+    listen: str,
+    upstream: str | None,
+    scanner: Any,
+    policy_engine: Any,
+    escalation_fn: Any,
+    tool_policy_evaluator: Any = None,
+    approval_gate: Any = None,
+    server_id: str = "",
+) -> None:
     import asyncio
 
     from lumen_argus.mcp.proxy import run_http_listener
@@ -216,11 +276,29 @@ def _run_http_listener(listen: str, upstream: str | None, scanner: Any, policy_e
         port = int(listen)
 
     asyncio.run(
-        run_http_listener(host, port, upstream, scanner, policy_engine=policy_engine, escalation_fn=escalation_fn)
+        run_http_listener(
+            host,
+            port,
+            upstream,
+            scanner,
+            policy_engine=policy_engine,
+            escalation_fn=escalation_fn,
+            tool_policy_evaluator=tool_policy_evaluator,
+            approval_gate=approval_gate,
+            server_id=server_id,
+        )
     )
 
 
-def _run_bridge(upstream: str | None, scanner: Any, policy_engine: Any, escalation_fn: Any) -> None:
+def _run_bridge(
+    upstream: str | None,
+    scanner: Any,
+    policy_engine: Any,
+    escalation_fn: Any,
+    tool_policy_evaluator: Any = None,
+    approval_gate: Any = None,
+    server_id: str = "",
+) -> None:
     import asyncio
 
     if upstream is None:
@@ -230,12 +308,28 @@ def _run_bridge(upstream: str | None, scanner: Any, policy_engine: Any, escalati
         from lumen_argus.mcp.proxy import run_ws_bridge
 
         exit_code = asyncio.run(
-            run_ws_bridge(upstream, scanner, policy_engine=policy_engine, escalation_fn=escalation_fn)
+            run_ws_bridge(
+                upstream,
+                scanner,
+                policy_engine=policy_engine,
+                escalation_fn=escalation_fn,
+                tool_policy_evaluator=tool_policy_evaluator,
+                approval_gate=approval_gate,
+                server_id=server_id,
+            )
         )
     else:
         from lumen_argus.mcp.proxy import run_http_bridge
 
         exit_code = asyncio.run(
-            run_http_bridge(upstream, scanner, policy_engine=policy_engine, escalation_fn=escalation_fn)
+            run_http_bridge(
+                upstream,
+                scanner,
+                policy_engine=policy_engine,
+                escalation_fn=escalation_fn,
+                tool_policy_evaluator=tool_policy_evaluator,
+                approval_gate=approval_gate,
+                server_id=server_id,
+            )
         )
     sys.exit(exit_code)
