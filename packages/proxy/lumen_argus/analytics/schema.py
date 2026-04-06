@@ -374,6 +374,71 @@ CREATE TABLE IF NOT EXISTS mcp_tool_baselines (
 """
 
 
+def build_mcp_tool_policies_schema(a: DatabaseAdapter) -> str:
+    auto_id = a.auto_id_type()
+    ts = a.timestamp_type()
+    return f"""\
+CREATE TABLE IF NOT EXISTS mcp_tool_policies (
+    id {auto_id},
+    namespace_id INTEGER NOT NULL DEFAULT 1 REFERENCES namespaces(id),
+    name TEXT NOT NULL,
+    match_json TEXT NOT NULL,
+    action TEXT NOT NULL,
+    reason TEXT NOT NULL DEFAULT '',
+    severity TEXT NOT NULL DEFAULT 'medium',
+    priority INTEGER NOT NULL DEFAULT 0,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    source TEXT NOT NULL DEFAULT 'dashboard',
+    created_at {ts} NOT NULL,
+    updated_at {ts} NOT NULL,
+    hit_count INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(namespace_id, name)
+);
+"""
+
+
+def build_mcp_approval_queue_schema(a: DatabaseAdapter) -> str:
+    ts = a.timestamp_type()
+    return f"""\
+CREATE TABLE IF NOT EXISTS mcp_approval_queue (
+    id TEXT PRIMARY KEY,
+    namespace_id INTEGER NOT NULL DEFAULT 1 REFERENCES namespaces(id),
+    tool_name TEXT NOT NULL,
+    arguments_hash TEXT NOT NULL,
+    arguments_preview TEXT NOT NULL DEFAULT '',
+    server_id TEXT NOT NULL DEFAULT '',
+    session_id TEXT NOT NULL DEFAULT '',
+    identity TEXT NOT NULL DEFAULT '',
+    policy_name TEXT NOT NULL,
+    risk_level TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'pending',
+    requested_at {ts} NOT NULL,
+    decided_at {ts},
+    decided_by TEXT,
+    decision_reason TEXT NOT NULL DEFAULT '',
+    expires_at {ts} NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_approval_status ON mcp_approval_queue(status, requested_at);
+"""
+
+
+def build_mcp_tool_risk_schema(a: DatabaseAdapter) -> str:
+    ts = a.timestamp_type()
+    return f"""\
+CREATE TABLE IF NOT EXISTS mcp_tool_risk (
+    namespace_id INTEGER NOT NULL DEFAULT 1 REFERENCES namespaces(id),
+    tool_name TEXT NOT NULL,
+    server_id TEXT NOT NULL DEFAULT '',
+    risk_level TEXT NOT NULL,
+    auto_generated INTEGER NOT NULL DEFAULT 1,
+    override_by TEXT,
+    override_at {ts},
+    scores_json TEXT NOT NULL DEFAULT '{{}}',
+    PRIMARY KEY (namespace_id, tool_name, server_id)
+);
+"""
+
+
 def build_all_schemas(adapter: DatabaseAdapter) -> str:
     """Build the complete community schema DDL for the given adapter.
 
@@ -396,5 +461,8 @@ def build_all_schemas(adapter: DatabaseAdapter) -> str:
             build_rule_analysis_schema(adapter),
             build_enrollment_schema(adapter),
             build_enrollment_tokens_schema(adapter),
+            build_mcp_tool_policies_schema(adapter),
+            build_mcp_approval_queue_schema(adapter),
+            build_mcp_tool_risk_schema(adapter),
         ]
     )

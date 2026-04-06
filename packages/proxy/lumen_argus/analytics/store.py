@@ -20,6 +20,7 @@ from lumen_argus.analytics.channels import ChannelsRepository
 from lumen_argus.analytics.config_overrides import ConfigOverridesRepository
 from lumen_argus.analytics.enrollment import EnrollmentRepository
 from lumen_argus.analytics.findings import FindingsRepository
+from lumen_argus.analytics.mcp_policies import MCPPoliciesRepository
 from lumen_argus.analytics.mcp_tool_lists import MCPToolListsRepository
 from lumen_argus.analytics.mcp_tool_tracking import MCPToolTrackingRepository
 from lumen_argus.analytics.rule_analysis_repo import RuleAnalysisRepository
@@ -63,6 +64,7 @@ class AnalyticsStore:
         self.rule_analysis = RuleAnalysisRepository(self._adapter)
         self.enrollment = EnrollmentRepository(self._adapter)
         self.mcp_tool_tracking = MCPToolTrackingRepository(self._adapter)
+        self.mcp_policies = MCPPoliciesRepository(self._adapter)
 
     def _ensure_db(self) -> None:
         """Create the database and schema if they don't exist."""

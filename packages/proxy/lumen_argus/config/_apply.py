@@ -213,6 +213,12 @@ def _apply_config(config: Config, data: dict[str, Any]) -> None:
             policies = mcp_data["tool_policies"]
             if isinstance(policies, list):
                 config.mcp.tool_policies = [p for p in policies if isinstance(p, dict)]
+        if "default_tool_action" in mcp_data:
+            config.mcp.default_tool_action = str(mcp_data["default_tool_action"])
+        if "enable_risk_classification" in mcp_data:
+            config.mcp.enable_risk_classification = bool(mcp_data["enable_risk_classification"])
+        if "approval_mode" in mcp_data:
+            config.mcp.approval_mode = str(mcp_data["approval_mode"])
         if "adaptive_enforcement" in mcp_data:
             ae = mcp_data["adaptive_enforcement"]
             if isinstance(ae, dict):

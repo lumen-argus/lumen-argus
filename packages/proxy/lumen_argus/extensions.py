@@ -86,6 +86,8 @@ class ExtensionRegistry:
         # MCP Pro hooks
         self._mcp_policy_engine: Any | None = None
         self._mcp_session_escalation: Callable[..., Any] | None = None
+        self._tool_policy_evaluator: Any | None = None
+        self._approval_gate: Any | None = None
         # Database adapter hook
         self._database_adapter: Any | None = None
         # Agent auth hook
@@ -446,6 +448,36 @@ class ExtensionRegistry:
 
     def get_mcp_session_escalation(self) -> Callable[..., Any] | None:
         return self._mcp_session_escalation
+
+    def set_tool_policy_evaluator(self, evaluator: object) -> None:
+        """Register Pro's tool policy evaluator for ABAC-style tool authorization.
+
+        Evaluator interface:
+          evaluator.evaluate(tool_name: str, arguments: dict, server_id: str, context: dict) -> PolicyDecision
+            Returns a PolicyDecision with action (allow/block/alert/approval),
+            matched policy name, reason, severity, and optional rate_limit/approval config.
+        """
+        self._tool_policy_evaluator = evaluator
+
+    def get_tool_policy_evaluator(self) -> Any | None:
+        return self._tool_policy_evaluator
+
+    def set_approval_gate(self, gate: object) -> None:
+        """Register Pro's approval gate for human-in-the-loop tool call authorization.
+
+        Gate interface:
+          gate.request_approval(tool_name, arguments, server_id, session_id,
+                                identity, client_name, policy) -> ApprovalDecision
+            Suspends the tool call and waits for admin decision (within timeout).
+            Returns ApprovalDecision with status (approved/denied/expired).
+
+          gate.decide(approval_id: str, status: str, decided_by: str, reason: str) -> bool
+            Records an admin decision for a pending approval.
+        """
+        self._approval_gate = gate
+
+    def get_approval_gate(self) -> Any | None:
+        return self._approval_gate
 
     def set_rule_metrics_collector(self, collector: object) -> None:
         """Register a rule metrics collector for Pro performance dashboard.

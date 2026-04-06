@@ -111,6 +111,12 @@ class MCPConfig:
     unknown_tool_action: str = "warn"  # warn|block
     # Pro: policy rules for tool call validation
     tool_policies: list[dict[str, Any]] = field(default_factory=list)
+    # Pro: default action for unmatched tool calls (allow|alert|block)
+    default_tool_action: str = "allow"
+    # Pro: auto-categorize tools by risk level
+    enable_risk_classification: bool = False
+    # Pro: approval channel (dashboard|webhook|cli)
+    approval_mode: str = "dashboard"
     # Pro: adaptive enforcement config
     adaptive_enforcement: AdaptiveEnforcementConfig = field(default_factory=AdaptiveEnforcementConfig)
     # Pro: custom chain detection patterns

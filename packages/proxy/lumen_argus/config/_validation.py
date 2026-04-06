@@ -438,6 +438,9 @@ def _validate_config(data: dict[str, Any], source: str) -> list[str]:
             "session_binding",
             "unknown_tool_action",
             "tool_policies",
+            "default_tool_action",
+            "enable_risk_classification",
+            "approval_mode",
             "adaptive_enforcement",
             "chain_signatures",
         }
@@ -447,6 +450,8 @@ def _validate_config(data: dict[str, Any], source: str) -> list[str]:
             "unsolicited_response_action": {"warn", "block"},
             "drift_action": {"alert", "block"},
             "unknown_tool_action": {"warn", "block"},
+            "default_tool_action": {"allow", "alert", "block", "approval"},
+            "approval_mode": {"dashboard", "webhook", "cli"},
         }
         for action_key, valid_vals in _mcp_action_values.items():
             if action_key in mcp:

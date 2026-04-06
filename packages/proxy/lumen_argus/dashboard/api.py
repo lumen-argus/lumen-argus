@@ -256,6 +256,17 @@ def _dispatch_api(
             },
         )
 
+    # MCP tool policies, approvals, and risk classification (Pro)
+    if path.startswith(("/api/v1/mcp/policies", "/api/v1/mcp/approvals", "/api/v1/mcp/risk")):
+        return json_response(
+            402,
+            {
+                "error": "pro_required",
+                "message": "MCP tool policies require a Pro license",
+                "upgrade_url": "https://lumen-argus.com/pro",
+            },
+        )
+
     if method in ("POST", "PUT", "DELETE"):
         for prefix in _PRO_ENDPOINTS:
             if path.startswith(prefix):
