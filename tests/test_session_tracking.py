@@ -672,5 +672,153 @@ class TestRealClaudeCodeFormat(unittest.TestCase):
         self.assertEqual(ctx.os_platform, "darwin")
 
 
+# --- Agent relay trusted headers ---
+
+
+class TestTrustedAgentHeaders(unittest.TestCase):
+    """X-Lumen-* headers from authenticated agent relay."""
+
+    def test_trusted_agent_headers_populate_context(self):
+        """Trusted agent relay headers override system prompt extraction."""
+        data = {
+            "system": "Primary working directory: /from-system-prompt\nCurrent branch: sp-branch\nPlatform: linux",
+            "messages": [{"role": "user", "content": "hello"}],
+        }
+        headers = {
+            "x-lumen-argus-working-dir": "/from-agent-relay",
+            "x-lumen-argus-git-branch": "agent-branch",
+            "x-lumen-argus-os-platform": "darwin",
+            "x-lumen-argus-device-id": "mac_abc123",
+            "x-lumen-argus-hostname": "macbook-pro",
+            "x-lumen-argus-username": "slim",
+        }
+        ctx = _extract_session(data, "anthropic", headers, "10.0.0.1", trusted_agent=True)
+
+        # Agent relay headers take priority over system prompt
+        self.assertEqual(ctx.working_directory, "/from-agent-relay")
+        self.assertEqual(ctx.git_branch, "agent-branch")
+        self.assertEqual(ctx.os_platform, "darwin")
+        self.assertEqual(ctx.device_id, "mac_abc123")
+        self.assertEqual(ctx.hostname, "macbook-pro")
+        self.assertEqual(ctx.username, "slim")
+
+    def test_untrusted_ignores_lumen_headers(self):
+        """Untrusted requests do NOT read X-Lumen-* headers."""
+        data = {
+            "system": "Primary working directory: /from-system-prompt\nPlatform: linux",
+            "messages": [{"role": "user", "content": "hello"}],
+        }
+        headers = {
+            "x-lumen-argus-working-dir": "/spoofed",
+            "x-lumen-argus-hostname": "evil-host",
+            "x-lumen-argus-username": "attacker",
+        }
+        ctx = _extract_session(data, "anthropic", headers, "10.0.0.1", trusted_agent=False)
+
+        # System prompt extraction used instead
+        self.assertEqual(ctx.working_directory, "/from-system-prompt")
+        self.assertEqual(ctx.os_platform, "linux")
+        # Agent-only fields remain empty
+        self.assertEqual(ctx.hostname, "")
+        self.assertEqual(ctx.username, "")
+
+    def test_trusted_fallback_to_system_prompt(self):
+        """Trusted agent with empty headers falls back to system prompt."""
+        data = {
+            "system": "Primary working directory: /from-sp\nCurrent branch: sp-main",
+            "messages": [{"role": "user", "content": "hello"}],
+        }
+        headers = {
+            # Agent headers empty
+            "x-lumen-argus-working-dir": "",
+            "x-lumen-argus-git-branch": "",
+        }
+        ctx = _extract_session(data, "anthropic", headers, "10.0.0.1", trusted_agent=True)
+
+        # Falls back to system prompt
+        self.assertEqual(ctx.working_directory, "/from-sp")
+        self.assertEqual(ctx.git_branch, "sp-main")
+
+    def test_trusted_partial_headers(self):
+        """Trusted agent with some headers uses those, falls back for rest."""
+        data = {
+            "system": "Primary working directory: /from-sp\nCurrent branch: sp-branch\nPlatform: linux",
+            "messages": [{"role": "user", "content": "hello"}],
+        }
+        headers = {
+            "x-lumen-argus-working-dir": "/from-relay",
+            # git_branch and os_platform not set — should fall back
+        }
+        ctx = _extract_session(data, "anthropic", headers, "10.0.0.1", trusted_agent=True)
+
+        self.assertEqual(ctx.working_directory, "/from-relay")
+        self.assertEqual(ctx.git_branch, "sp-branch")  # fallback
+        self.assertEqual(ctx.os_platform, "linux")  # fallback
+
+    def test_hostname_username_in_session_context(self):
+        """New hostname/username fields exist on SessionContext."""
+        ctx = SessionContext(hostname="my-machine", username="dev-user")
+        self.assertEqual(ctx.hostname, "my-machine")
+        self.assertEqual(ctx.username, "dev-user")
+
+    def test_hostname_username_in_audit_entry(self):
+        """New hostname/username fields included in AuditEntry serialization."""
+        entry = AuditEntry(
+            timestamp="t",
+            request_id=1,
+            provider="anthropic",
+            model="opus",
+            endpoint="/",
+            action="alert",
+            hostname="my-host",
+            username="my-user",
+        )
+        d = entry.to_dict()
+        self.assertEqual(d["hostname"], "my-host")
+        self.assertEqual(d["username"], "my-user")
+
+    def test_empty_hostname_username_omitted_from_audit(self):
+        """Empty hostname/username not included in AuditEntry serialization."""
+        entry = AuditEntry(
+            timestamp="t",
+            request_id=1,
+            provider="anthropic",
+            model="opus",
+            endpoint="/",
+            action="alert",
+        )
+        d = entry.to_dict()
+        self.assertNotIn("hostname", d)
+        self.assertNotIn("username", d)
+
+
+class TestAnalyticsStoreHostnameUsername(StoreTestCase):
+    """Test hostname and username storage in findings."""
+
+    def test_record_with_hostname_username(self):
+        session = SessionContext(
+            session_id="sess-1",
+            hostname="macbook-pro",
+            username="slim",
+            working_directory="/dev/proj",
+        )
+        f = Finding(
+            detector="secrets",
+            type="aws_access_key",
+            severity="critical",
+            location="messages[0].content",
+            value_preview="AKIA****",
+            matched_value="AKIAIOSFODNN7EXAMPLE",
+            action="alert",
+        )
+        self.store.record_findings([f], provider="anthropic", session=session)
+        rows, total = self.store.get_findings_page()
+        self.assertEqual(total, 1)
+        r = rows[0]
+        self.assertEqual(r["hostname"], "macbook-pro")
+        self.assertEqual(r["username"], "slim")
+        self.assertEqual(r["working_directory"], "/dev/proj")
+
+
 if __name__ == "__main__":
     unittest.main()

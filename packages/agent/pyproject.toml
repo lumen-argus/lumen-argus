@@ -27,6 +27,7 @@ classifiers = [
 
 dependencies = [
     "lumen-argus-core",
+    "aiohttp>=3.9",
 ]
 
 [project.scripts]

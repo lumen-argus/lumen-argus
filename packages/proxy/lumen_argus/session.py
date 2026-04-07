@@ -159,9 +159,20 @@ def _derive_session_fingerprint(data: dict[str, Any], provider: str) -> str:
 
 
 def extract_session(
-    req_data: Any, provider: str, headers: dict[str, str], source_ip: str, *, hmac_key: bytes = b""
+    req_data: Any,
+    provider: str,
+    headers: dict[str, str],
+    source_ip: str,
+    *,
+    hmac_key: bytes = b"",
+    trusted_agent: bool = False,
 ) -> SessionContext:
     """Extract session identity from request headers and body metadata.
+
+    Identity priority chain:
+    1. Agent relay headers (X-Lumen-*) — OS-level, trusted only
+    2. System prompt extraction — regex, works for Claude Code / Cursor
+    3. Derived session fingerprint — hash of first messages (fallback)
 
     Args:
         req_data: Pre-parsed request body (dict, non-dict, or None).
@@ -169,12 +180,23 @@ def extract_session(
         headers: Lowercased HTTP headers dict.
         source_ip: Client IP address (from request.remote).
         hmac_key: HMAC key for API key fingerprinting.
+        trusted_agent: True when request is from an authenticated agent relay.
+            Only trusted requests may supply X-Lumen-* identity headers.
 
     Returns:
         SessionContext with all extractable identity, environment, and
         project context fields populated.
     """
     ctx = SessionContext()
+
+    # --- Layer 1: Agent relay headers (trusted only) ---
+    if trusted_agent:
+        ctx.working_directory = headers.get("x-lumen-argus-working-dir", "")[:512]
+        ctx.git_branch = headers.get("x-lumen-argus-git-branch", "")[:256]
+        ctx.os_platform = headers.get("x-lumen-argus-os-platform", "")[:64]
+        ctx.device_id = headers.get("x-lumen-argus-device-id", "")[:256]
+        ctx.hostname = headers.get("x-lumen-argus-hostname", "")[:256]
+        ctx.username = headers.get("x-lumen-argus-username", "")[:256]
 
     # Source IP (X-Forwarded-For first, fallback to client address)
     xff = headers.get("x-forwarded-for", "")
@@ -219,7 +241,8 @@ def extract_session(
                     log.debug("metadata.user_id looks like JSON but failed to parse")
             if isinstance(user_id, dict):
                 ctx.account_id = str(user_id.get("account_uuid", ""))[:256]
-                ctx.device_id = str(user_id.get("device_id", ""))[:256]
+                if not ctx.device_id:
+                    ctx.device_id = str(user_id.get("device_id", ""))[:256]
                 if not ctx.session_id:
                     meta_sess = str(user_id.get("session_id", ""))[:256]
                     if meta_sess:
@@ -232,10 +255,13 @@ def extract_session(
         if user:
             ctx.account_id = str(user)[:256]
 
-    # --- From system prompt ---
-    ctx.working_directory = _extract_working_directory(req_data, provider)
-    ctx.git_branch = _extract_system_field(req_data, provider, _GIT_BRANCH_PATTERNS)
-    ctx.os_platform = _extract_system_field(req_data, provider, _OS_PLATFORM_PATTERNS)
+    # --- Layer 2: System prompt extraction (fallback for empty fields) ---
+    if not ctx.working_directory:
+        ctx.working_directory = _extract_working_directory(req_data, provider)
+    if not ctx.git_branch:
+        ctx.git_branch = _extract_system_field(req_data, provider, _GIT_BRANCH_PATTERNS)
+    if not ctx.os_platform:
+        ctx.os_platform = _extract_system_field(req_data, provider, _OS_PLATFORM_PATTERNS)
 
     # --- Derived fingerprint (fallback when no session_id yet) ---
     if not ctx.session_id:

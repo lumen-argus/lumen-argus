@@ -87,6 +87,22 @@ def _build_parser() -> argparse.ArgumentParser:
     # heartbeat
     subparsers.add_parser("heartbeat", help="Send a single heartbeat to the central proxy")
 
+    # relay
+    relay_parser = subparsers.add_parser("relay", help="Start local forwarding proxy with identity enrichment")
+    relay_parser.add_argument("--port", type=int, default=8070, help="Listen port (default: 8070)")
+    relay_parser.add_argument("--host", type=str, default="127.0.0.1", help="Bind address (default: 127.0.0.1)")
+    relay_parser.add_argument(
+        "--upstream", type=str, default="", help="Proxy URL (default: from enrollment or http://localhost:8080)"
+    )
+    relay_parser.add_argument(
+        "--fail-mode",
+        type=str,
+        choices=["open", "closed"],
+        default="open",
+        help="Behavior when proxy unreachable (default: open)",
+    )
+    relay_parser.add_argument("--log-level", type=str, default="info", help="Log level (default: info)")
+
     return parser
 
 
@@ -390,6 +406,62 @@ def _run_enroll(args: argparse.Namespace) -> None:
         print("Heartbeat sent.")
 
 
+def _run_relay(args: argparse.Namespace) -> None:
+    import asyncio
+    import logging
+
+    level = getattr(logging, args.log_level.upper(), logging.INFO)
+    logging.basicConfig(
+        level=level,
+        format="%(levelname)-5s [%(name)s] %(message)s",
+    )
+
+    # Lazy import — aiohttp only loaded for relay command
+    from lumen_argus_agent.relay import RelayConfig, run_relay
+
+    # Resolve upstream URL: CLI flag > enrollment > default
+    upstream = args.upstream
+    if not upstream:
+        from lumen_argus_core.enrollment import load_enrollment
+
+        enrollment = load_enrollment()
+        if enrollment:
+            upstream = enrollment.get("proxy_url", "")
+    if not upstream:
+        upstream = "http://localhost:8080"
+
+    # Load enrollment identity
+    agent_id = ""
+    agent_token = ""
+    machine_id = ""
+    fail_mode = args.fail_mode
+    from lumen_argus_core.enrollment import load_enrollment
+
+    enrollment = load_enrollment()
+    if enrollment:
+        agent_id = enrollment.get("agent_id", "")
+        agent_token = enrollment.get("agent_token", "")
+        machine_id = enrollment.get("machine_id", "")
+        # Enrollment policy can override fail_mode
+        policy = enrollment.get("policy", {})
+        if isinstance(policy, dict) and "fail_mode" in policy:
+            policy_fm = policy["fail_mode"]
+            if policy_fm in ("open", "closed"):
+                fail_mode = policy_fm
+
+    config = RelayConfig(
+        bind=args.host,
+        port=args.port,
+        upstream_url=upstream,
+        fail_mode=fail_mode,
+        agent_id=agent_id,
+        agent_token=agent_token,
+        machine_id=machine_id,
+    )
+
+    asyncio.run(run_relay(config))
+
+
 def _run_heartbeat(_args: argparse.Namespace) -> None:
     from lumen_argus_core.enrollment import is_enrolled
     from lumen_argus_core.telemetry import send_heartbeat
@@ -426,6 +498,7 @@ def main() -> None:
         "watch": _run_watch,
         "enroll": _run_enroll,
         "heartbeat": _run_heartbeat,
+        "relay": _run_relay,
     }
 
     handler = handlers.get(args.command)

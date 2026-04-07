@@ -136,9 +136,28 @@ async def _do_forward(
         else:
             is_streaming = False
 
+        # Check if request comes from authenticated agent relay
+        trusted_agent = False
+        auth_provider = server.extensions.get_agent_auth_provider() if server.extensions else None
+        if auth_provider:
+            try:
+                agent_identity = await auth_provider.authenticate(headers_dict)
+                trusted_agent = agent_identity is not None
+            except Exception:
+                log.debug("#%d agent auth check failed", request_id, exc_info=True)
+
+        # Defense-in-depth: strip X-Lumen-* from unauthenticated headers_dict.
+        # Primary guard is the trusted_agent gate in extract_session() — this
+        # strip ensures no X-Lumen-* headers leak into headers_dict even if
+        # future code reads them outside the trusted_agent check.
+        if not trusted_agent:
+            headers_dict = {k: v for k, v in headers_dict.items() if not k.startswith("x-lumen-argus-")}
+
         # Extract session context
         source_ip = request.remote or ""
-        session = _extract_session(req_data, provider, headers_dict, source_ip, hmac_key=server.hmac_key)
+        session = _extract_session(
+            req_data, provider, headers_dict, source_ip, hmac_key=server.hmac_key, trusted_agent=trusted_agent
+        )
 
         # Scan request body
         scan_result = await scan_request_body(server, request_id, body, provider, model, session, span)
@@ -157,7 +176,7 @@ async def _do_forward(
         if block_resp is not None:
             return block_resp
 
-        # Build forwarding headers
+        # Build forwarding headers — strip hop-by-hop and X-Lumen-* (internal only)
         fwd_headers = {}
         for key, val in request.headers.items():
             lk = key.lower()
@@ -165,6 +184,8 @@ async def _do_forward(
                 continue
             if lk in ("host", "accept-encoding"):
                 continue
+            if lk.startswith("x-lumen-argus-"):
+                continue  # Internal relay headers — never forward to API providers
             if lk == "content-length":
                 fwd_headers[key] = str(len(body))
                 continue

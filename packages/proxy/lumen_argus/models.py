@@ -54,6 +54,10 @@ class SessionContext:
     git_branch: str = ""  # Current git branch from system prompt
     os_platform: str = ""  # OS from system prompt (darwin, linux, win32)
 
+    # Agent relay — WHICH MACHINE / WHO
+    hostname: str = ""  # Machine hostname (from agent relay X-Lumen-Argus-Hostname)
+    username: str = ""  # OS username (from agent relay X-Lumen-Argus-Username)
+
     # Client — HOW
     client_name: str = ""  # Normalized client ID from registry (e.g., "aider")
     client_version: str = ""  # Client version from User-Agent (e.g., "0.50.1")
@@ -124,6 +128,8 @@ class AuditEntry:
     working_directory: str = ""
     git_branch: str = ""
     os_platform: str = ""
+    hostname: str = ""
+    username: str = ""
     client_name: str = ""
     client_version: str = ""
 
@@ -163,6 +169,8 @@ class AuditEntry:
             "working_directory",
             "git_branch",
             "os_platform",
+            "hostname",
+            "username",
             "client_name",
             "client_version",
         ):

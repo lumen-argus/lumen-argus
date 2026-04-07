@@ -612,11 +612,15 @@ name = "lumen-argus-agent"
 version = "0.1.0"
 source = { editable = "packages/agent" }
 dependencies = [
+    { name = "aiohttp" },
     { name = "lumen-argus-core" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "lumen-argus-core", editable = "packages/core" }]
+requires-dist = [
+    { name = "aiohttp", specifier = ">=3.9" },
+    { name = "lumen-argus-core", editable = "packages/core" },
+]
 
 [[package]]
 name = "lumen-argus-core"

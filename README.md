@@ -44,7 +44,7 @@ lumen-argus sits between your AI tool and the provider, scanning every outbound 
 - **Proprietary code** detection (file patterns + keyword matching)
 - **< 50ms scanning overhead** for typical payloads
 - **Minimal dependencies** — PyYAML + aiohttp, everything else is stdlib
-- **Session tracking** — identify WHO, WHICH project, WHICH conversation per finding
+- **Session tracking** — identify WHO, WHICH project, WHICH conversation per finding. Agent relay enriches with OS-level identity (hostname, username, working directory via PID correlation)
 - **Cross-request dedup** — 3-layer dedup eliminates redundant scanning of conversation history
 - **Web dashboard** with real-time findings, charts, session filtering, and audit log
 - **Notification channels** — webhook, email, Slack, Teams, PagerDuty, OpsGenie, Jira
@@ -116,6 +116,16 @@ lumen-argus watch --install --auto-configure
 eval "$(lumen-argus detect --check-quiet 2>/dev/null)"
 # Or install automatically:
 lumen-argus setup  # offers to install the hook
+```
+
+**Agent relay** — local identity enrichment proxy (recommended for multi-agent setups):
+
+```bash
+# Start local relay — enriches requests with working directory, hostname, user
+lumen-argus-agent relay --upstream http://proxy:8080
+
+# AI tools connect to relay, not proxy directly
+ANTHROPIC_BASE_URL=http://localhost:8070 claude
 ```
 
 **Fault-isolated mode** (relay + engine):

@@ -62,6 +62,8 @@ CREATE TABLE IF NOT EXISTS findings (
     working_directory TEXT NOT NULL DEFAULT '',
     git_branch TEXT NOT NULL DEFAULT '',
     os_platform TEXT NOT NULL DEFAULT '',
+    hostname TEXT NOT NULL DEFAULT '',
+    username TEXT NOT NULL DEFAULT '',
     client_name TEXT NOT NULL DEFAULT '',
     client_version TEXT NOT NULL DEFAULT '',
     api_key_hash TEXT NOT NULL DEFAULT '',
