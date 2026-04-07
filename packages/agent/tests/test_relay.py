@@ -470,5 +470,80 @@ class TestRelayStateFile(unittest.TestCase):
         self.assertFalse(os.path.exists(relay_mod._RELAY_STATE_PATH))
 
 
+class TestReloadEnrollmentConfig(unittest.TestCase):
+    """SIGHUP enrollment reload."""
+
+    def test_updates_token(self):
+        from unittest.mock import patch
+
+        from lumen_argus_agent.relay import AgentRelay, _reload_enrollment_config
+
+        config = RelayConfig(agent_token="old_token", fail_mode="open")
+        relay = AgentRelay(config)
+
+        enrollment = {"agent_token": "new_token", "policy": {}}
+        with patch("lumen_argus_core.enrollment.load_enrollment", return_value=enrollment):
+            _reload_enrollment_config(relay)
+
+        self.assertEqual(relay.config.agent_token, "new_token")
+
+    def test_updates_fail_mode(self):
+        from unittest.mock import patch
+
+        from lumen_argus_agent.relay import AgentRelay, _reload_enrollment_config
+
+        config = RelayConfig(fail_mode="open")
+        relay = AgentRelay(config)
+
+        enrollment = {"policy": {"fail_mode": "closed"}}
+        with patch("lumen_argus_core.enrollment.load_enrollment", return_value=enrollment):
+            _reload_enrollment_config(relay)
+
+        self.assertEqual(relay.config.fail_mode, "closed")
+
+    def test_updates_privacy_flags(self):
+        from unittest.mock import patch
+
+        from lumen_argus_agent.relay import AgentRelay, _reload_enrollment_config
+
+        config = RelayConfig(send_username=True, send_hostname=True)
+        relay = AgentRelay(config)
+
+        enrollment = {"policy": {"relay_send_username": False, "relay_send_hostname": False}}
+        with patch("lumen_argus_core.enrollment.load_enrollment", return_value=enrollment):
+            _reload_enrollment_config(relay)
+
+        self.assertFalse(relay.config.send_username)
+        self.assertFalse(relay.config.send_hostname)
+
+    def test_no_enrollment_no_change(self):
+        from unittest.mock import patch
+
+        from lumen_argus_agent.relay import AgentRelay, _reload_enrollment_config
+
+        config = RelayConfig(agent_token="keep", fail_mode="open")
+        relay = AgentRelay(config)
+
+        with patch("lumen_argus_core.enrollment.load_enrollment", return_value=None):
+            _reload_enrollment_config(relay)
+
+        self.assertEqual(relay.config.agent_token, "keep")
+        self.assertEqual(relay.config.fail_mode, "open")
+
+    def test_ignores_invalid_fail_mode(self):
+        from unittest.mock import patch
+
+        from lumen_argus_agent.relay import AgentRelay, _reload_enrollment_config
+
+        config = RelayConfig(fail_mode="open")
+        relay = AgentRelay(config)
+
+        enrollment = {"policy": {"fail_mode": "invalid"}}
+        with patch("lumen_argus_core.enrollment.load_enrollment", return_value=enrollment):
+            _reload_enrollment_config(relay)
+
+        self.assertEqual(relay.config.fail_mode, "open")
+
+
 if __name__ == "__main__":
     unittest.main()

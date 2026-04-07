@@ -546,6 +546,47 @@ def _pid_alive(pid: int) -> bool:
 # ---------------------------------------------------------------------------
 
 
+def _reload_enrollment_config(relay: AgentRelay) -> None:
+    """Reload enrollment config and update relay settings.
+
+    Called on SIGHUP to pick up rotated tokens, fail_mode changes,
+    and privacy flag updates without restarting.
+    """
+    from lumen_argus_core.enrollment import load_enrollment
+
+    enrollment = load_enrollment()
+    if not enrollment:
+        log.info("sighup reload: no enrollment found, config unchanged")
+        return
+
+    config = relay.config
+    changed: list[str] = []
+
+    new_token = enrollment.get("agent_token", "")
+    if new_token and new_token != config.agent_token:
+        config.agent_token = new_token
+        changed.append("agent_token")
+
+    policy = enrollment.get("policy", {})
+    if isinstance(policy, dict):
+        fm = policy.get("fail_mode", "")
+        if fm in ("open", "closed") and fm != config.fail_mode:
+            config.fail_mode = fm
+            changed.append("fail_mode=%s" % fm)
+
+        for flag_name, attr in (("relay_send_username", "send_username"), ("relay_send_hostname", "send_hostname")):
+            if flag_name in policy:
+                new_val = bool(policy[flag_name])
+                if new_val != getattr(config, attr):
+                    setattr(config, attr, new_val)
+                    changed.append("%s=%s" % (attr, new_val))
+
+    if changed:
+        log.info("sighup reload: updated %s", ", ".join(changed))
+    else:
+        log.info("sighup reload: no changes detected")
+
+
 async def run_relay(config: RelayConfig) -> None:
     """Start the relay and run until interrupted."""
     relay = AgentRelay(config)
@@ -559,10 +600,15 @@ async def run_relay(config: RelayConfig) -> None:
         log.info("shutdown signal received")
         stop_event.set()
 
+    def _sighup_handler() -> None:
+        log.info("sighup received — reloading enrollment config")
+        _reload_enrollment_config(relay)
+
     import signal
 
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, _signal_handler)
+    loop.add_signal_handler(signal.SIGHUP, _sighup_handler)
 
     await stop_event.wait()
 
