@@ -362,11 +362,16 @@ Session/conversation identity extracted from each request. Populated by the prox
 | `session_id` | `str` | Provider metadata or derived `fp:<hash>` | Conversation identifier (WHICH CHAT) |
 | `device_id` | `str` | Anthropic `metadata.user_id.device_id` | Machine identifier (WHICH MACHINE) |
 | `source_ip` | `str` | `X-Forwarded-For` or `client_address` | Client IP (WHERE) |
-| `working_directory` | `str` | System prompt: `Primary working directory:` | Project path (WHAT PROJECT) |
-| `git_branch` | `str` | System prompt: `Current branch:` | Git branch |
-| `os_platform` | `str` | System prompt: `Platform:` | OS (darwin, linux, win32) |
+| `working_directory` | `str` | Agent relay `X-Lumen-Argus-Working-Dir` or system prompt | Project path (WHAT PROJECT) |
+| `git_branch` | `str` | Agent relay `X-Lumen-Argus-Git-Branch` or system prompt | Git branch |
+| `os_platform` | `str` | Agent relay `X-Lumen-Argus-OS-Platform` or system prompt | OS (darwin, linux, win32) |
+| `hostname` | `str` | Agent relay `X-Lumen-Argus-Hostname` | Machine hostname (WHICH MACHINE) |
+| `username` | `str` | Agent relay `X-Lumen-Argus-Username` | OS username (WHO) |
 | `client_name` | `str` | Client registry (`identify_client()`) | Normalized client ID (e.g., "cursor", "aider") |
 | `client_version` | `str` | Parsed from `User-Agent` token | Client version (e.g., "0.45.1") |
+
+!!! tip "Identity priority chain"
+    Session fields are populated using a priority chain: (1) **Agent relay headers** (`X-Lumen-Argus-*`) from authenticated agents — OS-level, most reliable. (2) **System prompt extraction** via regex — works for Claude Code, Cursor. (3) **Derived session fingerprint** — hash of first messages (fallback). The proxy only trusts `X-Lumen-Argus-*` headers from authenticated agent relays; unauthenticated requests have these headers stripped.
 
 !!! note "Claude Code metadata parsing"
     Claude Code sends `metadata.user_id` as a JSON-encoded string: `'{"device_id":"...","account_uuid":"...","session_id":"..."}'`. The proxy detects strings starting with `{`, parses with `json.loads()`, and extracts individual fields.
@@ -474,6 +479,49 @@ Extensions interact with the proxy through the `ExtensionRegistry`:
 - `get_auth_providers()` -- List registered auth providers
 - `get_channel_types()` / `get_notifier_builder()` / `get_dispatcher()` / `get_channel_limit()` -- Notification infrastructure
 - `get_health_hook()` / `get_metrics_hook()` / `get_trace_request_hook()` -- Observability hooks
+
+---
+
+## Agent Relay
+
+**Package:** `lumen_argus_agent` — **Modules:** `relay.py`, `context.py`
+
+The agent relay is a local forwarding proxy that runs on each workstation (`:8070`). It sits between AI coding tools and the lumen-argus proxy, enriching every request with OS-level identity headers before forwarding.
+
+### Architecture (CASB agent model)
+
+```
+AI Tool → Agent Relay (:8070) → Proxy (:8080) → API Provider
+              |
+              +-- Enriches with X-Lumen-Argus-* headers:
+                  Working-Dir, Git-Branch, OS-Platform,
+                  Hostname, Username, Client-PID,
+                  Agent-Id, Device-Id
+```
+
+### Context resolution
+
+The relay resolves caller context from OS-level APIs, not from system prompt regex:
+
+| Method | macOS | Linux |
+|--------|-------|-------|
+| **PID lookup** | `lsof -i TCP:{port} -FpPn` — match source port from connection name | `/proc/net/tcp` inode → `/proc/{pid}/fd/` symlink scan |
+| **Working directory** | `lsof -p {pid} -Fn -d cwd` | `/proc/{pid}/cwd` readlink |
+| **Executable** | `ps -p {pid} -o comm=` | `/proc/{pid}/exe` readlink |
+| **Git branch** | `git -C {cwd} rev-parse --abbrev-ref HEAD` | Same |
+
+Falls back to static machine context (hostname, username, OS) when PID resolution fails.
+
+### Fail modes
+
+| Mode | Behavior when proxy unreachable |
+|------|--------------------------------|
+| `open` (default) | Forward directly to API provider — no scanning, warning logged |
+| `closed` | Return HTTP 503 — request blocked |
+
+### Trust model
+
+The proxy only reads `X-Lumen-Argus-*` headers from authenticated agents (via `AgentAuthProvider`). Unauthenticated requests have these headers stripped before session extraction and before forwarding to upstream API providers.
 
 ---
 

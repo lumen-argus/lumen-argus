@@ -465,6 +465,36 @@ lumen-argus-agent heartbeat
 
 Reports: agent version, installed tools, proxy configuration status, protection state, watch daemon status. Used by the tray app and cron jobs for fleet monitoring.
 
+### `relay`
+
+Start the local forwarding proxy with OS-level identity enrichment. AI tools connect to the relay, which enriches requests with `X-Lumen-Argus-*` headers and forwards to the upstream proxy.
+
+```bash
+lumen-argus-agent relay [OPTIONS]
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--port` | `int` | `8070` | Listen port |
+| `--host` | `str` | `127.0.0.1` | Bind address |
+| `--upstream` | `str` | from enrollment or `http://localhost:8080` | Upstream proxy URL |
+| `--fail-mode` | `str` | `open` | Behavior when proxy unreachable: `open` (pass-through) or `closed` (block) |
+| `--log-level` | `str` | `info` | Log level |
+
+```bash
+# Start relay with defaults (localhost:8070 → proxy:8080)
+lumen-argus-agent relay
+
+# Custom upstream and fail-closed
+lumen-argus-agent relay --upstream http://proxy-server:8080 --fail-mode closed
+
+# Configure AI tools to use relay
+ANTHROPIC_BASE_URL=http://localhost:8070 claude
+OPENAI_BASE_URL=http://localhost:8070 opencode
+```
+
+The relay resolves caller identity from OS-level APIs (process working directory, git branch, hostname, username) and injects `X-Lumen-Argus-*` headers into every forwarded request. The proxy reads these headers from authenticated agents to attribute findings to specific agent instances.
+
 ---
 
 ## Configuration precedence
