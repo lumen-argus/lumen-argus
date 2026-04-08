@@ -212,8 +212,8 @@ def extract_session(
             api_key = api_key[7:]
         ctx.api_key_hash = hmac.new(hmac_key, api_key.encode(), hashlib.sha256).hexdigest()[:16]
 
-    # Client tool identification from User-Agent
-    client_id, _, version, _ = identify_client(headers.get("user-agent", ""))
+    # Client tool identification from User-Agent + secondary header detection
+    client_id, _, version, _ = identify_client(headers.get("user-agent", ""), headers)
     ctx.client_name = client_id
     ctx.client_version = version
 

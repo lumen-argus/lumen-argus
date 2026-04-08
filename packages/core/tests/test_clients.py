@@ -162,6 +162,31 @@ class TestIdentifyClient(unittest.TestCase):
         self.assertEqual(name, "OpenCode")
         self.assertEqual(ver, "0.5.0")
 
+    def test_opencode_via_ai_sdk_header(self):
+        """OpenCode's AI SDK overwrites User-Agent; detect via x-session-affinity."""
+        cid, name, _ver, raw = identify_client(
+            "ai-sdk/openai/3.0.48",
+            headers={"x-session-affinity": "sess-123"},
+        )
+        self.assertEqual(cid, "opencode")
+        self.assertEqual(name, "OpenCode")
+        self.assertEqual(raw, "ai-sdk/openai/3.0.48")
+
+    def test_ai_sdk_without_affinity_not_opencode(self):
+        """ai-sdk User-Agent without x-session-affinity is not identified as OpenCode."""
+        cid, name, _, _ = identify_client("ai-sdk/openai/3.0.48", headers={})
+        self.assertEqual(cid, "ai-sdk/openai/3.0.48")
+        self.assertNotEqual(name, "OpenCode")
+
+    def test_non_ai_sdk_with_affinity_not_opencode(self):
+        """Non-ai-sdk UA with x-session-affinity should not be identified as OpenCode."""
+        cid, name, _, _ = identify_client(
+            "my-custom-tool/1.0",
+            headers={"x-session-affinity": "sess-123"},
+        )
+        self.assertEqual(cid, "my-custom-tool/1.0")
+        self.assertNotEqual(name, "OpenCode")
+
     def test_gemini_cli(self):
         cid, name, ver, _ = identify_client("GeminiCLI/0.35.3")
         self.assertEqual(cid, "gemini_cli")

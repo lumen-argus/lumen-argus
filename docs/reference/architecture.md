@@ -392,11 +392,14 @@ Session/conversation identity extracted from each request. Populated by the prox
 | `os_platform` | `str` | Agent relay `X-Lumen-Argus-OS-Platform` or system prompt | OS (darwin, linux, win32) |
 | `hostname` | `str` | Agent relay `X-Lumen-Argus-Hostname` | Machine hostname (WHICH MACHINE) |
 | `username` | `str` | Agent relay `X-Lumen-Argus-Username` | OS username (WHO) |
-| `client_name` | `str` | Client registry (`identify_client()`) | Normalized client ID (e.g., "cursor", "aider") |
+| `client_name` | `str` | Client registry (`identify_client()`) | Normalized client ID (e.g., "cursor", "aider", "opencode") |
 | `client_version` | `str` | Parsed from `User-Agent` token | Client version (e.g., "0.45.1") |
 
 !!! tip "Identity priority chain"
-    Session fields are populated using a priority chain: (1) **Agent relay headers** (`X-Lumen-Argus-*`) from authenticated agents — OS-level, most reliable. (2) **System prompt extraction** via regex — works for Claude Code, Cursor. (3) **Derived session fingerprint** — hash of first messages (fallback). The proxy only trusts `X-Lumen-Argus-*` headers from authenticated agent relays; unauthenticated requests have these headers stripped.
+    Session fields are populated using a priority chain: (1) **Agent relay headers** (`X-Lumen-Argus-*`) from authenticated agents — OS-level, most reliable. (2) **System prompt extraction** via regex — works for Claude Code, OpenCode, Cursor. (3) **Derived session fingerprint** — hash of first messages (fallback). The proxy only trusts `X-Lumen-Argus-*` headers from authenticated agent relays; unauthenticated requests have these headers stripped.
+
+!!! note "OpenCode client detection"
+    OpenCode's Vercel AI SDK overwrites the `User-Agent` with `ai-sdk/openai` or `ai-sdk/anthropic`, hiding the `opencode/` token. The proxy uses secondary detection: the `x-session-affinity` header (always set by OpenCode for non-hosted providers) identifies the client as OpenCode when UA-based matching fails.
 
 !!! note "Claude Code metadata parsing"
     Claude Code sends `metadata.user_id` as a JSON-encoded string: `'{"device_id":"...","account_uuid":"...","session_id":"..."}'`. The proxy detects strings starting with `{`, parses with `json.loads()`, and extracts individual fields.

@@ -188,8 +188,10 @@ async def _do_forward(
             req_data, api_provider, headers_dict, source_ip, hmac_key=server.hmac_key, trusted_agent=trusted_agent
         )
 
-        # Scan request body
-        scan_result = await scan_request_body(server, request_id, body, api_provider, model, session, span)
+        # Scan request body — use upstream provider name (e.g. "opencode") so the
+        # correct provider is stored in findings.  The extractor auto-detects the
+        # API format (Anthropic vs OpenAI) from the body structure.
+        scan_result = await scan_request_body(server, request_id, body, provider, model, session, span)
 
         # MCP-aware scanning
         scan_result, _mcp_info, _mcp_method, mcp_block_resp = await scan_mcp_request(

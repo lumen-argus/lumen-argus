@@ -5,6 +5,7 @@ API request formats.
 """
 
 import json
+from collections.abc import Callable
 from typing import Any
 
 from lumen_argus.models import ScanField
@@ -36,8 +37,26 @@ class RequestExtractor:
             "openai": self._extract_openai,
             "gemini": self._extract_gemini,
         }
-        extractor = dispatch.get(provider, self._extract_generic)
-        return extractor(data)
+        if provider in dispatch:
+            return dispatch[provider](data)
+        # Auto-detect format from body structure for gateway providers
+        return self._detect_format(data)(data)
+
+    def _detect_format(self, data: dict[str, Any]) -> Callable[[dict[str, Any]], list[ScanField]]:
+        """Auto-detect request format from body structure.
+
+        Uses structural keys unique to each format:
+        - Anthropic: top-level ``"system"`` key
+        - Gemini: ``"systemInstruction"`` or ``"contents"``
+        - OpenAI: ``"messages"`` array (most gateway providers)
+        """
+        if "system" in data:
+            return self._extract_anthropic
+        if "systemInstruction" in data or "contents" in data:
+            return self._extract_gemini
+        if "messages" in data:
+            return self._extract_openai
+        return self._extract_generic
 
     def _extract_anthropic(self, data: dict[str, Any]) -> list[ScanField]:
         """Extract from Anthropic Messages API format."""

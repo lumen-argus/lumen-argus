@@ -576,8 +576,13 @@ def _parse_version(raw_token: str) -> str:
     return m.group(0) if m else after_slash
 
 
-def identify_client(user_agent: str, _headers: dict[str, str] | None = None) -> tuple[str, str, str, str]:
+def identify_client(user_agent: str, headers: dict[str, str] | None = None) -> tuple[str, str, str, str]:
     """Identify the AI CLI agent from request headers.
+
+    Primary detection uses User-Agent prefix matching against the
+    registry.  Secondary detection checks tool-specific headers when
+    the User-Agent is ambiguous (e.g., OpenCode sends ``ai-sdk/openai``
+    instead of ``opencode/`` due to Vercel AI SDK header override).
 
     Returns (client_id, display_name, version, raw_ua_token):
         - client_id: registry ID or raw token if no match
@@ -594,6 +599,16 @@ def identify_client(user_agent: str, _headers: dict[str, str] | None = None) -> 
     for prefix, client in _PREFIX_INDEX:
         if lower_token.startswith(prefix):
             return client.id, client.display_name, _parse_version(raw_token), raw_token
+
+    # Secondary detection via tool-specific headers.
+    # OpenCode's Vercel AI SDK overwrites the User-Agent with ai-sdk/<provider>,
+    # hiding the opencode/ token.  Detect via x-session-affinity header (always
+    # set by OpenCode for non-hosted providers) + ai-sdk/ UA prefix to reduce
+    # false positives from other Vercel AI SDK-based tools.
+    if headers and lower_token.startswith("ai-sdk/") and "x-session-affinity" in headers:
+        opencode = get_client_by_id("opencode")
+        if opencode:
+            return opencode.id, opencode.display_name, "", raw_token
 
     # No registry match — return raw token as ID/name
     return raw_token, raw_token, _parse_version(raw_token), raw_token
