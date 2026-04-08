@@ -23,7 +23,7 @@ log = logging.getLogger("argus.session")
 # ---------------------------------------------------------------------------
 
 _WORKDIR_PATTERNS = [
-    re.compile(r"Primary working directory:\s*(.+?)(?:\n|$)"),
+    re.compile(r"(?:Primary )?[Ww]orking directory:\s*(.+?)(?:\n|$)"),
     re.compile(r"You are working in:\s*(.+?)(?:\n|$)"),
     re.compile(r"(?:cwd|working_directory):\s*(.+?)(?:\n|$)", re.IGNORECASE),
 ]

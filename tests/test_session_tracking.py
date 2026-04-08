@@ -329,6 +329,27 @@ class TestWorkingDirectoryExtraction(unittest.TestCase):
         data = {"messages": [{"role": "system", "content": "cwd: /opt/proj"}]}
         self.assertEqual(_extract_working_directory(data, "openai"), "/opt/proj")
 
+    def test_opencode_env_block(self):
+        """OpenCode uses 'Working directory:' inside <env> tags."""
+        system = (
+            "You are powered by the model named minimax-m2.5-free.\n"
+            "<env>\n"
+            "  Working directory: /Users/slim/dev/myproject\n"
+            "  Workspace root folder: /Users/slim/dev/myproject\n"
+            "  Is directory a git repo: yes\n"
+            "  Platform: darwin\n"
+            "</env>"
+        )
+        # OpenCode Zen uses Anthropic messages format for some models
+        data = {"system": [{"type": "text", "text": system}], "messages": []}
+        self.assertEqual(_extract_working_directory(data, "anthropic"), "/Users/slim/dev/myproject")
+
+    def test_opencode_openai_format(self):
+        """OpenCode with OpenAI-format models."""
+        system = "<env>\n  Working directory: /home/user/project\n  Platform: linux\n</env>"
+        data = {"messages": [{"role": "system", "content": system}]}
+        self.assertEqual(_extract_working_directory(data, "openai"), "/home/user/project")
+
     def test_strips_quotes(self):
         data = {"system": 'Primary working directory: "/Users/dev/my project"', "messages": []}
         self.assertEqual(_extract_working_directory(data, "anthropic"), "/Users/dev/my project")
