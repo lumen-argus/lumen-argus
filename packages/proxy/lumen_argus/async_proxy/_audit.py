@@ -47,6 +47,8 @@ def _log_audit(
         working_directory=session.working_directory if session else "",
         git_branch=session.git_branch if session else "",
         os_platform=session.os_platform if session else "",
+        hostname=session.hostname if session else "",
+        username=session.username if session else "",
         client_name=session.client_name if session else "",
         client_version=session.client_version if session else "",
         client_type=session.client_type if session else "",
