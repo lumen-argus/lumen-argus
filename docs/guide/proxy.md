@@ -419,6 +419,85 @@ The relay adds `X-Request-ID: relay-N` and `X-Forwarded-For` headers when forwar
 
 ---
 
+## Forward Proxy Mode
+
+Some AI tools hardcode their API endpoints and don't support custom base URLs.
+For these tools, the agent provides a **forward proxy** mode that uses TLS
+interception (via mitmproxy) to scan traffic transparently.
+
+### How it works
+
+```
+AI Tool  →  HTTPS_PROXY=:9090  →  Agent (mitmproxy TLS intercept)
+                                       ↓ (decrypt + add identity headers)
+                                  Proxy (:8080) via /_forward
+                                       ↓ (scan + forward to original host)
+                                  api.individual.githubcopilot.com
+```
+
+The tool thinks it's talking directly to the API. The agent terminates TLS
+with a local CA certificate, inspects the request, enriches it with identity
+headers, and re-routes AI traffic to the proxy's `/_forward` endpoint. Non-AI
+hosts pass through without TLS interception.
+
+### Supported tools
+
+| Tool | Why forward proxy is needed |
+|------|---------------------------|
+| Copilot CLI (GitHub auth) | `COPILOT_PROVIDER_BASE_URL` activates BYOK mode and breaks GitHub authentication |
+
+### Setup
+
+```bash
+# Start agent with both reverse relay and forward proxy
+lumen-argus-agent relay --port 8070 --upstream http://proxy:8080 --forward-proxy-port 9090
+
+# View CA certificate path
+lumen-argus-agent forward-proxy ca-path
+
+# Install CA to system trust store (requires admin)
+sudo lumen-argus-agent forward-proxy install-ca
+
+# Generate tool aliases
+lumen-argus-agent forward-proxy aliases
+```
+
+### Tool-specific aliases
+
+Forward proxy uses shell aliases instead of global `HTTPS_PROXY` to avoid
+routing all terminal HTTPS traffic through the proxy:
+
+```bash
+# Added to ~/.zshrc (or via lumen-argus-agent forward-proxy aliases)
+source ~/.lumen-argus/forward-proxy-aliases.sh
+```
+
+The aliases file contains entries like:
+
+```bash
+alias copilot='HTTPS_PROXY=http://localhost:9090 NODE_EXTRA_CA_CERTS=~/.lumen-argus/ca/ca-cert.pem copilot'
+```
+
+Only the aliased tools route through the forward proxy. Other terminal tools
+(`curl`, `pip`, `brew`, `git`) are unaffected.
+
+### CA certificate
+
+The agent generates a CA certificate on first forward proxy start. The
+certificate is stored at `~/.lumen-argus/ca/ca-cert.pem` and must be trusted
+by the tool's runtime:
+
+- **Node.js tools** (Copilot CLI): `NODE_EXTRA_CA_CERTS` env var (set by alias)
+- **System-wide**: `sudo lumen-argus-agent forward-proxy install-ca`
+
+### Findings
+
+Forward proxy findings appear in the same findings table with
+`intercept_mode: forward`. All identity fields (hostname, username,
+working directory) are populated via PID resolution, same as reverse proxy.
+
+---
+
 ## Security Model
 
 !!! info "Localhost only"

@@ -70,6 +70,9 @@ class SessionContext:
     sdk_version: str = ""  # SDK version (e.g., "3.0.64")
     runtime: str = ""  # Runtime and version (e.g., "bun/1.3.11", "node/22.0.0")
 
+    # Intercept mode — HOW CAPTURED
+    intercept_mode: str = "reverse"  # "reverse" (base URL) or "forward" (HTTPS_PROXY + TLS)
+
 
 @dataclass
 class ScanField:
@@ -146,6 +149,7 @@ class AuditEntry:
     sdk_name: str = ""
     sdk_version: str = ""
     runtime: str = ""
+    intercept_mode: str = "reverse"
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize for JSONL output. Never includes matched_value."""
@@ -197,4 +201,7 @@ class AuditEntry:
             val = getattr(self, key, "")
             if val:
                 d[key] = val
+        # intercept_mode: only include when not the default "reverse"
+        if self.intercept_mode and self.intercept_mode != "reverse":
+            d["intercept_mode"] = self.intercept_mode
         return d

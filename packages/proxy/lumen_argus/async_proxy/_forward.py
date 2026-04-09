@@ -29,6 +29,22 @@ from lumen_argus.session import extract_session as _extract_session
 
 log = logging.getLogger("argus.proxy")
 
+# Host → provider mapping for forward proxy requests.
+_HOST_PROVIDER_MAP: dict[str, str] = {
+    "api.individual.githubcopilot.com": "copilot",
+    "api.business.githubcopilot.com": "copilot",
+    "copilot-proxy.githubusercontent.com": "copilot",
+    "api.anthropic.com": "anthropic",
+    "api.openai.com": "openai",
+    "generativelanguage.googleapis.com": "gemini",
+    "app.warp.dev": "warp",
+}
+
+
+def _derive_provider_from_host(host: str) -> str:
+    """Derive provider name from the original destination host."""
+    return _HOST_PROVIDER_MAP.get(host, host.split(".")[0])
+
 
 async def _handle_request(request: web.Request) -> web.StreamResponse:
     """Main request handler: read -> scan -> forward or block."""
@@ -98,6 +114,14 @@ async def _do_forward(
     session = SessionContext()
     scan_result = ScanResult()
 
+    # Forward proxy mode: /_forward prefix means the request was re-routed
+    # by the agent's forward proxy (mitmproxy addon).  The original destination
+    # is in X-Lumen-Forward-* headers.
+    is_forward_proxy = False
+    forward_host = ""
+    forward_scheme = ""
+    forward_port = 0
+
     try:
         # Read request body
         body = await request.read()
@@ -107,26 +131,73 @@ async def _do_forward(
         # Detect provider and determine upstream
         headers_dict = {k.lower(): v for k, v in request.headers.items()}
 
-        # Named upstream routing: /_upstream/<name>/... → configured upstream
+        # Forward proxy routing: /_forward/... → original destination from headers
         inbound_path = path
-        named = server.router.resolve_named_upstream(path)
-        if named:
-            host, port, use_ssl, provider, path = named
-            # Named upstreams use OpenAI-compatible API format for session
-            # extraction (system prompt parsing, user field, fingerprinting).
-            # Keep the upstream name in provider for routing/audit, but use
-            # the API format provider for session context extraction.
+        if path.startswith("/_forward"):
+            forward_host = headers_dict.get("x-lumen-forward-host", "")
+            if not forward_host:
+                log.warning("#%d /_forward missing X-Lumen-Forward-Host", request_id)
+                return web.json_response(
+                    {"error": {"type": "proxy_error", "message": "Missing X-Lumen-Forward-Host header"}},
+                    status=400,
+                )
+            is_forward_proxy = True
+            forward_scheme = headers_dict.get("x-lumen-forward-scheme", "https")
+            forward_port_str = headers_dict.get("x-lumen-forward-port", "")
+            if forward_port_str:
+                try:
+                    forward_port = int(forward_port_str)
+                except ValueError:
+                    log.warning("#%d /_forward invalid port: %s", request_id, forward_port_str)
+                    return web.json_response(
+                        {"error": {"type": "proxy_error", "message": "Invalid X-Lumen-Forward-Port"}},
+                        status=400,
+                    )
+            else:
+                forward_port = 443 if forward_scheme == "https" else 80
+
+            # Strip /_forward prefix to get the real path
+            path = path[len("/_forward") :]
+            if not path:
+                path = "/"
+
+            host = forward_host
+            port = forward_port
+            use_ssl = forward_scheme == "https"
+            # Derive provider from host
+            provider = _derive_provider_from_host(forward_host)
             api_provider = server.router.detect_api_provider(path)
-        elif inbound_path.startswith("/_upstream/"):
-            # Named upstream requested but not configured — reject
-            log.warning("#%d unknown named upstream: %s", request_id, inbound_path)
-            return web.json_response(
-                {"error": {"type": "proxy_error", "message": "Unknown upstream provider"}},
-                status=502,
+            log.info(
+                "#%d forward proxy: %s://%s:%d%s (provider=%s)",
+                request_id,
+                forward_scheme,
+                forward_host,
+                forward_port,
+                path,
+                provider,
             )
+
+        # Named upstream routing: /_upstream/<name>/... → configured upstream
+        elif path.startswith("/_upstream/"):
+            named = server.router.resolve_named_upstream(path)
+            if named:
+                host, port, use_ssl, provider, path = named
+                api_provider = server.router.detect_api_provider(path)
+            else:
+                # Named upstream requested but not configured — reject
+                log.warning("#%d unknown named upstream: %s", request_id, inbound_path)
+                return web.json_response(
+                    {"error": {"type": "proxy_error", "message": "Unknown upstream provider"}},
+                    status=502,
+                )
         else:
-            host, port, use_ssl, provider = server.router.route(path, headers_dict)
-            api_provider = provider
+            named = server.router.resolve_named_upstream(path)
+            if named:
+                host, port, use_ssl, provider, path = named
+                api_provider = server.router.detect_api_provider(path)
+            else:
+                host, port, use_ssl, provider = server.router.route(path, headers_dict)
+                api_provider = provider
         log.debug(
             "#%d %s %s -> %s:%d (ssl=%s, provider=%s, %d bytes)",
             request_id,
@@ -188,6 +259,17 @@ async def _do_forward(
             req_data, api_provider, headers_dict, source_ip, hmac_key=server.hmac_key, trusted_agent=trusted_agent
         )
         session.api_format = api_provider
+        if is_forward_proxy:
+            session.intercept_mode = "forward"
+            # Security: only authenticated agents may use /_forward.
+            # Without this check, any local process could use the proxy as
+            # an SSRF relay to arbitrary hosts via X-Lumen-Forward-Host.
+            if not trusted_agent:
+                log.warning("#%d /_forward from unauthenticated client — rejected", request_id)
+                return web.json_response(
+                    {"error": {"type": "authentication_error", "message": "/_forward requires authenticated agent"}},
+                    status=403,
+                )
 
         # Scan request body — use upstream provider name (e.g. "opencode") so the
         # correct provider is stored in findings.  The extractor auto-detects the
@@ -216,8 +298,8 @@ async def _do_forward(
                 continue
             if lk in ("host", "accept-encoding"):
                 continue
-            if lk.startswith("x-lumen-argus-"):
-                continue  # Internal relay headers — never forward to API providers
+            if lk.startswith(("x-lumen-argus-", "x-lumen-forward-")):
+                continue  # Internal relay/forward headers — never forward to API providers
             if lk == "content-length":
                 fwd_headers[key] = str(len(body))
                 continue

@@ -142,6 +142,7 @@ class DetectedClient:
     proxy_config_location: str = ""
     proxy_config_type: str = ""
     setup_instructions: str = ""
+    forward_proxy: bool = False  # True if tool needs HTTPS_PROXY + TLS interception
     website: str = ""
     routing_active: bool = False
 

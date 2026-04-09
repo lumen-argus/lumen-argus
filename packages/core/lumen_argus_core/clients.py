@@ -57,6 +57,9 @@ class ProxyConfig:
     ide_settings_key: str = ""
     # Secondary configuration method (e.g., Aider also supports ANTHROPIC_BASE_URL)
     alt_config: ProxyConfig | None = None
+    # Forward proxy: True if this tool requires HTTPS_PROXY + TLS interception
+    # instead of (or in addition to) a base URL override.
+    forward_proxy: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -121,12 +124,12 @@ CLIENT_REGISTRY: list[ClientDef] = [
         proxy_config=ProxyConfig(
             config_type=ProxyConfigType.MANUAL,
             setup_instructions=(
-                "BYOK mode: set COPILOT_PROVIDER_BASE_URL to the proxy URL + "
-                "COPILOT_PROVIDER_API_KEY with your own API key. "
-                "Note: this disables GitHub auth and requires your own provider key. "
-                "GitHub license mode: use HTTPS_PROXY for forward proxy interception "
-                "(not yet supported by lumen-argus)."
+                "GitHub license mode: enable forward proxy in the tray app "
+                "(HTTPS_PROXY + TLS interception via mitmproxy). "
+                "BYOK mode: set COPILOT_PROVIDER_BASE_URL + COPILOT_PROVIDER_API_KEY "
+                "(disables GitHub auth, requires your own provider key)."
             ),
+            forward_proxy=True,
         ),
         website="https://github.com/features/copilot/cli",
         detect_binary=("copilot",),

@@ -481,6 +481,7 @@ def _detect_single_client(
             display_name=client.display_name,
             proxy_config_type=client.proxy_config.config_type.value,
             setup_instructions=client.proxy_config.setup_instructions,
+            forward_proxy=client.proxy_config.forward_proxy,
             website=client.website,
         )
 
@@ -518,6 +519,9 @@ def _detect_single_client(
             detected.proxy_configured = is_configured
 
     # MANUAL and UNSUPPORTED: proxy_configured stays False
+
+    # Forward proxy flag — propagate from client registry
+    detected.forward_proxy = pc.forward_proxy
 
     return detected
 

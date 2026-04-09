@@ -7,10 +7,12 @@ All business logic lives in lumen_argus_core — this is a thin CLI wrapper.
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
+import logging
 import platform
 import sys
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from lumen_argus_core.detect_models import DetectionReport, MCPDetectionReport
@@ -98,13 +100,44 @@ def _build_parser() -> argparse.ArgumentParser:
         "--fail-mode",
         type=str,
         choices=["open", "closed"],
-        default="open",
+        default=None,
         help="Behavior when proxy unreachable (default: open)",
     )
     relay_parser.add_argument("--log-level", type=str, default="info", help="Log level (default: info)")
     relay_parser.add_argument("--install", action="store_true", help="Install as system service (launchd/systemd)")
     relay_parser.add_argument("--uninstall", action="store_true", help="Remove system service")
     relay_parser.add_argument("--status", action="store_true", help="Show relay status")
+    relay_parser.add_argument(
+        "--forward-proxy-port",
+        type=int,
+        default=0,
+        help="Also start forward proxy on this port (TLS interception for tools without base URL support)",
+    )
+
+    # forward-proxy
+    fp_parser = subparsers.add_parser("forward-proxy", help="Forward proxy with TLS interception for AI tools")
+    fp_subparsers = fp_parser.add_subparsers(dest="fp_command")
+
+    # forward-proxy start
+    fp_start = fp_subparsers.add_parser("start", help="Start forward proxy")
+    fp_start.add_argument("--port", type=int, default=9090, help="Listen port (default: 9090)")
+    fp_start.add_argument("--host", type=str, default="127.0.0.1", help="Bind address (default: 127.0.0.1)")
+    fp_start.add_argument(
+        "--upstream", type=str, default="http://localhost:8080", help="Proxy URL (default: http://localhost:8080)"
+    )
+    fp_start.add_argument("--log-level", type=str, default="info", help="Log level (default: info)")
+
+    # forward-proxy ca-path
+    fp_subparsers.add_parser("ca-path", help="Show CA certificate path")
+
+    # forward-proxy install-ca
+    fp_subparsers.add_parser("install-ca", help="Install CA cert to system trust store (requires admin)")
+
+    # forward-proxy status
+    fp_subparsers.add_parser("status", help="Show forward proxy status")
+
+    # forward-proxy aliases
+    fp_subparsers.add_parser("aliases", help="Show or regenerate tool aliases")
 
     return parser
 
@@ -430,6 +463,41 @@ def _run_enroll(args: argparse.Namespace) -> None:
         print("Heartbeat sent.")
 
 
+def _resolve_enrollment() -> tuple[str, str, str, str, str, bool, bool]:
+    """Resolve enrollment config.
+
+    Returns (upstream, agent_id, agent_token, machine_id, fail_mode, send_username, send_hostname).
+    """
+    from lumen_argus_core.enrollment import load_enrollment
+
+    agent_id = ""
+    agent_token = ""
+    machine_id = ""
+    fail_mode = "open"
+    send_username = True
+    send_hostname = True
+    upstream = ""
+
+    enrollment = load_enrollment()
+    if enrollment:
+        upstream = enrollment.get("proxy_url", "")
+        agent_id = enrollment.get("agent_id", "")
+        agent_token = enrollment.get("agent_token", "")
+        machine_id = enrollment.get("machine_id", "")
+        policy = enrollment.get("policy", {})
+        if isinstance(policy, dict):
+            if "fail_mode" in policy:
+                policy_fm = policy["fail_mode"]
+                if policy_fm in ("open", "closed"):
+                    fail_mode = policy_fm
+            if "relay_send_username" in policy:
+                send_username = bool(policy["relay_send_username"])
+            if "relay_send_hostname" in policy:
+                send_hostname = bool(policy["relay_send_hostname"])
+
+    return upstream, agent_id, agent_token, machine_id, fail_mode, send_username, send_hostname
+
+
 def _run_relay(args: argparse.Namespace) -> None:
     # Handle --status, --install, --uninstall before starting relay
     if getattr(args, "status", False):
@@ -442,9 +510,6 @@ def _run_relay(args: argparse.Namespace) -> None:
         _relay_install(args)
         return
 
-    import asyncio
-    import logging
-
     level = getattr(logging, args.log_level.upper(), logging.INFO)
     logging.basicConfig(
         level=level,
@@ -455,41 +520,12 @@ def _run_relay(args: argparse.Namespace) -> None:
     from lumen_argus_agent.relay import RelayConfig, run_relay
 
     # Resolve upstream URL: CLI flag > enrollment > default
-    upstream = args.upstream
-    if not upstream:
-        from lumen_argus_core.enrollment import load_enrollment
-
-        enrollment = load_enrollment()
-        if enrollment:
-            upstream = enrollment.get("proxy_url", "")
-    if not upstream:
-        upstream = "http://localhost:8080"
-
-    # Load enrollment identity and policy
-    agent_id = ""
-    agent_token = ""
-    machine_id = ""
-    fail_mode = args.fail_mode
-    send_username = True
-    send_hostname = True
-    from lumen_argus_core.enrollment import load_enrollment
-
-    enrollment = load_enrollment()
-    if enrollment:
-        agent_id = enrollment.get("agent_id", "")
-        agent_token = enrollment.get("agent_token", "")
-        machine_id = enrollment.get("machine_id", "")
-        # Enrollment policy can override relay behavior
-        policy = enrollment.get("policy", {})
-        if isinstance(policy, dict):
-            if "fail_mode" in policy:
-                policy_fm = policy["fail_mode"]
-                if policy_fm in ("open", "closed"):
-                    fail_mode = policy_fm
-            if "relay_send_username" in policy:
-                send_username = bool(policy["relay_send_username"])
-            if "relay_send_hostname" in policy:
-                send_hostname = bool(policy["relay_send_hostname"])
+    enroll_upstream, agent_id, agent_token, machine_id, enroll_fail_mode, send_username, send_hostname = (
+        _resolve_enrollment()
+    )
+    upstream = args.upstream or enroll_upstream or "http://localhost:8080"
+    # CLI flag takes precedence over enrollment; fall back to enrollment then default
+    fail_mode = args.fail_mode if args.fail_mode is not None else (enroll_fail_mode or "open")
 
     config = RelayConfig(
         bind=args.host,
@@ -503,7 +539,65 @@ def _run_relay(args: argparse.Namespace) -> None:
         send_hostname=send_hostname,
     )
 
-    asyncio.run(run_relay(config))
+    forward_proxy_port = getattr(args, "forward_proxy_port", 0)
+    if forward_proxy_port:
+        # Combined mode: relay + forward proxy
+        asyncio.run(_run_relay_and_forward(config, forward_proxy_port, upstream, args))
+    else:
+        asyncio.run(run_relay(config))
+
+
+async def _run_relay_and_forward(
+    relay_config: Any,
+    forward_port: int,
+    upstream: str,
+    args: argparse.Namespace,
+) -> None:
+    """Run relay and forward proxy concurrently."""
+    from lumen_argus_agent.forward import ForwardProxyConfig, start_forward_proxy
+    from lumen_argus_agent.relay import run_relay
+
+    fp_config = ForwardProxyConfig(
+        bind=relay_config.bind,
+        port=forward_port,
+        upstream_proxy=upstream,
+        agent_token=relay_config.agent_token,
+        agent_id=relay_config.agent_id,
+        machine_id=relay_config.machine_id,
+        send_username=relay_config.send_username,
+        send_hostname=relay_config.send_hostname,
+    )
+
+    # Run both concurrently — relay starts fast (~100ms), forward proxy
+    # initializes mitmproxy in the background (may take 10-30s).
+    # The relay health endpoint responds immediately; forward proxy
+    # health becomes available once mitmproxy is listening.
+    relay_task = asyncio.create_task(run_relay(relay_config))
+    forward_task = asyncio.create_task(start_forward_proxy(fp_config))
+
+    done, pending = await asyncio.wait(
+        [relay_task, forward_task],
+        return_when=asyncio.FIRST_COMPLETED,
+    )
+
+    for task in pending:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+    # Re-raise any exception from the completed task (port conflict,
+    # startup failure, etc.) — never swallow silently.
+    for task in done:
+        exc = task.exception()
+        if exc is not None:
+            logging.getLogger("argus.forward").error(
+                "component failed: %s",
+                exc,
+                exc_info=exc,
+            )
+            raise exc
 
 
 def _relay_status() -> None:
@@ -557,6 +651,89 @@ def _relay_uninstall() -> None:
         print("Stop the running service: systemctl --user stop lumen-argus-relay")
 
 
+def _run_forward_proxy(args: argparse.Namespace) -> None:
+    fp_cmd = getattr(args, "fp_command", "")
+
+    if fp_cmd == "ca-path":
+        from lumen_argus_agent.ca import get_ca_cert_path
+
+        print(get_ca_cert_path())
+        return
+
+    if fp_cmd == "install-ca":
+        from lumen_argus_agent.ca import ensure_ca, install_ca_system, is_ca_trusted
+
+        if is_ca_trusted():
+            print("CA certificate is already trusted at system level.")
+            return
+        ensure_ca()
+        if install_ca_system():
+            print("CA certificate installed to system trust store.")
+        else:
+            print("Failed to install CA certificate. Are you running with sudo?", file=sys.stderr)
+            sys.exit(1)
+        return
+
+    if fp_cmd == "status":
+        from lumen_argus_agent.ca import ca_exists, get_ca_cert_path, is_ca_trusted
+        from lumen_argus_agent.forward import load_forward_proxy_state
+
+        state = load_forward_proxy_state()
+        print("Forward Proxy Status:")
+        if state:
+            print("  Running:     yes (pid %s)" % state.get("pid", 0))
+            print("  Port:        %s" % state.get("port", ""))
+            print("  Upstream:    %s" % state.get("upstream_proxy", ""))
+        else:
+            print("  Running:     no")
+        print("  CA exists:   %s" % ("yes" if ca_exists() else "no"))
+        print("  CA path:     %s" % get_ca_cert_path())
+        print("  CA trusted:  %s" % ("yes" if is_ca_trusted() else "no"))
+        return
+
+    if fp_cmd == "aliases":
+        from lumen_argus_agent.ca import ensure_ca, get_ca_cert_path
+        from lumen_argus_agent.forward import write_aliases
+
+        port = getattr(args, "port", 9090) if hasattr(args, "port") else 9090
+        ensure_ca()
+        path = write_aliases(port, get_ca_cert_path())
+        print("Aliases written to: %s" % path)
+        print("\nAdd this to your ~/.zshrc or ~/.bashrc:")
+        print("  [ -f %s ] && source %s" % (path, path))
+        return
+
+    if fp_cmd == "start":
+        level = getattr(logging, args.log_level.upper(), logging.INFO)
+        logging.basicConfig(
+            level=level,
+            format="%(levelname)-5s [%(name)s] %(message)s",
+        )
+
+        from lumen_argus_agent.forward import ForwardProxyConfig, run_forward_proxy
+
+        enroll_upstream, agent_id, agent_token, machine_id, _, send_username, send_hostname = _resolve_enrollment()
+
+        config = ForwardProxyConfig(
+            bind=args.host,
+            port=args.port,
+            upstream_proxy=args.upstream or enroll_upstream or "http://localhost:8080",
+            agent_token=agent_token,
+            agent_id=agent_id,
+            machine_id=machine_id,
+            send_username=send_username,
+            send_hostname=send_hostname,
+        )
+
+        asyncio.run(run_forward_proxy(config))
+        return
+
+    # No subcommand — show help
+    from lumen_argus_agent.ca import print_setup_instructions
+
+    print_setup_instructions()
+
+
 def _run_heartbeat(_args: argparse.Namespace) -> None:
     from lumen_argus_core.enrollment import is_enrolled
     from lumen_argus_core.telemetry import send_heartbeat
@@ -594,6 +771,7 @@ def main() -> None:
         "enroll": _run_enroll,
         "heartbeat": _run_heartbeat,
         "relay": _run_relay,
+        "forward-proxy": _run_forward_proxy,
     }
 
     handler = handlers.get(args.command)

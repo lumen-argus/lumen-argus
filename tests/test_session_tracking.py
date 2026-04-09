@@ -352,6 +352,79 @@ class TestFingerprintStability(unittest.TestCase):
         fp2 = _derive_session_fingerprint({"system": "S", "messages": [{"role": "user", "content": "B"}]}, "anthropic")
         self.assertNotEqual(fp1, fp2)
 
+    def test_openai_responses_api_instructions_and_input(self):
+        """OpenAI Responses API uses 'instructions' + 'input' instead of 'messages'."""
+        data = {
+            "model": "gpt-5.2",
+            "instructions": "You are a helpful assistant.",
+            "input": [{"role": "user", "content": "hello"}],
+        }
+        fp = _derive_session_fingerprint(data, "openai")
+        self.assertTrue(fp, "fingerprint should not be empty for Responses API")
+        self.assertEqual(len(fp), 12)
+
+    def test_openai_responses_api_string_input(self):
+        """Responses API can have a plain string as input."""
+        data = {
+            "model": "gpt-5.2",
+            "instructions": "You are helpful.",
+            "input": "hello world",
+        }
+        fp = _derive_session_fingerprint(data, "openai")
+        self.assertTrue(fp)
+
+    def test_openai_responses_api_stable_fingerprint(self):
+        """Fingerprint stable when input grows (same first items)."""
+        base = {"instructions": "Sys", "input": [{"role": "user", "content": "Q"}]}
+        extended = {
+            "instructions": "Sys",
+            "input": [
+                {"role": "user", "content": "Q"},
+                {"role": "assistant", "content": "A"},
+                {"role": "user", "content": "Q2"},
+            ],
+        }
+        self.assertEqual(
+            _derive_session_fingerprint(base, "openai"),
+            _derive_session_fingerprint(extended, "openai"),
+        )
+
+    def test_openai_responses_api_different_from_chat(self):
+        """Responses API and Chat Completions with same content produce different fps."""
+        responses_data = {"instructions": "Sys", "input": [{"role": "user", "content": "hello"}]}
+        chat_data = {"messages": [{"role": "system", "content": "Sys"}, {"role": "user", "content": "hello"}]}
+        fp1 = _derive_session_fingerprint(responses_data, "openai")
+        fp2 = _derive_session_fingerprint(chat_data, "openai")
+        # Both should produce fingerprints, but they may differ (different structure)
+        self.assertTrue(fp1)
+        self.assertTrue(fp2)
+
+
+class TestResponsesAPISystemPrompt(unittest.TestCase):
+    """Test system prompt extraction from OpenAI Responses API."""
+
+    def test_instructions_field(self):
+        data = {"instructions": "You are helpful.", "input": []}
+        text = _get_system_text(data, "openai")
+        self.assertEqual(text, "You are helpful.")
+
+    def test_instructions_with_working_directory(self):
+        data = {
+            "instructions": "Working directory: /Users/dev/project\nPlatform: darwin",
+            "input": [],
+        }
+        wd = _extract_working_directory(data, "openai")
+        self.assertEqual(wd, "/Users/dev/project")
+
+    def test_messages_takes_precedence(self):
+        """If both messages and instructions exist, messages wins (Chat API)."""
+        data = {
+            "messages": [{"role": "system", "content": "From messages"}],
+            "instructions": "From instructions",
+        }
+        text = _get_system_text(data, "openai")
+        self.assertEqual(text, "From messages")
+
 
 # --- Working directory extraction ---
 

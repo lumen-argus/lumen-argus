@@ -72,6 +72,7 @@ CREATE TABLE IF NOT EXISTS findings (
     sdk_name TEXT NOT NULL DEFAULT '',
     sdk_version TEXT NOT NULL DEFAULT '',
     runtime TEXT NOT NULL DEFAULT '',
+    intercept_mode TEXT NOT NULL DEFAULT 'reverse',
     api_key_hash TEXT NOT NULL DEFAULT '',
     content_hash TEXT NOT NULL DEFAULT '',
     seen_count INTEGER NOT NULL DEFAULT 1,

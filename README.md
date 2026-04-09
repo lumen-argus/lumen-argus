@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/python-3.11+-blue?logo=python&logoColor=white" alt="Python 3.11+">
+  <img src="https://img.shields.io/badge/python-3.12+-blue?logo=python&logoColor=white" alt="Python 3.12+">
   <a href="https://github.com/lumen-argus/lumen-argus/actions/workflows/test.yml"><img src="https://github.com/lumen-argus/lumen-argus/actions/workflows/test.yml/badge.svg" alt="tests"></a>
   <img src="https://img.shields.io/badge/dependencies-minimal-brightgreen" alt="Minimal dependencies">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License">
@@ -11,15 +11,16 @@
 **AI coding tool DLP proxy** — scan outbound requests for secrets, PII, and proprietary data before they reach AI providers.
 
 ```
-Developer's AI Tool  ──HTTP──>  lumen-argus (localhost)  ──HTTPS──>  AI Provider API
-                                       |
-                              +--------+--------+
-                              | Detection Engine |
-                              |  * Secrets       |
-                              |  * PII           |
-                              |  * Proprietary   |
-                              +--------+--------+
-                              Actions: block | alert | log
+                        Reverse Proxy (tools with base URL support)
+AI Tool  ──BASE_URL──>  Agent Relay (:8070)  ──>  lumen-argus (:8080)  ──HTTPS──>  AI Provider API
+                              |                          |
+                        OS identity              +-------+-------+
+                        enrichment               | Detection     |
+                                                 |  * Secrets    |
+                        Forward Proxy            |  * PII        |
+AI Tool  ──HTTPS_PROXY──>  Agent (:9090)  ──────>|  * Proprietary|
+  (Copilot CLI,             TLS intercept        +-------+-------+
+   Warp, etc.)              via mitmproxy        Actions: block | alert | log
 ```
 
 ## The Problem
@@ -44,6 +45,7 @@ lumen-argus sits between your AI tool and the provider, scanning every outbound 
 - **Proprietary code** detection (file patterns + keyword matching)
 - **< 50ms scanning overhead** for typical payloads
 - **Minimal dependencies** — PyYAML + aiohttp, everything else is stdlib
+- **Forward proxy** — TLS-intercepting proxy (mitmproxy) for tools that don't support custom base URLs (Copilot CLI with GitHub auth). Tool-specific shell aliases, CA cert management, combined relay+forward mode
 - **Session tracking** — identify WHO, WHICH project, WHICH conversation per finding. Agent relay enriches with OS-level identity (hostname, username, working directory via PID correlation)
 - **Cross-request dedup** — 3-layer dedup eliminates redundant scanning of conversation history
 - **Web dashboard** with real-time findings, charts, session filtering, and audit log
@@ -57,7 +59,7 @@ lumen-argus sits between your AI tool and the provider, scanning every outbound 
 
 ## Quick Start
 
-**Requirements:** Python 3.11+
+**Requirements:** Python 3.12+
 
 ```bash
 pip install lumen-argus-proxy
@@ -126,6 +128,20 @@ lumen-argus-agent relay --upstream http://proxy:8080
 
 # AI tools connect to relay, not proxy directly
 ANTHROPIC_BASE_URL=http://localhost:8070 claude
+```
+
+**Forward proxy** — TLS interception for tools that don't support custom base URLs (e.g., Copilot CLI with GitHub auth):
+
+```bash
+# Start relay with forward proxy (combined mode)
+lumen-argus-agent relay --upstream http://proxy:8080 --forward-proxy-port 9090
+
+# Generate and view CA certificate
+lumen-argus-agent forward-proxy ca-path
+sudo lumen-argus-agent forward-proxy install-ca  # trust system-wide
+
+# Tool-specific alias (only Copilot CLI routes through forward proxy)
+alias copilot='HTTPS_PROXY=http://localhost:9090 NODE_EXTRA_CA_CERTS=~/.lumen-argus/ca/ca-cert.pem copilot'
 ```
 
 **Fault-isolated mode** (relay + engine):

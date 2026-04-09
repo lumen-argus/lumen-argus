@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Client registry, detection engine, and setup tools for lumen-argus"
 readme = {text = "Client registry, detection engine, and setup tools for lumen-argus", content-type = "text/plain"}
 license = "MIT"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 authors = [
     {name = "lumen-argus contributors"},
 ]

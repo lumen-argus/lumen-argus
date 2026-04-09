@@ -164,12 +164,17 @@ def _get_system_text(data: dict[str, Any], provider: str) -> str:
                     parts.append(block)
             return "\n".join(parts)
     elif provider == "openai":
+        # Standard Chat Completions API: messages[].role == "system"
         messages = data.get("messages", [])
         for msg in messages:
             if isinstance(msg, dict) and msg.get("role") == "system":
                 content = msg.get("content", "")
                 if isinstance(content, str):
                     return content
+        # OpenAI Responses API: "instructions" field (system prompt)
+        instructions = data.get("instructions", "")
+        if isinstance(instructions, str) and instructions:
+            return instructions
     elif provider == "gemini":
         sys_instr = data.get("systemInstruction", {})
         if isinstance(sys_instr, dict):
@@ -228,6 +233,7 @@ def _derive_session_fingerprint(data: dict[str, Any], provider: str) -> str:
                     parts.append(first_block.get("text", "")[:512])
 
     elif provider == "openai":
+        # Standard Chat Completions API: messages[]
         messages = data.get("messages", [])
         for msg in messages[:3]:
             if not isinstance(msg, dict):
@@ -239,6 +245,27 @@ def _derive_session_fingerprint(data: dict[str, Any], provider: str) -> str:
                 first_part = content[0]
                 if isinstance(first_part, dict):
                     parts.append(first_part.get("text", "")[:512])
+        # OpenAI Responses API: instructions + first input item.
+        # Only first input used for stability (conversation grows over time).
+        if not messages:
+            instructions = data.get("instructions", "")
+            if isinstance(instructions, str) and instructions:
+                parts.append(instructions[:512])
+            input_items = data.get("input", [])
+            if isinstance(input_items, str):
+                parts.append(input_items[:512])
+            elif isinstance(input_items, list) and input_items:
+                first_item = input_items[0]
+                if isinstance(first_item, str):
+                    parts.append(first_item[:512])
+                elif isinstance(first_item, dict):
+                    content = first_item.get("content", "")
+                    if isinstance(content, str):
+                        parts.append(content[:512])
+                    elif isinstance(content, list) and content:
+                        first_part = content[0]
+                        if isinstance(first_part, dict):
+                            parts.append(first_part.get("text", "")[:512])
 
     elif provider == "gemini":
         sys_instr = data.get("systemInstruction", {})

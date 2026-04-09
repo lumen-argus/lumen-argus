@@ -2,7 +2,7 @@
 
 ## Requirements
 
-- **Python 3.11+** (tested on 3.11–3.13)
+- **Python 3.12+** (tested on 3.12–3.13)
 - **No external dependencies** — lumen-argus uses only the Python standard library
 
 ## Install from PyPI

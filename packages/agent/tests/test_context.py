@@ -114,8 +114,12 @@ class TestGetProcessCwd(unittest.TestCase):
         if platform.system() in ("Darwin", "Linux"):
             self.assertTrue(len(cwd) > 0, "expected cwd for own process on %s" % platform.system())
 
-    def test_nonexistent_pid(self):
-        # macOS lsof may return "/" for invalid PIDs; accept "" or "/"
+    @patch("subprocess.run")
+    def test_nonexistent_pid(self, mock_run):
+        # Simulate lsof returning nothing for a dead PID
+        from unittest.mock import Mock
+
+        mock_run.return_value = Mock(returncode=1, stdout="", stderr="")
         cwd = _get_process_cwd(999999999)
         self.assertIn(cwd, ("", "/"))
 

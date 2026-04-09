@@ -34,7 +34,7 @@ All tests must pass before submitting a pull request.
 
 ### Python Version
 
-- Target Python 3.11+ (tested 3.11–3.13)
+- Target Python 3.12+ (tested 3.12–3.13)
 - Use modern type annotations (no need for `from __future__ import annotations`)
 
 ### Zero Dependencies

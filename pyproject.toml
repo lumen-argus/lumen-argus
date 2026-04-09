@@ -2,7 +2,7 @@
 name = "lumen-argus-workspace"
 version = "0.0.0"
 description = "lumen-argus monorepo workspace"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 
 [tool.uv.workspace]
 members = ["packages/*"]
@@ -43,7 +43,7 @@ known-first-party = ["lumen_argus", "lumen_argus_core"]
 
 [tool.mypy]
 strict = true
-python_version = "3.11"
+python_version = "3.12"
 warn_return_any = true
 warn_unused_configs = true
 mypy_path = "packages/core"
