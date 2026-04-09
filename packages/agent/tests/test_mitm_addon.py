@@ -183,6 +183,86 @@ class TestRequestInterception(unittest.TestCase):
         self.assertNotIn("x-lumen-forward-port", flow.request.headers)
 
 
+class TestGitHubAccountExtraction(unittest.TestCase):
+    """Test GitHub account_id extraction from /copilot_internal/user."""
+
+    def test_extracts_login_from_response(self):
+        import json
+
+        addon = LumenArgusAddon()
+        flow = mock.MagicMock()
+        flow.request.pretty_host = "api.github.com"
+        flow.request.path = "/copilot_internal/user"
+        flow.response.status_code = 200
+        flow.response.content = json.dumps({"login": "testuser", "copilot_plan": "individual"}).encode()
+        flow.response.headers = {}
+
+        addon.response(flow)
+        self.assertEqual(addon._github_login, "testuser")
+
+    def test_skips_non_github_host(self):
+        addon = LumenArgusAddon()
+        flow = mock.MagicMock()
+        flow.request.pretty_host = "api.openai.com"
+        flow.request.path = "/copilot_internal/user"
+        flow.response.status_code = 200
+        flow.response.content = b'{"login": "testuser"}'
+        flow.response.headers = {}
+
+        addon.response(flow)
+        self.assertEqual(addon._github_login, "")
+
+    def test_skips_non_200(self):
+        addon = LumenArgusAddon()
+        flow = mock.MagicMock()
+        flow.request.pretty_host = "api.github.com"
+        flow.request.path = "/copilot_internal/user"
+        flow.response.status_code = 401
+        flow.response.content = b'{"message": "unauthorized"}'
+        flow.response.headers = {}
+
+        addon.response(flow)
+        self.assertEqual(addon._github_login, "")
+
+    def test_cached_login_not_overwritten(self):
+        addon = LumenArgusAddon()
+        addon._github_login = "existing_user"
+        flow = mock.MagicMock()
+        flow.request.pretty_host = "api.github.com"
+        flow.request.path = "/copilot_internal/user"
+        flow.response.status_code = 200
+        flow.response.content = b'{"login": "new_user"}'
+        flow.response.headers = {}
+
+        addon.response(flow)
+        self.assertEqual(addon._github_login, "existing_user")
+
+    @mock.patch("lumen_argus_agent.context.resolve_context")
+    def test_login_injected_into_request(self, mock_resolve):
+        mock_resolve.return_value = mock.MagicMock(
+            working_directory="",
+            git_branch="",
+            os_platform="",
+            hostname="",
+            username="",
+            client_pid=0,
+        )
+        addon = LumenArgusAddon(upstream_proxy="http://localhost:8080")
+        addon._github_login = "slima4"
+        flow = mock.MagicMock()
+        flow.request.pretty_host = "api.individual.githubcopilot.com"
+        flow.request.port = 443
+        flow.request.scheme = "https"
+        flow.request.path = "/responses"
+        flow.request.method = "POST"
+        flow.request.headers = {}
+        flow.client_conn = mock.MagicMock()
+        flow.client_conn.peername = ("127.0.0.1", 54321)
+
+        addon.request(flow)
+        self.assertEqual(flow.request.headers["x-lumen-argus-account-id"], "slima4")
+
+
 class TestResponseStripping(unittest.TestCase):
     """Test addon response handler."""
 

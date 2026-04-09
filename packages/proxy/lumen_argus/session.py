@@ -331,6 +331,10 @@ def extract_session(
         ctx.device_id = headers.get("x-lumen-argus-device-id", "")[:256]
         ctx.hostname = headers.get("x-lumen-argus-hostname", "")[:256]
         ctx.username = headers.get("x-lumen-argus-username", "")[:256]
+        # Account ID from forward proxy (GitHub login from /copilot_internal/user)
+        agent_account = headers.get("x-lumen-argus-account-id", "")[:256]
+        if agent_account:
+            ctx.account_id = agent_account
 
     # Source IP (X-Forwarded-For first, fallback to client address)
     xff = headers.get("x-forwarded-for", "")
@@ -395,19 +399,20 @@ def extract_session(
                 except ValueError:
                     log.debug("metadata.user_id looks like JSON but failed to parse")
             if isinstance(user_id, dict):
-                ctx.account_id = str(user_id.get("account_uuid", ""))[:256]
+                if not ctx.account_id:
+                    ctx.account_id = str(user_id.get("account_uuid", ""))[:256]
                 if not ctx.device_id:
                     ctx.device_id = str(user_id.get("device_id", ""))[:256]
                 if not ctx.session_id:
                     meta_sess = str(user_id.get("session_id", ""))[:256]
                     if meta_sess:
                         ctx.session_id = meta_sess
-            elif user_id:
+            elif user_id and not ctx.account_id:
                 ctx.account_id = str(user_id)[:256]
 
     elif provider == "openai":
         user = req_data.get("user", "")
-        if user:
+        if user and not ctx.account_id:
             ctx.account_id = str(user)[:256]
 
     # --- Layer 2: System prompt extraction (fallback for empty fields) ---

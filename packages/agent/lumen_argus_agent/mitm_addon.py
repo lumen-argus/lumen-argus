@@ -102,6 +102,9 @@ class LumenArgusAddon:
         if extra_scan_hosts:
             self._scan_hosts = SCAN_HOSTS | extra_scan_hosts
 
+        # Cached GitHub account ID from /copilot_internal/user response
+        self._github_login: str = ""
+
         # Request counters for /health metrics
         self._requests_total = 0
         self._requests_intercepted = 0
@@ -186,9 +189,30 @@ class LumenArgusAddon:
         flow.request.path = "/_forward" + flow.request.path
 
     def response(self, flow: http.HTTPFlow) -> None:
-        """Strip X-Lumen-* headers from response before returning to client."""
+        """Strip X-Lumen-* headers and extract GitHub account from responses."""
         if flow.response is None:
             return
+
+        # Extract GitHub login from /copilot_internal/user response.
+        # This endpoint is called on every Copilot CLI session start.
+        if (
+            not self._github_login
+            and flow.request.pretty_host == "api.github.com"
+            and flow.request.path == "/copilot_internal/user"
+            and flow.response.status_code == 200
+        ):
+            try:
+                import json
+
+                data = json.loads(flow.response.content or b"")
+                login = data.get("login", "")
+                if login:
+                    self._github_login = str(login)
+                    log.info("GitHub account resolved: %s", self._github_login)
+            except (ValueError, TypeError):
+                log.debug("failed to parse /copilot_internal/user response")
+
+        # Strip internal headers before returning to client
         headers_to_remove = [
             k
             for k in flow.response.headers
@@ -241,3 +265,5 @@ class LumenArgusAddon:
             flow.request.headers["x-lumen-argus-username"] = ctx_info.username
         if ctx_info.client_pid:
             flow.request.headers["x-lumen-argus-client-pid"] = str(ctx_info.client_pid)
+        if self._github_login:
+            flow.request.headers["x-lumen-argus-account-id"] = self._github_login
