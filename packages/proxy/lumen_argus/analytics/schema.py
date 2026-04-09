@@ -85,6 +85,11 @@ CREATE INDEX IF NOT EXISTS idx_findings_severity ON findings(severity);
 CREATE INDEX IF NOT EXISTS idx_findings_session ON findings(session_id);
 CREATE INDEX IF NOT EXISTS idx_findings_account ON findings(account_id);
 CREATE INDEX IF NOT EXISTS idx_findings_namespace ON findings(namespace_id);
+CREATE INDEX IF NOT EXISTS idx_findings_provider ON findings(provider);
+CREATE INDEX IF NOT EXISTS idx_findings_detector ON findings(detector);
+CREATE INDEX IF NOT EXISTS idx_findings_client ON findings(client_name);
+CREATE INDEX IF NOT EXISTS idx_findings_action ON findings(action_taken);
+CREATE INDEX IF NOT EXISTS idx_findings_intercept ON findings(intercept_mode);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_findings_dedup
 ON findings(content_hash, session_id, namespace_id)
 WHERE content_hash != '';
