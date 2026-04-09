@@ -68,19 +68,19 @@ lumen-argus serve
 
 Then point your AI tool at the proxy. **27 agents supported** — auto-detect and configure them all:
 
-| Proxied (env var) | Proxied (manual config) | Detected only |
-|---|---|---|
-| Claude Code | Cursor | Windsurf |
-| GitHub Copilot CLI | GitHub Copilot (IDE) | Amazon Q |
-| Aider | Continue | Tabnine |
-| Codex CLI | Cody | Augment Code |
-| OpenCode | Cline | Gemini Code Assist |
-| Gemini CLI | Roo Code | Antigravity |
-| | Aide | Kiro |
-| | Droid | Trae |
-| | CodeBuddy | Qoder |
-| | Kilo Code | Kiro CLI |
-| | | Warp |
+| Proxied (env var) | Proxied (config/IDE) | Proxied (manual) | Detected only |
+|---|---|---|---|
+| Claude Code | GitHub Copilot (IDE) | GitHub Copilot CLI | Windsurf |
+| Aider | Cody | Cursor | Amazon Q |
+| Codex CLI | Continue | Cline | Tabnine |
+| OpenCode | | Roo Code | Augment Code |
+| Gemini CLI | | Aide | Gemini Code Assist |
+| | | Droid | Antigravity |
+| | | CodeBuddy | Kiro |
+| | | Kilo Code | Kiro CLI |
+| | | | Trae |
+| | | | Qoder |
+| | | | Warp |
 
 ```bash
 # Auto-detect installed AI tools
