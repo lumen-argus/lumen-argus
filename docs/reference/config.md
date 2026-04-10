@@ -227,7 +227,7 @@ analytics:
 
 ## `rule_analysis`
 
-Configuration for rule overlap analysis via [Crossfire](https://github.com/lumen-argus/crossfire) (optional dependency).
+Configuration for rule overlap analysis via [crossfire-rules](https://pypi.org/project/crossfire-rules/) (optional dependency).
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
@@ -235,6 +235,8 @@ Configuration for rule overlap analysis via [Crossfire](https://github.com/lumen
 | `rule_analysis.threshold` | `float` | `0.8` | Overlap fraction to classify as duplicate or subset (0.0–1.0). |
 | `rule_analysis.seed` | `int` | `42` | Random seed for reproducible corpus generation. |
 | `rule_analysis.auto_on_import` | `bool` | `true` | Automatically run analysis after rule import (CLI and auto-import on first startup). |
+| `rule_analysis.watchdog_total_s` | `float` | `300.0` | Total wall-clock budget for one analysis run. On timeout the watchdog flips status to `failed` with a `WatchdogTotalTimeout` error; the dashboard stops spinning and renders the error. Set to `0` to disable. |
+| `rule_analysis.watchdog_phase_s` | `float` | `120.0` | Per-phase deadline. If any single phase (generating, evaluating, classifying, quality, saving) runs longer than this without a phase-change heartbeat, the watchdog flips to `failed` early with a `WatchdogPhaseTimeout`. Catches single-phase hangs before the total deadline. Set to `0` to disable. |
 
 ```yaml
 rule_analysis:
@@ -242,9 +244,11 @@ rule_analysis:
   threshold: 0.8
   seed: 42
   auto_on_import: true
+  watchdog_total_s: 300
+  watchdog_phase_s: 120
 ```
 
-Install crossfire: `pip install lumen-argus[rules-analysis]` or `pip install git+https://github.com/lumen-argus/crossfire.git`. Docker image includes it by default.
+Install: `pip install lumen-argus-proxy[rules-analysis]` (or `pip install crossfire-rules[re2]`). The Docker image includes it by default. See [Rule Analysis](../guide/rule-analysis.md) for details.
 
 ---
 

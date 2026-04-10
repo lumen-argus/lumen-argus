@@ -142,7 +142,7 @@ All regex patterns are compiled at load time (startup or SIGHUP reload) to avoid
 
 ### Rule Overlap Analysis
 
-Optional integration with [Crossfire](https://github.com/lumen-argus/crossfire) (`pip install lumen-argus[rules-analysis]`). Detects duplicate, subset, and overlapping rules using corpus-based analysis. The `rule_analysis.py` module generates test strings per rule via `CorpusGenerator`, cross-evaluates all rules against all corpora via `Evaluator`, then classifies pairs via `Classifier` into duplicates, subsets, and overlaps.
+Optional integration with [crossfire-rules](https://pypi.org/project/crossfire-rules/) (`pip install lumen-argus-proxy[rules-analysis]`). Detects duplicate, subset, and overlapping rules using corpus-based analysis. The `rule_analysis.py` module generates test strings per rule via `CorpusGenerator`, cross-evaluates all rules against all corpora via `Evaluator`, then classifies pairs via `Classifier` into duplicates, subsets, and overlaps.
 
 Results cached in the `rule_analysis` SQLite table. Dashboard "Rule Analysis" page shows findings with Disable/Review/Dismiss actions. Auto-analysis runs in a background thread after rule import. Configurable via `rule_analysis:` config section (samples, threshold, seed, auto_on_import). Rules page shows `[N ovr]` overlap badges linking to the analysis page.
 

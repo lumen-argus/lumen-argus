@@ -1,22 +1,26 @@
 # Rule Analysis
 
-The Rule Analysis page detects duplicate, subset, and overlapping detection rules in your ruleset. It uses [Crossfire](https://github.com/lumen-argus/crossfire), an optional corpus-based analysis engine, to generate test strings for each rule and measure how much they overlap.
+The Rule Analysis page detects duplicate, subset, and overlapping detection rules in your ruleset. It uses [crossfire-rules](https://pypi.org/project/crossfire-rules/), an optional corpus-based analysis engine, to generate test strings for each rule and measure how much they overlap.
 
 This helps SecOps/admins clean up redundant rules — reducing scan time, eliminating duplicate alerts, and keeping the ruleset maintainable as it grows.
 
 ## Installation
 
-Crossfire is an optional dependency. Without it, the Rule Analysis tab shows install instructions.
+`crossfire-rules` is an optional dependency. Without it, the Rule Analysis tab shows install instructions.
 
 ```bash
-# Via pip extras
-pip install lumen-argus[rules-analysis]
+# Via pip extras (recommended — pulls the pinned version)
+pip install lumen-argus-proxy[rules-analysis]
 
-# Or directly from GitHub (until PyPI release)
-pip install git+https://github.com/lumen-argus/crossfire.git
+# Or install crossfire-rules directly
+pip install crossfire-rules[re2]
 ```
 
-The Docker image includes crossfire by default.
+The `[re2]` extra pulls in `google-re2`, which is required for fast evaluation across large rulesets (1,000+ rules). Without it, evaluation falls back to Python's built-in `re` and is significantly slower.
+
+The Docker image includes `crossfire-rules[re2]` by default — no extra steps needed when running via `docker compose up`.
+
+> **Note:** PyPI also has an unrelated package called `crossfire` (an HTTP scraper). Make sure you install **`crossfire-rules`**, not `crossfire`.
 
 ## How it works
 
