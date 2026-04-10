@@ -677,10 +677,16 @@ def _do_analysis(
     )
     start = time.monotonic()
 
+    # Status is driven by _run (the caller): it flips running=False exactly
+    # once at the end via _set_status(False, PHASE_COMPLETE, "Analysis
+    # complete"). The early-exit branches here must NOT touch running —
+    # otherwise the dashboard can observe a transient running=False, stop
+    # its polling loop mid-run, and miss the PHASE_SAVING transition that
+    # _run wraps around save_and_return. Return a populated _empty_result
+    # and let _run handle the save + final transition.
     db_rules = store.rules.get_active()
     if not db_rules:
         log.info("no active rules to analyze")
-        _set_status(False, PHASE_COMPLETE, "No rules to analyze")
         return _empty_result(0)
 
     cf_rules, lookup = _rules_to_crossfire(db_rules)
@@ -688,7 +694,6 @@ def _do_analysis(
 
     if len(cf_rules) < 2:
         log.info("fewer than 2 valid rules — nothing to compare")
-        _set_status(False, PHASE_COMPLETE, "Not enough valid rules")
         return _empty_result(len(cf_rules), duration_s=round(time.monotonic() - start, 2))
 
     from collections import Counter

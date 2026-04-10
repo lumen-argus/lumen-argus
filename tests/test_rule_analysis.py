@@ -350,6 +350,44 @@ class TestRunAnalysisEmptyRules(StoreTestCase):
         self.assertEqual(result["total_rules"], 0)
         self.assertEqual(result["summary"]["duplicates"], 0)
 
+    @unittest.skipUnless(
+        __import__("importlib").util.find_spec("crossfire"),
+        "crossfire not installed",
+    )
+    def test_empty_rules_path_does_not_flip_running_flag(self):
+        """_do_analysis must not touch status.running — _run owns the final flip.
+
+        Regression guard against a prior bug where the empty-rules and
+        <2-valid-rules early-exit branches each called
+        _set_status(False, PHASE_COMPLETE, ...) before returning _empty_result,
+        producing a transient running=False mid-run that could stop the
+        dashboard's poll loop before _run's wrapper _Phase(PHASE_SAVING)
+        re-flipped running=True.
+        """
+        import lumen_argus.rule_analysis as ra
+
+        real_set_status = ra._set_status
+        calls: list[tuple] = []
+
+        def traced_set_status(running, phase="", progress="", **kwargs):
+            calls.append((running, phase, progress))
+            return real_set_status(running, phase, progress, **kwargs)
+
+        ra._set_status = traced_set_status
+        try:
+            result = ra._do_analysis(self.store, samples=20, threshold=0.8, seed=42)
+        finally:
+            ra._set_status = real_set_status
+
+        self.assertIsNotNone(result)
+        # No rules in the store → _do_analysis hits the early-exit branch.
+        # It must not have touched _set_status at all.
+        self.assertEqual(
+            calls,
+            [],
+            f"_do_analysis's early-exit branches must not call _set_status, but observed: {calls}",
+        )
+
 
 class TestQualityDataRoundTrip(StoreTestCase):
     """Test that quality data is saved and loaded through DB."""
