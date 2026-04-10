@@ -149,7 +149,15 @@ class _RecordingNotifier:
         self._notified = notified_list
 
     def notify(self, findings, provider="", model="", **kwargs):
-        self._notified.append({"findings": findings, "provider": provider})
+        self._notified.append(
+            {
+                "findings": findings,
+                "provider": provider,
+                "model": model,
+                "session": kwargs.get("session"),
+                "kwargs": kwargs,
+            }
+        )
 
 
 class _FailNotifier:
@@ -217,6 +225,54 @@ class TestBasicDispatcher(unittest.TestCase):
     def test_no_store_rebuild_noop(self):
         dispatcher = BasicDispatcher()
         dispatcher.rebuild()
+
+    def test_forwards_session_context_to_notifiers(self):
+        """SessionContext passed to dispatch() must reach notifier.notify().
+
+        Pro's NotificationDispatcher enriches webhook/Slack/etc. payloads with
+        hostname, intercept_mode, original_host, etc., and depends on the
+        pipeline passing the full session reference through. Pin that contract
+        here so a future refactor cannot silently drop it.
+        """
+        from lumen_argus.models import SessionContext
+
+        notified: list = []
+        store = _MockStore([{"id": 1, "name": "wh", "type": "webhook", "enabled": True, "events": []}])
+        dispatcher = BasicDispatcher(store=store, builder=lambda ch: _RecordingNotifier(notified))
+        dispatcher.rebuild()
+
+        session = SessionContext(
+            hostname="dev-laptop",
+            username="slim",
+            working_directory="/Users/slim/proj",
+            intercept_mode="forward",
+            original_host="api.individual.githubcopilot.com",
+        )
+        dispatcher.dispatch([_make_finding()], provider="copilot", model="gpt-4", session=session)
+        time.sleep(0.3)
+
+        self.assertEqual(len(notified), 1)
+        received = notified[0]
+        self.assertIs(received["session"], session, "notifier must receive the exact session reference")
+        self.assertEqual(received["session"].hostname, "dev-laptop")
+        self.assertEqual(received["session"].intercept_mode, "forward")
+        self.assertEqual(received["session"].original_host, "api.individual.githubcopilot.com")
+        self.assertEqual(received["provider"], "copilot")
+        self.assertEqual(received["model"], "gpt-4")
+
+    def test_dispatch_without_session_is_backward_compatible(self):
+        """Callers that don't pass session (Pro plugins pinned to older
+        community versions, tests, etc.) must still work unchanged."""
+        notified: list = []
+        store = _MockStore([{"id": 1, "name": "wh", "type": "webhook", "enabled": True, "events": []}])
+        dispatcher = BasicDispatcher(store=store, builder=lambda ch: _RecordingNotifier(notified))
+        dispatcher.rebuild()
+
+        dispatcher.dispatch([_make_finding()], provider="anthropic")
+        time.sleep(0.3)
+
+        self.assertEqual(len(notified), 1)
+        self.assertIsNone(notified[0]["session"])
 
     def test_events_json_string_parsed(self):
         """Events stored as JSON string should be parsed during rebuild."""

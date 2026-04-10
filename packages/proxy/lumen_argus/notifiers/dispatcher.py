@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, Callable
 
 if TYPE_CHECKING:
     from lumen_argus.analytics.store import AnalyticsStore
+    from lumen_argus.models import SessionContext
 
 from lumen_argus_core.time_utils import now_iso
 
@@ -66,14 +67,40 @@ class BasicDispatcher:
         except Exception:
             log.warning("failed to rebuild dispatcher", exc_info=True)
 
-    def dispatch(self, findings: list[Any], provider: str = "", model: str = "", **kwargs: Any) -> None:
+    def dispatch(
+        self,
+        findings: list[Any],
+        provider: str = "",
+        model: str = "",
+        session: "SessionContext | None" = None,
+        **kwargs: Any,
+    ) -> None:
         """Send findings to all matching channels via thread pool.
 
         Args:
             findings: List of Finding objects.
             provider: API provider name.
             model: Model name if available.
-            **kwargs: Forward compatibility (e.g. session_id from pipeline).
+            session: Full SessionContext for the scanned request. Forwarded to
+                every notifier's ``notify()`` as ``session=session`` so Pro
+                notifiers (and future community ones) can enrich payloads with
+                hostname, working_directory, intercept_mode, original_host,
+                etc. BasicDispatcher itself reads no fields from it — it only
+                plumbs the reference through.
+            **kwargs: Absorbed at this boundary, NOT forwarded to notifiers.
+                Retained on the signature so that a caller passing an unknown
+                keyword (e.g. the pipeline still sends ``session_id`` alongside
+                ``session`` for backward-compat with Pro dispatchers pinned to
+                older community versions) does not raise ``TypeError``. The
+                full SessionContext reference is the canonical per-request
+                payload — if a future field needs to reach notifiers, promote
+                it to an explicit parameter like ``session``.
+
+        Thread safety: ``session`` is submitted to a daemon worker thread.
+        Pro notifiers running inside that worker must treat it as read-only;
+        the same instance is still reachable on the calling thread via the
+        SSE broadcast and post-scan hook, both of which are read-only today,
+        so mutation from a worker would race with those readers.
         """
         if not findings:
             return
@@ -88,13 +115,20 @@ class BasicDispatcher:
                 matching = list(findings)
             if not matching:
                 continue
-            self._pool.submit(self._safe_notify, channel_id, channel, notifier, matching, provider, model)
+            self._pool.submit(self._safe_notify, channel_id, channel, notifier, matching, provider, model, session)
 
     def _safe_notify(
-        self, channel_id: int, channel: dict[str, Any], notifier: Any, findings: list[Any], provider: str, model: str
+        self,
+        channel_id: int,
+        channel: dict[str, Any],
+        notifier: Any,
+        findings: list[Any],
+        provider: str,
+        model: str,
+        session: "SessionContext | None" = None,
     ) -> None:
         try:
-            notifier.notify(findings, provider=provider, model=model)
+            notifier.notify(findings, provider=provider, model=model, session=session)
             with self._lock:
                 self._last_status[channel_id] = {
                     "status": "sent",

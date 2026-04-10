@@ -423,7 +423,12 @@ class ScannerPipeline:
                 except Exception:
                     log.warning("analytics store record_findings failed", exc_info=True)
 
-        # Dispatch notifications — pass ALL findings (dispatcher has its own dedup)
+        # Dispatch notifications — pass ALL findings (dispatcher has its own dedup).
+        # The full SessionContext is forwarded so dispatchers that enrich payloads
+        # with hostname / working_directory / intercept_mode / etc. have a direct
+        # reference to it. Pro's NotificationDispatcher opts in via a config flag;
+        # community's BasicDispatcher ignores the extra argument except to forward
+        # it to notifiers, which currently don't consume it.
         if result.findings and self._extensions:
             dispatcher: Any = self._extensions.get_dispatcher()
             if dispatcher:
@@ -433,6 +438,7 @@ class ScannerPipeline:
                         provider=provider,
                         model=model,
                         session_id=session.session_id if session else "",
+                        session=session,
                     )
                 except Exception:
                     log.warning("notification dispatch failed", exc_info=True)

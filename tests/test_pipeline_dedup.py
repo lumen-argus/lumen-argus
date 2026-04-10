@@ -274,6 +274,40 @@ class TestPipelineDedup(StoreTestCase):
             args = mock_dispatcher.dispatch.call_args
             self.assertGreater(len(args[0][0]), 0)
 
+    def test_dispatcher_receives_full_session_context(self):
+        """Pipeline must forward the whole SessionContext to dispatch(), not
+        just session_id. Pro notifiers rely on this to enrich payloads with
+        hostname/working_directory/intercept_mode/original_host."""
+        mock_dispatcher = MagicMock()
+        self.ext.set_dispatcher(mock_dispatcher)
+
+        session = SessionContext(
+            session_id="sess-forward-1",
+            hostname="dev-laptop",
+            username="slim",
+            working_directory="/Users/slim/proj",
+            intercept_mode="forward",
+            original_host="api.individual.githubcopilot.com",
+        )
+        body = _make_anthropic_body(["Key: AKIAIOSFODNN7EXAMPLE"])
+
+        self.pipeline.scan(body, "anthropic", session=session)
+
+        self.assertTrue(mock_dispatcher.dispatch.called)
+        kwargs = mock_dispatcher.dispatch.call_args.kwargs
+        # Legacy contract preserved.
+        self.assertEqual(kwargs.get("session_id"), "sess-forward-1")
+        # New contract: full session object passed by reference. `assertIs`
+        # is intentional — community's pipeline never copies or enriches
+        # session between construction and dispatch, so identity is the
+        # invariant. If a future Pro pre-dispatch hook starts enriching via
+        # `dataclasses.replace()`, this will correctly fail and the test
+        # should be split into an identity check (pre-hook) and a fields
+        # check (post-hook) rather than loosened to `assertEqual`.
+        self.assertIs(kwargs.get("session"), session)
+        self.assertEqual(kwargs["session"].intercept_mode, "forward")
+        self.assertEqual(kwargs["session"].original_host, "api.individual.githubcopilot.com")
+
     def test_post_scan_hook_receives_full_result(self):
         """Post-scan hook gets the full ScanResult (all findings)."""
         hook_results = []
