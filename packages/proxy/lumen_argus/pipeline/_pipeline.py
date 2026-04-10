@@ -468,6 +468,8 @@ class ScannerPipeline:
 
         timestamp = now_iso()
         client = session.client_name if session else ""
+        intercept_mode = session.intercept_mode if session else "reverse"
+        original_host = session.original_host if session else ""
 
         # Broadcast scan event for every scanned request
         try:
@@ -498,6 +500,8 @@ class ScannerPipeline:
                         "action": f.action,
                         "client": client,
                         "provider": provider,
+                        "intercept_mode": intercept_mode,
+                        "original_host": original_host,
                         "timestamp": timestamp,
                     },
                 )

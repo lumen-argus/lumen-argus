@@ -203,9 +203,10 @@ class AuditEntry:
             val = getattr(self, key, "")
             if val:
                 d[key] = val
-        # intercept_mode + original_host: only include when non-default
-        if self.intercept_mode and self.intercept_mode != "reverse":
-            d["intercept_mode"] = self.intercept_mode
+        # intercept_mode: always emit (matches REST /api/v1/findings, which
+        # always returns the column — default "reverse"). original_host is
+        # forward-only, so include it only when populated.
+        d["intercept_mode"] = self.intercept_mode or "reverse"
         if self.original_host:
             d["original_host"] = self.original_host
         return d
