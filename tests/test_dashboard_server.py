@@ -1041,6 +1041,73 @@ class TestCommunityAPIDirect(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(data["mode"], "passthrough")
 
+    def test_status_tier_reflects_license_checker_when_invalid(self):
+        """Pro plugin loaded + license checker returning False → tier: community.
+
+        Regression: previously handle_status derived tier from loaded_plugins(),
+        which conflated "Pro plugin entry point was called" with "Pro license
+        is active". A Pro sidecar running in degraded community mode (invalid
+        license) would still report tier: pro. Now tier is read from the
+        license checker, which Pro registers unconditionally.
+        """
+        from lumen_argus.extensions import ExtensionRegistry
+
+        class _StubChecker:
+            def is_valid(self) -> bool:
+                return False
+
+        ext = ExtensionRegistry()
+        ext._loaded_plugins.append(("pro", "0.1.0"))
+        ext.set_license_checker(_StubChecker())
+
+        status, body = handle_community_api("/api/v1/status", "GET", b"", self.store, extensions=ext)
+        data = json.loads(body)
+        self.assertEqual(status, 200)
+        self.assertEqual(data["tier"], "community")
+        self.assertEqual(data["pro_version"], "0.1.0")
+
+    def test_status_tier_reflects_license_checker_when_valid(self):
+        """Pro plugin loaded + license checker returning True → tier: pro."""
+        from lumen_argus.extensions import ExtensionRegistry
+
+        class _StubChecker:
+            def is_valid(self) -> bool:
+                return True
+
+        ext = ExtensionRegistry()
+        ext._loaded_plugins.append(("pro", "0.1.0"))
+        ext.set_license_checker(_StubChecker())
+
+        status, body = handle_community_api("/api/v1/status", "GET", b"", self.store, extensions=ext)
+        data = json.loads(body)
+        self.assertEqual(status, 200)
+        self.assertEqual(data["tier"], "pro")
+        self.assertEqual(data["pro_version"], "0.1.0")
+
+    def test_status_tier_community_when_no_checker(self):
+        """No license checker registered → tier: community (no Pro installed)."""
+        status, body = handle_community_api("/api/v1/status", "GET", b"", self.store)
+        data = json.loads(body)
+        self.assertEqual(status, 200)
+        self.assertEqual(data["tier"], "community")
+
+    def test_status_tier_community_when_checker_raises(self):
+        """License checker that raises → fail closed to tier: community."""
+        from lumen_argus.extensions import ExtensionRegistry
+
+        class _BrokenChecker:
+            def is_valid(self) -> bool:
+                raise RuntimeError("boom")
+
+        ext = ExtensionRegistry()
+        ext._loaded_plugins.append(("pro", "0.1.0"))
+        ext.set_license_checker(_BrokenChecker())
+
+        status, body = handle_community_api("/api/v1/status", "GET", b"", self.store, extensions=ext)
+        data = json.loads(body)
+        self.assertEqual(status, 200)
+        self.assertEqual(data["tier"], "community")
+
     def test_findings_no_store(self):
         status, body = handle_community_api("/api/v1/findings", "GET", b"", None)
         data = json.loads(body)

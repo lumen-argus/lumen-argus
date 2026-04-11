@@ -74,11 +74,22 @@ def handle_status(
 ) -> tuple[int, bytes]:
     uptime = time.monotonic() - start_time
     plugins = extensions.loaded_plugins() if extensions else []
-    pro_active = any(name == "pro" for name, _ in plugins)
     pro_version = ""
     for name, ver in plugins:
         if name == "pro":
             pro_version = ver
+    # Resolve Pro activation from the license checker, not from plugin
+    # loadedness. A Pro plugin that fails license validation still shows up
+    # in loaded_plugins() because its entry point was called — but it will
+    # not have activated any features. Reading the checker is the only way
+    # to tell "Pro installed but degraded" from "Pro installed and active".
+    # Pro registers the checker unconditionally for exactly this reason.
+    checker = extensions.get_license_checker() if extensions else None
+    try:
+        license_active = bool(checker and checker.is_valid())
+    except Exception as e:
+        log.warning("GET /api/v1/status: license checker raised, reporting community tier: %s", e)
+        license_active = False
     proxy_server = extensions.get_proxy_server() if extensions else None
     proxy_info = {}
     if proxy_server is not None:
@@ -93,7 +104,7 @@ def handle_status(
         "version": __version__,
         "uptime_seconds": round(uptime, 1),
         "total_findings": store.get_total_count() if store else 0,
-        "tier": "pro" if pro_active else "community",
+        "tier": "pro" if license_active else "community",
         "pro_version": pro_version,
         **proxy_info,
     }
