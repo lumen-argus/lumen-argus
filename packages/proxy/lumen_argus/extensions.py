@@ -84,7 +84,7 @@ class ExtensionRegistry:
         self._allowlist_matcher_factory: Callable[..., Any] | None = None
         self._rule_skip_list: set[str] = set()
         self._rule_skip_list_callback: Callable[..., Any] | None = None
-        # MCP Pro hooks
+        # MCP plugin hooks
         self._mcp_policy_engine: Any | None = None
         self._mcp_session_escalation: Callable[..., Any] | None = None
         self._tool_policy_evaluator: Any | None = None
@@ -167,7 +167,7 @@ class ExtensionRegistry:
         return self._pre_request_hook
 
     def set_proxy_server(self, server: object) -> None:
-        """Store server reference for Pro runtime config updates."""
+        """Store server reference for plugin runtime config updates."""
         self._proxy_server = server
 
     def get_proxy_server(self) -> Any | None:
@@ -176,8 +176,9 @@ class ExtensionRegistry:
     def get_ws_active_count(self) -> int:
         """Return number of active WebSocket connections.
 
-        Used by Pro metrics for Prometheus gauge. Reads from the proxy
-        server's thread-safe counter rather than internal data structures.
+        Used by plugin metrics for Prometheus gauges. Reads from the
+        proxy server's thread-safe counter rather than internal data
+        structures.
         """
         proxy = self._proxy_server
         if proxy and hasattr(proxy, "active_ws_connections"):
@@ -274,7 +275,7 @@ class ExtensionRegistry:
         return self._dashboard_api_handler
 
     def set_analytics_store(self, store: AnalyticsStore) -> None:
-        """Set a plugin-provided analytics store (Pro passes its extended store)."""
+        """Set a plugin-provided analytics store (e.g. a subclass with extra tables)."""
         self._analytics_store = store
 
     def get_analytics_store(self) -> AnalyticsStore | None:
@@ -284,8 +285,8 @@ class ExtensionRegistry:
     def set_sse_broadcaster(self, broadcaster: object) -> None:
         """Store the SSE broadcaster so plugins can broadcast events.
 
-        Called by cli.py after creating the broadcaster, before loading plugins.
-        Pro uses this to broadcast real-time finding events.
+        Called by cli.py after creating the broadcaster, before loading
+        plugins. Plugins use this to broadcast real-time finding events.
         """
         self._sse_broadcaster = broadcaster
 
@@ -309,7 +310,7 @@ class ExtensionRegistry:
     # --- Client registry hooks ---
 
     def register_clients(self, clients: list[Any]) -> None:
-        """Register additional client definitions from a plugin (Pro/Enterprise)."""
+        """Register additional client definitions from a plugin."""
         self._extra_clients.extend(clients)
 
     def get_extra_clients(self) -> list[Any]:
@@ -345,14 +346,15 @@ class ExtensionRegistry:
     def register_channel_types(self, types: dict[str, Any]) -> None:
         """Register notification channel types from a plugin.
 
-        Pro calls this to register all channel types (webhook, email,
-        slack, teams, pagerduty, opsgenie, jira). Without Pro, no types
-        are available and the dashboard shows "install from PyPI".
+        A plugin calls this to register channel types (webhook, email,
+        slack, teams, pagerduty, opsgenie, jira, etc.). With no plugin
+        registered, no types are available and the dashboard shows
+        "install from PyPI".
         """
         self._channel_types.update(types)
 
     def get_channel_types(self) -> dict[str, Any]:
-        """Return all registered channel types. Empty if Pro not loaded."""
+        """Return all registered channel types. Empty if no plugin has registered any."""
         return dict(self._channel_types)
 
     def set_notifier_builder(self, builder: Callable[..., Any]) -> None:
@@ -363,7 +365,7 @@ class ExtensionRegistry:
         return self._notifier_builder
 
     def set_dispatcher(self, dispatcher: object) -> None:
-        """Set the notification dispatcher (Pro creates and registers this)."""
+        """Set the notification dispatcher (plugins create and register this)."""
         self._dispatcher = dispatcher
 
     def get_dispatcher(self) -> Any | None:
@@ -379,7 +381,7 @@ class ExtensionRegistry:
 
     def set_health_hook(self, hook: Callable[..., Any]) -> None:
         """Register: hook() -> dict merged into /health response.
-        Pro uses this to add license, notification, analytics health."""
+        Plugins use this to add license, notification, analytics health."""
         self._health_hook = hook
 
     def get_health_hook(self) -> Callable[..., Any] | None:
@@ -394,10 +396,11 @@ class ExtensionRegistry:
 
     def set_trace_request_hook(self, hook: Callable[..., Any]) -> None:
         """Register: hook(method, path) -> context manager.
-        Wraps the full request lifecycle. Pro uses this to create an OTel
-        root span that parents detector/redaction/notification spans.
-        Provider is set as a span attribute after routing (inside _do_forward).
-        __enter__/__exit__ always called on the same thread."""
+        Wraps the full request lifecycle. Plugins use this to create an
+        OTel root span that parents detector/redaction/notification
+        spans. Provider is set as a span attribute after routing
+        (inside _do_forward). __enter__/__exit__ always called on the
+        same thread."""
         self._trace_request_hook = hook
 
     def get_trace_request_hook(self) -> Callable[..., Any] | None:
@@ -406,9 +409,10 @@ class ExtensionRegistry:
     def set_response_scan_hook(self, hook: Callable[..., Any]) -> None:
         """Register: hook(text, provider, model, session) -> (action, findings).
 
-        Pro registers this for buffered/blocking response scanning. When set,
-        runs INSTEAD of community's async scan. If action is "block", proxy
-        returns error to client instead of forwarding the response.
+        A plugin registers this for buffered/blocking response scanning.
+        When set, runs INSTEAD of community's async scan. If action is
+        "block", the proxy returns an error to the client instead of
+        forwarding the response.
         """
         self._response_scan_hook = hook
 
@@ -425,7 +429,7 @@ class ExtensionRegistry:
         "finding_detected" fires only for text frames with findings (findings_count > 0).
         Hook runs in thread pool via asyncio.to_thread() — safe for blocking I/O.
 
-        Pro can override or wrap the default community hook to add
+        Plugins can override or wrap the default community hook to add
         per-connection analytics, dashboard charts, etc.
         """
         self._ws_connection_hook = hook
@@ -457,7 +461,7 @@ class ExtensionRegistry:
         return self._allowlist_matcher_factory
 
     def set_mcp_policy_engine(self, engine: object) -> None:
-        """Register Pro's MCP policy engine for tool call validation.
+        """Register a plugin's MCP policy engine for tool call validation.
 
         Engine interface:
           engine.evaluate(tool_name: str, arguments: dict) -> list[Finding]
@@ -470,7 +474,7 @@ class ExtensionRegistry:
         return self._mcp_policy_engine
 
     def set_mcp_session_escalation(self, fn: Callable[..., Any]) -> None:
-        """Register Pro's adaptive enforcement callback.
+        """Register a plugin's adaptive enforcement callback.
 
         Callback signature:
           fn(signal_type: str, session_id: str, details: dict) -> str
@@ -483,7 +487,7 @@ class ExtensionRegistry:
         return self._mcp_session_escalation
 
     def set_tool_policy_evaluator(self, evaluator: object) -> None:
-        """Register Pro's tool policy evaluator for ABAC-style tool authorization.
+        """Register a plugin's tool policy evaluator for ABAC-style tool authorization.
 
         Evaluator interface:
           evaluator.evaluate(tool_name: str, arguments: dict, server_id: str, context: dict) -> PolicyDecision
@@ -496,7 +500,7 @@ class ExtensionRegistry:
         return self._tool_policy_evaluator
 
     def set_approval_gate(self, gate: object) -> None:
-        """Register Pro's approval gate for human-in-the-loop tool call authorization.
+        """Register a plugin's approval gate for human-in-the-loop tool call authorization.
 
         Gate interface:
           gate.request_approval(tool_name, arguments, server_id, session_id,
@@ -513,13 +517,13 @@ class ExtensionRegistry:
         return self._approval_gate
 
     def set_rule_metrics_collector(self, collector: object) -> None:
-        """Register a rule metrics collector for Pro performance dashboard.
+        """Register a rule metrics collector for the performance dashboard.
 
         Collector interface: collector.record(rule_name: str, elapsed_ms: float)
         MUST be thread-safe — record() is called from ThreadPoolExecutor
-        workers when parallel rule batching is enabled.
-        Pro creates a RuleMetricsCollector with in-memory aggregation
-        (protected by threading.Lock) and periodic async flush.
+        workers when parallel rule batching is enabled. Plugins typically
+        implement this with in-memory aggregation protected by a
+        ``threading.Lock`` and a periodic async flush.
         """
         self._rule_metrics_collector = collector
 
@@ -529,9 +533,10 @@ class ExtensionRegistry:
     def set_rule_skip_list(self, skip_set: set[str] | None) -> None:
         """Register a set of rule names to skip during scanning.
 
-        Pro computes this from analysis results (fully redundant subset rules)
-        to reduce scan time without disabling rules in the DB.
-        Automatically propagates to the RulesDetector if a callback is wired.
+        Plugins compute this from analysis results (fully redundant
+        subset rules) to reduce scan time without disabling rules in
+        the DB. Automatically propagates to the RulesDetector if a
+        callback is wired.
         """
         self._rule_skip_list = set(skip_set) if skip_set else set()
         log.info("rule skip list updated: %d rules", len(self._rule_skip_list))
@@ -554,10 +559,11 @@ class ExtensionRegistry:
         return self._license_checker
 
     def set_database_adapter(self, adapter: object) -> None:
-        """Register a database adapter (e.g. PostgresAdapter).
+        """Register a database adapter (e.g. a PostgreSQL adapter).
 
-        Must implement the DatabaseAdapter interface from analytics.adapter.
-        Called by Pro at startup before AnalyticsStore is created.
+        Must implement the DatabaseAdapter interface from
+        ``analytics.adapter``. Called by a plugin at startup, before
+        AnalyticsStore is created.
         """
         self._database_adapter = adapter
         log.info("database adapter registered: %s", getattr(adapter, "engine_name", "unknown"))
@@ -569,9 +575,9 @@ class ExtensionRegistry:
         """Register the agent authentication provider.
 
         Must implement the AgentAuthProvider interface from auth.py.
-        Only one provider active at a time (last wins).
-        Called by Pro at startup to enable agent bearer token auth,
-        OIDC, mTLS, or SaaS token validation.
+        Only one provider active at a time (last wins). Called by a
+        plugin at startup to enable agent bearer token auth, OIDC,
+        mTLS, or SaaS token validation.
         """
         self._agent_auth_provider = provider
         log.info("agent auth provider registered: %s", type(provider).__name__)

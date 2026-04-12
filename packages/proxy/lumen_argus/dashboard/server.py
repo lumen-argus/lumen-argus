@@ -151,7 +151,7 @@ def _json_error(status: int, error: str) -> web.Response:
 _STATIC_CACHE: dict[tuple[str, ...], tuple[str, str, str]] = {}
 
 # Identifier characters that survive conversion to a JS variable name.
-# Anything else becomes underscore so "enrollment-pro.html" → "_pageHtml_enrollment_pro".
+# Anything else becomes underscore so "my-page.html" → "_pageHtml_my_page".
 _JS_IDENT_INVALID = re.compile(r"[^A-Za-z0-9_]")
 
 

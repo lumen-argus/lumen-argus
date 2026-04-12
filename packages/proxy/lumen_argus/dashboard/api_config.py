@@ -29,7 +29,7 @@ def handle_config_update(
 ) -> tuple[int, bytes]:
     """Handle PUT /api/v1/config — save community-editable settings to DB.
 
-    Uses the same config_overrides SQLite table as Pro, so settings
+    Uses the shared ``config_overrides`` SQLite table, so settings
     survive license transitions without data loss.
     """
     changes = parse_json_body(body, "PUT /api/v1/config")
@@ -78,12 +78,13 @@ def handle_status(
     for name, ver in plugins:
         if name == "pro":
             pro_version = ver
-    # Resolve Pro activation from the license checker, not from plugin
-    # loadedness. A Pro plugin that fails license validation still shows up
-    # in loaded_plugins() because its entry point was called — but it will
-    # not have activated any features. Reading the checker is the only way
-    # to tell "Pro installed but degraded" from "Pro installed and active".
-    # Pro registers the checker unconditionally for exactly this reason.
+    # Resolve license state from the license checker, not from plugin
+    # loadedness. A plugin that fails license validation still shows up
+    # in loaded_plugins() because its entry point was called — but it
+    # will not have activated any features. Reading the checker is the
+    # only way to distinguish "installed but degraded" from "installed
+    # and active". Licensed plugins register the checker unconditionally
+    # for exactly this reason.
     checker = extensions.get_license_checker() if extensions else None
     try:
         license_active = bool(checker and checker.is_valid())

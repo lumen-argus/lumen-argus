@@ -1,7 +1,8 @@
 """Database adapter abstraction — pluggable backend for analytics storage.
 
 Community ships SQLiteAdapter (stdlib sqlite3, zero dependencies).
-Pro can inject PostgresAdapter via extensions.set_database_adapter().
+Plugins can inject an alternative adapter (e.g. PostgreSQL) via
+``extensions.set_database_adapter()``.
 
 The adapter handles:
 - Connection lifecycle (thread-local for SQLite, pooled for PostgreSQL)
@@ -97,9 +98,10 @@ class DBConnection(Protocol):
 class DatabaseAdapter(ABC):
     """Abstract database connection and dialect adapter.
 
-    Community provides SQLiteAdapter. Pro provides PostgresAdapter.
-    Repositories access connections via store._connect() and serialize
-    writes via store._adapter.write_lock().
+    Community provides SQLiteAdapter. Plugins can register an
+    alternative (e.g. PostgreSQL) via ``set_database_adapter``.
+    Repositories access connections via ``store._connect()`` and
+    serialize writes via ``store._adapter.write_lock()``.
     """
 
     # --- Connection lifecycle ---
@@ -233,8 +235,9 @@ class SQLiteAdapter(DatabaseAdapter):
     """SQLite adapter using stdlib sqlite3.
 
     Thread-local connections, WAL mode, 0o600 file permissions.
-    Extracted from AnalyticsStore._connect() — same behavior, now behind
-    the adapter interface so Pro can swap it for PostgresAdapter.
+    Extracted from AnalyticsStore._connect() — same behavior, now
+    behind the adapter interface so plugins can swap it for an
+    alternative implementation.
     """
 
     def __init__(self, db_path: str) -> None:

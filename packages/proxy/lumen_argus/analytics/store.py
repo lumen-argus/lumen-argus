@@ -5,8 +5,9 @@ aggregation queries for dashboard charts. Includes scheduled cleanup
 for retention enforcement.
 
 Database-agnostic via DatabaseAdapter — defaults to SQLiteAdapter
-(stdlib sqlite3, zero dependencies). Pro can inject PostgresAdapter
-via extensions.set_database_adapter().
+(stdlib sqlite3, zero dependencies). Plugins can inject an
+alternative adapter (e.g. PostgreSQL) via
+``extensions.set_database_adapter()``.
 """
 
 import logging
@@ -47,7 +48,8 @@ class AnalyticsStore:
 
     Delegates connection management and SQL dialect to a DatabaseAdapter.
     Defaults to SQLiteAdapter (thread-local connections, WAL mode).
-    Pro can inject PostgresAdapter (connection pool, MVCC).
+    Plugins can inject an alternative adapter (e.g. a PostgreSQL
+    adapter with a connection pool + MVCC).
     """
 
     def __init__(
@@ -67,9 +69,9 @@ class AnalyticsStore:
         # Plugin-registered DDL runs after the community schema. Accepted as
         # a constructor arg (rather than reaching into the ExtensionRegistry
         # from here) to keep analytics/ free of upward dependencies. Callers
-        # that adopt an already-constructed store (e.g. a Pro subclass
-        # returned via ExtensionRegistry.set_analytics_store) must call
-        # ``apply_schema_extensions`` themselves after load_plugins().
+        # that adopt an already-constructed store (e.g. a plugin-provided
+        # subclass returned via ExtensionRegistry.set_analytics_store) must
+        # call ``apply_schema_extensions`` themselves after load_plugins().
         if schema_extensions:
             self.apply_schema_extensions(schema_extensions)
         # Repositories receive adapter directly (DDD repository pattern)
@@ -107,8 +109,9 @@ class AnalyticsStore:
 
         Called from ``__init__`` when ``schema_extensions=`` is passed,
         and from ``config_loader._create_or_get_store`` for stores
-        adopted via ``ExtensionRegistry.set_analytics_store`` (e.g. a Pro
-        subclass). Safe to call multiple times: every DDL is idempotent.
+        adopted via ``ExtensionRegistry.set_analytics_store`` (e.g. a
+        plugin-provided subclass). Safe to call multiple times: every
+        DDL is idempotent.
         """
         if not ddls:
             return
@@ -172,7 +175,7 @@ class AnalyticsStore:
         connection — no locking needed for SELECTs.
 
         Use ``?`` placeholders; the adapter will translate to ``%s`` for
-        PostgreSQL if/when a Pro PostgresAdapter is wired up.
+        PostgreSQL if/when a PostgreSQL adapter is wired up.
 
         Returns a list of ``dict[str, Any]`` — one per row — so callers do
         not depend on the underlying cursor's row type (``sqlite3.Row`` vs
