@@ -373,20 +373,46 @@ dashboard/static/
 
 #### Dashboard Status Data Sharing
 
-The community dashboard calls `/api/v1/status` once per `loadData()`
-(initial load + SSE/polling refresh) and exposes the response on two
-globals *before* any page `loadFn` runs:
+The community dashboard calls `/api/v1/status` on every `loadData()`
+(initial load + SSE/polling refresh) and exposes the response on
+three globals:
 
 ```javascript
-window._statusData   // full /api/v1/status JSON response
-window._licenseTier  // "community" | "pro" | "team"
+window._statusData        // full /api/v1/status JSON response
+window._licenseTier       // "community" | "pro" | "team"
+window._loadDataPromise   // Promise that resolves when the initial
+                          //   loadData() call completes
 ```
 
-Plugin JS modules should read these synchronously instead of firing
-their own `/api/v1/status` fetch. On direct-hash navigation (e.g.
-bookmarking a page hash), the page's `loadFn` is guaranteed to run
-*after* `loadData()` completes, so the globals are always set by the
-time plugin code needs them.
+`_statusData` and `_licenseTier` are populated when the first
+`loadData()` call resolves — **not synchronously at script-parse
+time**. Plugin JS that runs during script load (an IIFE, a module
+that registers pages and does work in the body of its top-level
+function) or during a direct-hash navigation loadFn (e.g. bookmarking
+`#mcp`) will generally fire *before* `loadData()` has finished, so
+reading the globals synchronously at that point can return
+`undefined`.
+
+To read status reliably, await `window._loadDataPromise` first:
+
+```javascript
+(window._loadDataPromise || Promise.resolve()).then(function(){
+    // window._statusData and window._licenseTier are now populated.
+    const tier = window._licenseTier;
+    // ...
+});
+```
+
+The `|| Promise.resolve()` fallback covers the case where a plugin
+module somehow runs before `init.js` assigns the promise — in that
+case the fallback resolves immediately and the plugin code will see
+whatever is in `_statusData` at that moment (possibly `undefined`),
+so it should still null-check before use.
+
+After the first awaited resolution, later reads can be synchronous:
+`_statusData` is refreshed in place on every polling cycle (5s by
+default) and on every SSE `finding` event, so it stays current
+without any further awaits.
 
 ## Data Structures
 

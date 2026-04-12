@@ -435,14 +435,16 @@ class TestStaticDirRegistration(unittest.TestCase):
 
 
 class TestDashboardStatusDataSharing(unittest.TestCase):
-    """Lightweight static check — init.js should wire window._statusData.
+    """Lightweight static check — init.js should wire window._statusData,
+    window._licenseTier, and window._loadDataPromise.
 
-    Full browser-level tests live in the e2e suite; here we just verify the
-    contract that the JS source file sets the two globals before page loadFns
-    run (i.e. synchronously during loadData()).
+    Full browser-level timing tests live in the e2e suite; here we only
+    verify that the JS source file declares the contract correctly
+    (globals are written inside loadData(), and the initial loadData()
+    call is exposed as window._loadDataPromise so plugins can await it).
     """
 
-    def test_init_js_exposes_status_globals(self):
+    def setUp(self):
         init_js_path = os.path.join(
             os.path.dirname(__file__),
             "..",
@@ -455,17 +457,38 @@ class TestDashboardStatusDataSharing(unittest.TestCase):
             "init.js",
         )
         with open(init_js_path, "r", encoding="utf-8") as f:
-            content = f.read()
-        self.assertIn("window._statusData", content)
-        self.assertIn("window._licenseTier", content)
+            self.content = f.read()
+
+    def test_init_js_exposes_status_globals(self):
+        self.assertIn("window._statusData", self.content)
+        self.assertIn("window._licenseTier", self.content)
         # Must default to 'community' when tier is missing
-        self.assertIn("'community'", content)
+        self.assertIn("'community'", self.content)
         # Must be set inside loadData() — verify the assignments come before
         # the first renderQuickStats() call (a known page-load render fn).
-        status_idx = content.find("window._statusData=st")
-        render_idx = content.find("renderQuickStats")
+        status_idx = self.content.find("window._statusData=st")
+        render_idx = self.content.find("renderQuickStats")
         self.assertGreater(status_idx, 0)
         self.assertGreater(render_idx, status_idx)
+
+    def test_init_js_exposes_load_data_promise(self):
+        # Regression: previously loadData() was called without awaiting
+        # the returned promise on init, so plugin modules had no way to
+        # know when _statusData would be populated. The contract is now
+        # that the initial loadData() call is captured as
+        # window._loadDataPromise so plugin code can `.then()` it.
+        self.assertIn("window._loadDataPromise", self.content)
+        self.assertIn("window._loadDataPromise=loadData()", self.content)
+
+    def test_load_data_promise_assigned_before_init_route(self):
+        # The whole point of exposing the promise is to unblock plugin
+        # modules that run during initRoute()'s page loadFn. If the
+        # assignment happened AFTER initRoute() in the source, a plugin's
+        # loadFn could race and read an undefined _loadDataPromise.
+        promise_idx = self.content.find("window._loadDataPromise=loadData()")
+        init_route_idx = self.content.rfind("initRoute()")
+        self.assertGreater(promise_idx, 0)
+        self.assertGreater(init_route_idx, promise_idx)
 
 
 if __name__ == "__main__":

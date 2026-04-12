@@ -70,10 +70,12 @@ async function loadData(){try{
   const r=await Promise.all(fetches);
   const st=r[0],stats=r[1],fd=r[2],sess=r[3];
   if(r[4])_pipelineStages=r[4].stages||[];
-  /* Expose status to plugin modules. Set BEFORE any page loadFn runs so
-     modules can read window._statusData / window._licenseTier synchronously
-     instead of doing their own /api/v1/status fetch. Refreshed on every
-     loadData() call (initial load + SSE/polling refresh). */
+  /* Expose status to plugin modules. Populated when this loadData()
+     call resolves — plugin modules that need to read these during
+     their own init or page loadFn should first await
+     window._loadDataPromise (exposed at the bottom of this file).
+     Once resolved, later reads are synchronous because polling /
+     SSE refreshes update these in place. */
   window._statusData=st;
   window._licenseTier=(st&&st.tier)||'community';
   document.getElementById('hdr-status').textContent='operational';
@@ -162,7 +164,18 @@ document.getElementById('live-toggle').addEventListener('click',toggleLiveMode);
 document.addEventListener('pipeline-rendered',function(){_pipelineStages=null;});
 
 /* Initialize */
-initColToggles();loadData();
+initColToggles();
+/* Expose the initial loadData() promise so plugin modules can await
+   the first /api/v1/status fetch before reading window._statusData /
+   window._licenseTier. Without this, a plugin that runs at script-parse
+   time or during a direct-hash navigation loadFn (e.g. bookmarking
+   #mcp) would see undefined globals because loadData() is not awaited
+   before initRoute() fires. See the "Dashboard Status Data Sharing"
+   contract in docs/development/extensions.md. Only the initial call
+   is tracked — once it resolves, subsequent polling/SSE refreshes
+   update window._statusData in place, so plugin code can read the
+   globals synchronously after the first await. */
+window._loadDataPromise=loadData();
 if(sseMode){startSSE();}else{startPolling();}
 initRoute();
 window.addEventListener('hashchange',initRoute);
