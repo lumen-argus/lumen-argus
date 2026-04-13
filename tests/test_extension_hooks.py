@@ -491,5 +491,178 @@ class TestDashboardStatusDataSharing(unittest.TestCase):
         self.assertGreater(init_route_idx, promise_idx)
 
 
+# ---------------------------------------------------------------------------
+# Hook 6: Plugin load-order dependencies
+# ---------------------------------------------------------------------------
+
+
+class _FakeEntryPoint:
+    """Minimal stand-in for importlib.metadata.EntryPoint.
+
+    Carries the bits load_plugins() touches: name, module, dist, and
+    load() — without going through the real entry-point discovery
+    machinery, so tests don't have to install anything.
+    """
+
+    def __init__(self, name, module_name, register_fn, version="0.0.1"):
+        self.name = name
+        self.module = module_name
+        self._register_fn = register_fn
+
+        class _Dist:
+            def __init__(self, v):
+                self.metadata = {"Version": v}
+
+        self.dist = _Dist(version)
+
+    def load(self):
+        return self._register_fn
+
+
+class TestPluginLoadOrderResolver(unittest.TestCase):
+    """Pure-logic tests for ExtensionRegistry._resolve_plugin_load_order."""
+
+    def test_no_deps_preserves_iteration_order(self):
+        order, dropped = ExtensionRegistry._resolve_plugin_load_order([("a", ()), ("b", ()), ("c", ())])
+        self.assertEqual(order, ["a", "b", "c"])
+        self.assertEqual(dropped, {})
+
+    def test_dependent_loads_after_dependency(self):
+        order, dropped = ExtensionRegistry._resolve_plugin_load_order([("b", ("a",)), ("a", ())])
+        self.assertEqual(order, ["a", "b"])
+        self.assertEqual(dropped, {})
+
+    def test_three_chain_reversed_iteration(self):
+        order, dropped = ExtensionRegistry._resolve_plugin_load_order([("c", ("b",)), ("b", ("a",)), ("a", ())])
+        self.assertEqual(order, ["a", "b", "c"])
+        self.assertEqual(dropped, {})
+
+    def test_missing_dependency_is_dropped(self):
+        order, dropped = ExtensionRegistry._resolve_plugin_load_order([("x", ("y",)), ("z", ())])
+        self.assertEqual(order, ["z"])
+        self.assertIn("x", dropped)
+        self.assertIn("y", dropped["x"])
+
+    def test_transitive_drop_cascades(self):
+        order, dropped = ExtensionRegistry._resolve_plugin_load_order([("x", ("y",)), ("z", ("x",)), ("w", ())])
+        self.assertEqual(order, ["w"])
+        self.assertIn("x", dropped)
+        self.assertIn("z", dropped)
+        self.assertIn("x", dropped["z"])
+
+    def test_cycle_is_logged_and_falls_back(self):
+        # Both members of the cycle still emit so the proxy boots —
+        # a misconfigured plugin must not silently disappear.
+        order, dropped = ExtensionRegistry._resolve_plugin_load_order([("a", ("b",)), ("b", ("a",))])
+        self.assertEqual(sorted(order), ["a", "b"])
+        self.assertEqual(dropped, {})
+
+    def test_cycle_does_not_affect_unrelated_plugin(self):
+        order, _dropped = ExtensionRegistry._resolve_plugin_load_order([("a", ("b",)), ("b", ("a",)), ("c", ())])
+        self.assertIn("c", order)
+        self.assertIn("a", order)
+        self.assertIn("b", order)
+        self.assertLess(order.index("c"), order.index("a"))
+        self.assertLess(order.index("c"), order.index("b"))
+
+
+class TestLoadPluginsTopoSort(unittest.TestCase):
+    """End-to-end tests for ExtensionRegistry.load_plugins() ordering.
+
+    Patches ``importlib.metadata.entry_points`` and
+    ``importlib.import_module`` so we don't have to install fake
+    plugins.
+    """
+
+    def setUp(self):
+        self.calls: list[str] = []
+
+    def _make_plugin(self, name, deps=()):
+        """Build a (FakeEntryPoint, fake module) pair for one plugin.
+
+        The plugin's register() appends ``name`` to ``self.calls``, so
+        tests can assert load order by reading the list afterwards.
+        """
+        import types
+
+        module_name = f"fake_mod_{name}"
+        mod = types.ModuleType(module_name)
+        if deps:
+            mod.LUMEN_ARGUS_PLUGIN_DEPENDS_ON = tuple(deps)
+
+        def register(_registry, _captured_name=name):
+            self.calls.append(_captured_name)
+
+        return _FakeEntryPoint(name, module_name, register), mod
+
+    def _run(self, plugin_pairs):
+        """Run load_plugins() against the given ``[(ep, module), ...]`` list.
+
+        Iteration order of ``plugin_pairs`` becomes the entry-point
+        iteration order seen by load_plugins(), so tests can put
+        plugins in the "wrong" order to verify the resolver is the
+        thing doing the sorting.
+        """
+        import importlib
+        import importlib.metadata
+        from unittest.mock import patch
+
+        real_import = importlib.import_module
+        eps = [pair[0] for pair in plugin_pairs]
+        modules = {ep.module: mod for ep, mod in plugin_pairs}
+
+        def fake_entry_points(group=None):
+            if group == "lumen_argus.extensions":
+                return list(eps)
+            return []
+
+        def fake_import(name, package=None):
+            if name in modules:
+                return modules[name]
+            return real_import(name, package)
+
+        with (
+            patch.object(importlib.metadata, "entry_points", fake_entry_points),
+            patch.object(importlib, "import_module", fake_import),
+        ):
+            reg = ExtensionRegistry()
+            reg.load_plugins()
+            return reg
+
+    def test_dependency_loads_first_even_when_iter_order_reversed(self):
+        a = self._make_plugin("a")
+        b = self._make_plugin("b", deps=("a",))
+        self._run([b, a])
+        self.assertEqual(self.calls, ["a", "b"])
+
+    def test_missing_dep_drops_plugin_others_unaffected(self):
+        x = self._make_plugin("x", deps=("never_installed",))
+        z = self._make_plugin("z")
+        reg = self._run([x, z])
+        self.assertEqual(self.calls, ["z"])
+        self.assertEqual([n for n, _ in reg.loaded_plugins()], ["z"])
+
+    def test_cycle_does_not_crash_proxy(self):
+        # Both members of the cycle still register — cycle is logged,
+        # not fatal — so the proxy boots through misconfiguration.
+        a = self._make_plugin("a", deps=("b",))
+        b = self._make_plugin("b", deps=("a",))
+        self._run([a, b])
+        self.assertEqual(sorted(self.calls), ["a", "b"])
+
+    def test_no_deps_attribute_is_backward_compatible(self):
+        a = self._make_plugin("a")
+        b = self._make_plugin("b")
+        self._run([a, b])
+        self.assertEqual(self.calls, ["a", "b"])
+
+    def test_chain_of_three_resolves_correctly(self):
+        a = self._make_plugin("a")
+        b = self._make_plugin("b", deps=("a",))
+        c = self._make_plugin("c", deps=("b",))
+        self._run([c, b, a])
+        self.assertEqual(self.calls, ["a", "b", "c"])
+
+
 if __name__ == "__main__":
     unittest.main()

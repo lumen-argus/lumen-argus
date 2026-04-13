@@ -665,23 +665,194 @@ class ExtensionRegistry:
         """Return list of (name, version) for loaded plugins."""
         return list(self._loaded_plugins)
 
+    @staticmethod
+    def _resolve_plugin_load_order(
+        plugin_deps: list[tuple[str, tuple[str, ...]]],
+    ) -> tuple[list[str], dict[str, str]]:
+        """Compute the load order for plugins given their declared deps.
+
+        Plugins may declare load-order dependencies via a module-level
+        ``LUMEN_ARGUS_PLUGIN_DEPENDS_ON`` tuple of entry-point names.
+        This helper takes those declarations (in entry-point iteration
+        order, which is alphabetical because ``entry_points.txt`` is
+        written sorted by setuptools) and returns the resolved order
+        plus any plugins dropped from the result.
+
+        Args:
+            plugin_deps: ``(name, deps)`` pairs in entry-point iteration
+                order. Duplicate names are tolerated; the first
+                occurrence's deps win for graph purposes, and downstream
+                callers are responsible for emitting all entries with a
+                given name when that name is loaded.
+
+        Returns:
+            ``(sorted_names, dropped)``:
+              - ``sorted_names``: unique plugin names in resolved load
+                order. Plugins involved in a cycle fall back to
+                entry-point iteration order at the tail of the list so
+                the proxy still boots — a misconfigured plugin must not
+                crash the registry.
+              - ``dropped``: ``name -> reason`` for any plugin excluded
+                because a declared dependency is not installed (or was
+                itself dropped transitively).
+
+        Side effects: warnings/errors are emitted to the module logger.
+        """
+        deps_by_name: dict[str, tuple[str, ...]] = {}
+        first_seen_order: list[str] = []
+        for name, deps in plugin_deps:
+            if name not in deps_by_name:
+                deps_by_name[name] = deps
+                first_seen_order.append(name)
+
+        dropped: dict[str, str] = {}
+
+        def _drop(name: str, reason: str) -> None:
+            if name in dropped:
+                return
+            dropped[name] = reason
+            log.warning("plugin %r dropped: %s", name, reason)
+
+        changed = True
+        while changed:
+            changed = False
+            for name in first_seen_order:
+                if name in dropped:
+                    continue
+                for dep in deps_by_name[name]:
+                    if dep not in deps_by_name:
+                        _drop(
+                            name,
+                            "depends on %r which is not installed" % dep,
+                        )
+                        changed = True
+                        break
+                    if dep in dropped:
+                        _drop(
+                            name,
+                            "depends on %r which was dropped" % dep,
+                        )
+                        changed = True
+                        break
+
+        order_index = {n: i for i, n in enumerate(first_seen_order)}
+        remaining: dict[str, set[str]] = {
+            name: {d for d in deps_by_name[name] if d not in dropped}
+            for name in first_seen_order
+            if name not in dropped
+        }
+
+        sorted_names: list[str] = []
+        while remaining:
+            ready = sorted(
+                (n for n, d in remaining.items() if not d),
+                key=lambda n: order_index[n],
+            )
+            if not ready:
+                cycle = sorted(remaining.keys(), key=lambda n: order_index[n])
+                log.error(
+                    "plugin dependency cycle detected among %s; "
+                    "falling back to entry-point iteration order for involved plugins",
+                    ", ".join(repr(n) for n in cycle),
+                )
+                sorted_names.extend(cycle)
+                break
+            for n in ready:
+                sorted_names.append(n)
+                del remaining[n]
+                for d in remaining.values():
+                    d.discard(n)
+
+        return sorted_names, dropped
+
     def load_plugins(self) -> None:
-        """Discover and load all installed lumen_argus.extensions entry points."""
+        """Discover and load installed ``lumen_argus.extensions`` entry points.
+
+        Plugins may declare load-order dependencies via a module-level
+        ``LUMEN_ARGUS_PLUGIN_DEPENDS_ON`` tuple on the plugin package::
+
+            # In any plugin's __init__.py
+            LUMEN_ARGUS_PLUGIN_DEPENDS_ON: tuple[str, ...] = ("other-plugin",)
+
+        Strings refer to entry-point names declared in
+        ``[project.entry-points."lumen_argus.extensions"]``, not Python
+        module names. ``load_plugins`` topologically sorts plugins so a
+        plugin's declared dependencies have ``register()`` called first.
+        Plugins without the attribute fall back to entry-point iteration
+        order (alphabetical, set by setuptools) — fully backward
+        compatible.
+
+        Failure modes:
+          - **Missing dependency** (X declares dep on Y, Y not installed):
+            X (and anything transitively depending on X) is dropped with
+            a WARNING. Other plugins continue loading.
+          - **Cycle** (A → B → A): logged as ERROR; the involved plugins
+            fall back to entry-point iteration order. The proxy still
+            boots — a plugin misconfiguration must not crash it.
+          - **Import or register error**: logged as ERROR; other plugins
+            continue loading.
+        """
+        from importlib import import_module
         from importlib.metadata import entry_points
 
-        eps = entry_points(group="lumen_argus.extensions")
+        eps_iter = list(entry_points(group="lumen_argus.extensions"))
+        if not eps_iter:
+            return
 
-        for ep in eps:
+        # Import the module before ``ep.load()`` so we can read
+        # ``LUMEN_ARGUS_PLUGIN_DEPENDS_ON`` and decide load order. Once
+        # the module is in ``sys.modules`` the later ``ep.load()`` is a
+        # cache hit, not a re-import.
+        records: list[tuple[Any, tuple[str, ...]]] = []
+        for ep in eps_iter:
             try:
-                register_fn = ep.load()
-                register_fn(self)
-                version = "unknown"
-                try:
-                    if ep.dist:
-                        version = ep.dist.metadata["Version"]
-                except Exception as ve:
-                    log.debug("could not read version for %s: %s", ep.name, ve)
-                self._loaded_plugins.append((ep.name, version))
-                log.info("loaded extension: %s", ep.name)
+                module = import_module(ep.module)
             except Exception as e:
-                log.error("failed to load extension '%s': %s", ep.name, e, exc_info=True)
+                log.error(
+                    "failed to import extension module for '%s': %s",
+                    ep.name,
+                    e,
+                    exc_info=True,
+                )
+                continue
+            deps_attr = getattr(module, "LUMEN_ARGUS_PLUGIN_DEPENDS_ON", ())
+            try:
+                deps = tuple(str(d) for d in deps_attr)
+            except TypeError:
+                log.warning(
+                    "plugin %r has non-iterable LUMEN_ARGUS_PLUGIN_DEPENDS_ON (%r); ignoring",
+                    ep.name,
+                    deps_attr,
+                )
+                deps = ()
+            records.append((ep, deps))
+
+        if not records:
+            return
+
+        sorted_names, dropped = self._resolve_plugin_load_order([(ep.name, deps) for ep, deps in records])
+
+        # Duplicate entry-point names (rare, pathological) are loaded
+        # together in original iteration order to preserve historical
+        # behavior — the dep graph keys on first occurrence.
+        eps_by_name: dict[str, list[Any]] = {}
+        for ep, _ in records:
+            if ep.name in dropped:
+                continue
+            eps_by_name.setdefault(ep.name, []).append(ep)
+
+        for name in sorted_names:
+            for ep in eps_by_name.get(name, ()):
+                try:
+                    register_fn = ep.load()
+                    register_fn(self)
+                    version = "unknown"
+                    try:
+                        if ep.dist:
+                            version = ep.dist.metadata["Version"]
+                    except Exception as ve:
+                        log.debug("could not read version for %s: %s", ep.name, ve)
+                    self._loaded_plugins.append((ep.name, version))
+                    log.info("loaded extension: %s", ep.name)
+                except Exception as e:
+                    log.error("failed to load extension '%s': %s", ep.name, e, exc_info=True)

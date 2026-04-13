@@ -35,6 +35,36 @@ Plugins are logged at startup:
 INFO  [argus.cli] plugin: my-plugin v1.0.0
 ```
 
+### 4. Declare Load-Order Dependencies (Optional)
+
+When one plugin reads shared state set up by another (for example via
+`registry.get_plugin("other-plugin")`), declare the dependency on the
+plugin package so `load_plugins()` can topologically sort the
+`register()` calls:
+
+```python
+# In my_package/__init__.py
+LUMEN_ARGUS_PLUGIN_DEPENDS_ON: tuple[str, ...] = ("other-plugin",)
+
+def register(registry):
+    other = registry.get_plugin("other-plugin")
+    ...
+```
+
+Strings refer to **entry-point names** (the key on the left of `=` in
+`[project.entry-points."lumen_argus.extensions"]`), not Python module
+names. Plugins without the attribute fall back to entry-point iteration
+order — fully backward compatible.
+
+Failure modes are intentionally non-fatal so a misconfigured plugin
+cannot crash the proxy:
+
+- **Missing dependency** (X declares dep on Y, Y not installed): X and
+  anything transitively depending on X are dropped with a `WARNING`.
+  Other plugins continue loading.
+- **Cycle** (`A → B → A`): logged as `ERROR`; the involved plugins fall
+  back to entry-point iteration order. The proxy still boots.
+
 ## Extension Registry API
 
 ### Detectors
