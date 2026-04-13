@@ -490,6 +490,16 @@ class TestDashboardStatusDataSharing(unittest.TestCase):
         self.assertGreater(promise_idx, 0)
         self.assertGreater(init_route_idx, promise_idx)
 
+    def test_init_route_waits_for_dom_content_loaded(self):
+        # Regression: synchronous initRoute() ran before plugin-injected
+        # <script> blocks could call registerPage(); a microtask doesn't
+        # fix it because the parser drains microtasks between scripts.
+        self.assertRegex(
+            self.content,
+            r"addEventListener\(\s*['\"]DOMContentLoaded['\"]\s*,\s*initRoute",
+        )
+        self.assertNotRegex(self.content, r"queueMicrotask\(\s*initRoute\s*\)")
+
 
 # ---------------------------------------------------------------------------
 # Hook 6: Plugin load-order dependencies

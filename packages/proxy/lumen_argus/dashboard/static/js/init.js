@@ -173,5 +173,11 @@ initColToggles();
    globals synchronously after the first await. */
 window._loadDataPromise=loadData();
 if(sseMode){startSSE();}else{startPolling();}
-initRoute();
+/* DOMContentLoaded, not microtask: the HTML parser drains microtasks
+   between every <script> block, so plugin <script>s injected after
+   this file would still run after a queued initRoute() and miss their
+   registerPage() calls in VALID_PAGES. */
+if(document.readyState==='loading'){
+  document.addEventListener('DOMContentLoaded',initRoute);
+}else{initRoute();}
 window.addEventListener('hashchange',initRoute);
