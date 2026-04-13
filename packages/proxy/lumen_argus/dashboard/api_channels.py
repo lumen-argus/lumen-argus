@@ -103,15 +103,9 @@ def handle_notifications(
         except ValueError as e:
             err = str(e)
             if err == "channel_limit_reached":
-                count = store.count_notification_channels()
                 return json_response(
                     409,
-                    {
-                        "error": "channel_limit_reached",
-                        "message": "Channel limit reached.",
-                        "limit": limit,
-                        "count": count,
-                    },
+                    {"error": "channel_limit_reached", "message": "Channel limit reached.", "limit": limit},
                 )
             return json_response(400, {"error": err})
         _rebuild_dispatcher(extensions)

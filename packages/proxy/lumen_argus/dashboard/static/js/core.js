@@ -70,11 +70,9 @@ function _ensureNavTab(name, label, order) {
 function registerPage(name, label, options) {
   options = options || {};
   const existing = _registeredPages[name];
-  /* If unlocking a locked placeholder, clear the upgrade prompt */
   if (existing && existing.locked && !options.locked) {
     const container = document.getElementById('page-' + name);
     if (container) container.replaceChildren();
-    /* Remove lock icon from nav tab */
     const nav = document.getElementById('nav');
     const tab = nav.querySelector('[data-page="'+name+'"]');
     if (tab) {
@@ -91,23 +89,20 @@ function registerPage(name, label, options) {
     div.id = 'page-' + name;
     document.querySelector('.shell').appendChild(div);
   }
-  /* If plugin provides HTML template, inject safely into the page container */
   if (options.html) {
     const container = document.getElementById('page-' + name);
     if (container && !container.children.length) {
       _safeInjectHTML(container, options.html);
     }
   }
-  /* If locked, render upgrade prompt */
   if (options.locked) {
     const page = document.getElementById('page-' + name);
     if (page && !page.children.length) {
-      _renderUpgradePrompt(page, label, options.proDescription || '');
+      _renderLockedCard(page, label, options.lockedDescription || '');
     }
   }
-  /* If this page is currently active, call loadFn after the current script
-     block finishes — deferring avoids a TDZ trap where a plugin registers at
-     the top of its file and loadFn closes over const/let declared below. */
+  /* Defer loadFn to a microtask so plugins that register at file top
+     can close over const/let declared below without hitting a TDZ. */
   if (options.loadFn) {
     const activePage = document.getElementById('page-' + name);
     if (activePage && activePage.classList.contains('active')) {
@@ -116,32 +111,28 @@ function registerPage(name, label, options) {
   }
 }
 
-function _renderUpgradePrompt(container, label, description) {
+/* Generic placeholder for pages that a plugin registers as `locked: true`.
+   Plugins pass a `lockedDescription` string explaining what the page does;
+   the only call-to-action is "Open Settings", where the user can enter a
+   license key. No marketing copy is hardcoded here. */
+function _renderLockedCard(container, label, description) {
   const wrap = document.createElement('div');
   wrap.className = 'upgrade-prompt';
   const card = document.createElement('div');
   card.className = 'upgrade-card';
   const h3 = document.createElement('h3');
-  h3.textContent = '\uD83D\uDD12 ' + label + ' ';
-  const badge = document.createElement('span');
-  badge.className = 'pro-badge';
-  badge.textContent = 'PRO';
-  h3.appendChild(badge);
+  h3.textContent = label;
   card.appendChild(h3);
-  const p = document.createElement('p');
-  p.textContent = description;
-  card.appendChild(p);
+  if (description) {
+    const p = document.createElement('p');
+    p.textContent = description;
+    card.appendChild(p);
+  }
   const btns = document.createElement('div');
   btns.className = 'upgrade-btns';
-  const trial = document.createElement('a');
-  trial.className = 'btn btn-primary btn-sm';
-  trial.textContent = 'Start Free Trial';
-  trial.href = 'https://lumen-argus.com/trial';
-  trial.target = '_blank';
-  btns.appendChild(trial);
   const license = document.createElement('div');
   license.className = 'btn btn-sm';
-  license.textContent = 'Enter License Key';
+  license.textContent = 'Open Settings';
   license.addEventListener('click', function(){navigate('settings')});
   btns.appendChild(license);
   card.appendChild(btns);
@@ -181,6 +172,8 @@ function fmtTime(ts){try{const d=new Date(ts),now=new Date(),s=(now-d)/1000;
 function fmtUptime(s){if(s<60)return Math.round(s)+'s';
   if(s<3600)return Math.floor(s/60)+'m '+Math.round(s%60)+'s';
   return Math.floor(s/3600)+'h '+Math.floor((s%3600)/60)+'m';}
+
+function titlecase(s){if(!s)return '';return s.charAt(0).toUpperCase()+s.slice(1);}
 
 function sevCls(s){return SEV_VALID[s]?s:'info'}
 

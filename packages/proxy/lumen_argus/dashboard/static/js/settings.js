@@ -54,7 +54,7 @@ function loadSettings(){
     const tierRow=document.createElement('div');tierRow.className='setting-row';
     const tierKey=document.createElement('div');tierKey.className='setting-key';tierKey.textContent='Tier';
     const tierVal=document.createElement('div');tierVal.className='setting-val';
-    tierVal.textContent=tier.charAt(0).toUpperCase()+tier.slice(1);
+    tierVal.textContent=titlecase(tier);
     tierVal.classList.add('tier-'+tier);
     tierRow.appendChild(tierKey);tierRow.appendChild(tierVal);licGrp.appendChild(tierRow);
     if(status.license){

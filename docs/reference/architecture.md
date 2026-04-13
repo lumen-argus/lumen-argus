@@ -138,7 +138,7 @@ When the `rules` DB table has rules (auto-imported on first run), the pipeline u
 | **ProprietaryDetector** | `detectors/proprietary.py` | File pattern blocklist and keyword detection. Always active. |
 | **CustomDetector** | `detectors/custom.py` | Fallback: user-defined regex rules from config. Used when DB has no rules. |
 
-All regex patterns are compiled at load time (startup or SIGHUP reload) to avoid runtime compilation overhead. The `RulesDetector` supports named validators (`luhn`, `ssn_range`, `iban_mod97`, `exclude_private_ips`) and is license-aware — Pro rules (`tier='pro'`) are skipped when no valid license is present.
+All regex patterns are compiled at load time (startup or SIGHUP reload) to avoid runtime compilation overhead. The `RulesDetector` supports named validators (`luhn`, `ssn_range`, `iban_mod97`, `exclude_private_ips`) and is license-aware — rules tagged with a higher tier are skipped when no valid license is present.
 
 ### Rule Overlap Analysis
 
@@ -161,7 +161,7 @@ Two detection types:
 
 Response findings are recorded to the analytics store and audit log with `response.` location prefix (e.g., `response.content`). Controlled by `response_secrets` and `response_injection` pipeline stages — both disabled by default (opt-in).
 
-Async mode (community): response is forwarded immediately, scanned in background thread, findings recorded post-hoc. Pro adds buffered/blocking mode and custom injection patterns via rules engine.
+Async mode (default): response is forwarded immediately, scanned in background thread, findings recorded post-hoc. Plugins may register a buffered/blocking mode via the `set_response_scan_hook` extension hook.
 
 ### MCP Scanning
 
@@ -202,9 +202,9 @@ Both paths share:
 **Tool call validation pipeline** (`_check_tools_call` in `mcp/proxy/_scanning.py`):
 
 1. **Session binding** — validates tool name against `tools/list` baseline
-2. **ABAC tool policy evaluation** (Pro) — `get_tool_policy_evaluator()` hook. Evaluates tool against YAML/DB/fleet policies with glob matching on tool name, server ID, arguments, and context. Returns allow/block/alert/approval.
-3. **Approval gate** (Pro) — `get_approval_gate()` hook. If policy action is `approval`, suspends the tool call and waits for admin decision via dashboard. Fail-open: gate failure allows the call with error-level logging.
-4. **Legacy policy engine** (Pro) — `get_mcp_policy_engine()` hook. Pattern-based rule matching.
+2. **ABAC tool policy evaluation** (plugin hook) — `get_tool_policy_evaluator()`. Evaluates tool against policies with glob matching on tool name, server ID, arguments, and context. Returns allow/block/alert/approval.
+3. **Approval gate** (plugin hook) — `get_approval_gate()`. If policy action is `approval`, suspends the tool call and waits for admin decision via dashboard. Fail-open: gate failure allows the call with error-level logging.
+4. **Legacy policy engine** (plugin hook) — `get_mcp_policy_engine()`. Pattern-based rule matching.
 5. **DLP argument scanning** — runs configured detectors (secrets, PII) on serialized arguments.
 
 `server_id` is populated from the command (stdio) or upstream URL (bridges) and passed to the evaluator and gate for server-scoped policy matching.
@@ -237,7 +237,7 @@ The `WebSocketScanner` scans WebSocket text frames bidirectionally. The relay ru
 
 Controlled by `websocket_outbound` and `websocket_inbound` pipeline stages (disabled by default, opt-in). Runs on the same port as the proxy (`ws://localhost:8080/ws?url=ws://target`). SIGHUP reloads the scanner configuration without server restart.
 
-**Connection lifecycle hooks**: Each WebSocket connection gets a unique `connection_id` (UUID). Extension hooks fire on `open`, `finding_detected` (text frames with findings), and `close` events. Community records connection data to `ws_connections` SQLite table (target URL, origin, duration, frame counts, findings count, close code). Pro can override via `extensions.set_ws_connection_hook()` for richer per-connection analytics. Hook calls run in thread pool via `asyncio.to_thread()` to avoid blocking the event loop.
+**Connection lifecycle hooks**: Each WebSocket connection gets a unique `connection_id` (UUID). Extension hooks fire on `open`, `finding_detected` (text frames with findings), and `close` events. Community records connection data to `ws_connections` SQLite table (target URL, origin, duration, frame counts, findings count, close code). Plugins may override via `extensions.set_ws_connection_hook()` for richer per-connection analytics. Hook calls run in thread pool via `asyncio.to_thread()` to avoid blocking the event loop.
 
 **Policy enforcement**: WebSocket findings are evaluated against the same policy as HTTP requests. Block action closes the connection immediately (frame not forwarded). Alert/log actions record findings and continue forwarding.
 
@@ -289,7 +289,7 @@ Actions are resolved using a strict priority order:
 | Priority | Action | Description |
 |----------|--------|-------------|
 | 4 | `block` | Reject with HTTP 400 (`invalid_request_error`) regardless of streaming mode. If findings are only in conversation history, strips affected messages and forwards the cleaned request (logged as `strip`). |
-| 3 | `redact` | Replace matched values in the request body before forwarding. **(Pro only)** |
+| 3 | `redact` | Replace matched values in the request body before forwarding. **(plugin-provided)** |
 | 2 | `alert` | Forward the request but log and display a warning. |
 | 1 | `log` | Forward the request and record the finding silently. |
 | 0 | `pass` | No findings -- forward without action. |
@@ -300,8 +300,8 @@ The winning action is the **highest priority** across all findings in a request.
 
 Each detector can have its own action via `detectors.<name>.action` in the config. If not set, the `default_action` applies.
 
-!!! warning "Community Edition limitation"
-    In the Community Edition, the `redact` action is automatically downgraded to `alert` by the policy engine. Full redaction support requires the Pro edition, which registers an `evaluate` hook to bypass this downgrade.
+!!! note "`redact` is plugin-provided"
+    Community ships with `log`, `alert`, `block`. The `redact` action requires a plugin that registers an `evaluate` hook — without one, a configured `redact` action is automatically downgraded to `alert` by the policy engine.
 
 ### History stripping
 
@@ -435,7 +435,7 @@ A single audit log record. Serialized to JSONL via `to_dict()`, which explicitly
 
 **Module:** `lumen_argus/extensions.py`
 
-The extension system provides the open-core boundary between Community and Pro/Enterprise editions. Extensions are discovered via Python entry points in the `lumen_argus.extensions` group.
+The extension system provides the open-core boundary that lets out-of-tree plugins extend the community proxy without modifying its source. Extensions are discovered via Python entry points in the `lumen_argus.extensions` group.
 
 ### Entry point registration
 
@@ -456,10 +456,10 @@ def register(registry):
 |------|-----------|-------------|
 | `pre_request` | `(request_id: int) -> None` | Called at the start of each request. Use for correlation ID setup. |
 | `post_scan` | `(result: ScanResult, body: bytes, provider: str, session=ctx) -> None` | Called after each scan completes. Use for notifications or SSE push. Accept `**kwargs` for forward compat. |
-| `evaluate` | `(findings: list[Finding], policy: PolicyEngine) -> ActionDecision` | Replaces the default policy evaluation. Used by Pro to support the `redact` action. Falls back to default on exception. |
-| `redact` | `(body: bytes, findings: list[Finding]) -> bytes` | Transforms the request body to redact matched values before forwarding. Pro only. |
+| `evaluate` | `(findings: list[Finding], policy: PolicyEngine) -> ActionDecision` | Replaces the default policy evaluation. Plugins use this to support additional actions such as `redact`. Falls back to default on exception. |
+| `redact` | `(body: bytes, findings: list[Finding]) -> bytes` | Transforms the request body to replace matched values before forwarding. |
 | `config_reload` | `(pipeline: ScannerPipeline) -> None` | Called after SIGHUP config reload. Use for plugin re-initialization. |
-| `response_scan` | `(text: str, provider: str, model: str, session) -> (action, findings)` | Buffered response scanning. Runs INSTEAD of async scan when set. Return `("block", findings)` to reject response with 400. Pro only. |
+| `response_scan` | `(text: str, provider: str, model: str, session) -> (action, findings)` | Buffered response scanning. Runs INSTEAD of async scan when set. Return `("block", findings)` to reject response with 400. |
 
 ### Dashboard extension hooks
 
@@ -468,9 +468,9 @@ def register(registry):
 | `register_dashboard_pages(pages)` | `pages: list[dict]` | Register additional dashboard pages. Each page dict has `name`, `label`, `js`, `order`. Plugins own their pages end-to-end — community no longer pre-registers locked placeholders. |
 | `register_dashboard_css(css)` | `css: str` | Register additional CSS injected after community CSS. |
 | `register_dashboard_api(handler)` | `async handler(path, method, body, store, audit_reader, agent_identity) -> (status, body) or None` | Register a plugin API handler. Called before community handler; return `None` to fall through. `agent_identity` is `AgentIdentity | None`. |
-| `set_analytics_store(store)` | `store: AnalyticsStore` | Override the analytics store (Pro passes its extended store). |
+| `set_analytics_store(store)` | `store: AnalyticsStore` | Override the analytics store. Plugins use this to swap in an extended store (e.g. additional tables, alternate adapter). |
 | `set_sse_broadcaster(broadcaster)` | `broadcaster: SSEBroadcaster` | Store the SSE broadcaster for plugin access. |
-| `register_auth_provider(provider)` | `provider.authenticate(headers) -> dict or None` | Register an auth provider (Enterprise: OAuth, SAML). |
+| `register_auth_provider(provider)` | `provider.authenticate(headers) -> dict or None` | Register an auth provider (e.g. OAuth, SAML). |
 
 ### Notification hooks
 
@@ -583,11 +583,11 @@ The proxy only reads `X-Lumen-Argus-*` headers from authenticated agents (via `A
 
 The `/_forward` endpoint has a three-state authentication gate:
 
-- **Pro mode — `AgentAuthProvider` registered.** Only authenticated agents may use `/_forward`. Unauthenticated callers are rejected with HTTP 403; providers that raise `AuthenticationError` surface as HTTP 401. This protects multi-tenant Pro deployments where the proxy may hold agent-scoped credentials or enforce per-agent egress policy.
-- **Community mode — no provider, non-loopback bind.** Rejected with HTTP 403. The loopback-trust argument below depends on the proxy being unreachable from the network. Docker deployments (`--host 0.0.0.0`) and any other non-loopback bind do not satisfy that assumption, so the relaxed gate is withheld and forward proxy cannot be used in community mode. Such deployments must either register a Pro auth provider or switch to reverse-proxy mode (`ANTHROPIC_BASE_URL=http://proxy:8080`).
-- **Community mode — no provider, loopback bind.** The gate is skipped. Loopback callers are already local processes that could reach upstream hosts directly; the proxy builds forwarding headers purely from the incoming request (with `X-Lumen-*` stripped) and does not inject credentials on the caller's behalf, so `/_forward` grants no SSRF escalation beyond what the caller already has. The first community-mode pass-through emits a one-shot `INFO` log line for operator visibility.
+- **Authenticated mode — `AgentAuthProvider` registered.** Only authenticated agents may use `/_forward`. Unauthenticated callers are rejected with HTTP 403; providers that raise `AuthenticationError` surface as HTTP 401. This protects multi-tenant deployments where the proxy may hold agent-scoped credentials or enforce per-agent egress policy.
+- **Unauthenticated mode — no provider, non-loopback bind.** Rejected with HTTP 403. The loopback-trust argument below depends on the proxy being unreachable from the network. Docker deployments (`--host 0.0.0.0`) and any other non-loopback bind do not satisfy that assumption, so the relaxed gate is withheld and forward proxy cannot be used. Such deployments must either register an auth provider or switch to reverse-proxy mode (`ANTHROPIC_BASE_URL=http://proxy:8080`).
+- **Unauthenticated mode — no provider, loopback bind.** The gate is skipped. Loopback callers are already local processes that could reach upstream hosts directly; the proxy builds forwarding headers purely from the incoming request (with `X-Lumen-*` stripped) and does not inject credentials on the caller's behalf, so `/_forward` grants no SSRF escalation beyond what the caller already has. The first pass-through emits a one-shot `INFO` log line for operator visibility.
 
-The gate transitions automatically when Pro registers a provider via `extensions.set_agent_auth_provider()` or the operator rebinds the proxy — no config flag, no restart. The loopback check uses the same address set (`127.0.0.1`, `localhost`) as the startup warning in `async_proxy/_server.py`.
+The gate transitions automatically when a plugin registers a provider via `extensions.set_agent_auth_provider()` or the operator rebinds the proxy — no config flag, no restart. The loopback check uses the same address set (`127.0.0.1`, `localhost`) as the startup warning in `async_proxy/_server.py`.
 
 ---
 
@@ -620,4 +620,4 @@ The dashboard REST API is split by domain. All handlers import shared utilities 
 | `dashboard/api_allowlists.py` | Allowlist CRUD and pattern testing |
 | `dashboard/api_mcp.py` | MCP tool list management |
 
-Pro extensions should import shared helpers from `lumen_argus.dashboard.api_helpers` (not from `api.py`). The public entry point `handle_community_api()` remains in `api.py`.
+Plugins should import shared helpers from `lumen_argus.dashboard.api_helpers` (not from `api.py`). The public entry point `handle_community_api()` remains in `api.py`.

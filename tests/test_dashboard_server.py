@@ -1122,11 +1122,15 @@ class TestCommunityAPIDirect(unittest.TestCase):
         self.assertEqual(data["today_count"], 0)
         self.assertIsNone(data["last_finding_time"])
 
-    def test_stats_advanced_returns_402_without_pro(self):
+    def test_stats_advanced_no_store(self):
         status, body = handle_community_api("/api/v1/stats/advanced", "GET", b"", None)
         data = json.loads(body)
-        self.assertEqual(status, 402)
-        self.assertEqual(data["error"], "pro_required")
+        self.assertEqual(status, 200)
+        self.assertEqual(data["action_trend"], [])
+        self.assertEqual(data["activity_matrix"], [])
+        self.assertEqual(data["top_accounts"], [])
+        self.assertEqual(data["top_projects"], [])
+        self.assertEqual(data["detection_coverage"], {})
 
     def test_config_no_config(self):
         status, body = handle_community_api("/api/v1/config", "GET", b"", None)

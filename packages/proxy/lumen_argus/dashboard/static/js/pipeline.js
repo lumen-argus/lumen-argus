@@ -160,7 +160,7 @@ function _pipelineStageRow(stage){
       sub.appendChild(subToggle);
 
       const subName=document.createElement('span');subName.className='pipeline-sub-name';
-      subName.textContent=det.name.charAt(0).toUpperCase()+det.name.slice(1);
+      subName.textContent=titlecase(det.name);
       sub.appendChild(subName);
 
       const subActionSel=document.createElement('select');

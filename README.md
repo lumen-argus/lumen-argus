@@ -233,7 +233,7 @@ API responses are scanned asynchronously for secrets and prompt injection — ze
 | Detection | Patterns | Description |
 |---|---|---|
 | **Secrets** | Reuses all request detectors | Catches secrets leaked from context in model output |
-| **Injection** | 10 community + Pro extended | Detects prompt injection (e.g., "ignore previous instructions", `<system>` tags, exfiltration attempts) |
+| **Injection** | 10 built-in patterns | Detects prompt injection (e.g., "ignore previous instructions", `<system>` tags, exfiltration attempts) |
 
 Injection patterns are stored as rules in the DB (detector=`injection`) — visible and configurable from the Rules dashboard page. Enable via Pipeline page: toggle `Response Secrets` and/or `Response Injection` stages.
 
@@ -273,7 +273,7 @@ lumen-argus mcp --upstream ws://localhost:9000/mcp
 - **Session binding** — validates `tools/call` against tool inventory from first `tools/list` (opt-in)
 - **Environment restriction** — subprocess mode strips secrets from child process environment
 
-Configurable tool allow/block lists via `mcp:` config section or dashboard API. Pro adds ABAC tool policies (glob matching on tool name, server, arguments, context), human-in-the-loop approval gate, and risk classification. MCP over HTTP is automatically detected and scanned by the main proxy — no config needed. `lumen-argus mcp` covers all other transports: stdio subprocess for local MCP servers, HTTP bridge for remote servers, HTTP reverse proxy for centralized enterprise scanning, and WebSocket bridge for WS-based MCP servers.
+Configurable tool allow/block lists via `mcp:` config section or dashboard API. Plugin extension hooks (`set_tool_policy_evaluator`, `set_approval_gate`) let out-of-tree packages add ABAC tool policies (glob matching on tool name, server, arguments, context), human-in-the-loop approval gates, and risk classification on top of community's allow/block list. MCP over HTTP is automatically detected and scanned by the main proxy — no config needed. `lumen-argus mcp` covers all other transports: stdio subprocess for local MCP servers, HTTP bridge for remote servers, HTTP reverse proxy for centralized scanning, and WebSocket bridge for WS-based MCP servers.
 
 **MCP server detection** (`lumen-argus detect --mcp`) discovers servers from 8 AI tools plus Claude Code plugins:
 
@@ -295,16 +295,15 @@ Plugin detection reads `~/.claude/plugins/installed_plugins.json` for install pa
 
 ## Rules Engine
 
-Detection rules are stored in SQLite — manage via CLI or dashboard (Pro). Community rules auto-imported on first run.
+Detection rules are stored in SQLite — manage via CLI or the Rules dashboard page. Community rules auto-imported on first run.
 
 ```bash
-lumen-argus rules import              # import 53 community rules
-lumen-argus rules import --pro        # import 1,800+ Pro rules (license required)
+lumen-argus rules import              # import the bundled community rules
 lumen-argus rules list                # show loaded rules
 lumen-argus rules export > backup.json  # backup for migration
 ```
 
-Rules support three sources: **import** (CLI, pattern read-only), **dashboard** (full CRUD, Pro), **yaml** (config-managed, Kubernetes-style reconciliation). Each rule has tier (`community`/`pro`/`custom`), action override, enable/disable toggle, and validators.
+Rules support three sources: **import** (CLI, pattern read-only), **dashboard** (full CRUD), **yaml** (config-managed, Kubernetes-style reconciliation). Each rule has a tier label (`community` / plugin tier / `custom`), action override, enable/disable toggle, and validators.
 
 ## Session Tracking
 
@@ -358,9 +357,9 @@ Scanning overhead stays under 50ms for typical payloads. Connection pooling elim
 
 Built-in web dashboard at `http://localhost:8081`:
 
-**Community pages:** Dashboard (quick stats cards, severity breakdown, trend chart with 7d/30d/90d toggle, top detectors, top providers, activity feed, recent sessions with severity breakdown, pipeline health), Findings (paginated table with 8 filters: severity, detector, action, type, provider, client, time range, session; CSV/JSON export), Rules (paginated rule list with search/filter, stat chips, tag chips, rule cards with enable toggle, action select, add/edit/clone/delete; URL hash deep-links from findings; overlap badges linking to Rule Analysis), Rule Analysis (Crossfire-powered overlap detection — duplicate/subset/overlap cards with Disable/Review/Dismiss actions, live progress with log streaming; `pip install lumen-argus[rules-analysis]`), Allowlists (secrets/PII/paths allowlists — merged YAML config + API entries, inline add/delete, pattern test panel against recent findings), Audit (log viewer with search), Pipeline (scanning stage config — toggle stages, detectors, encoding settings, default action), Settings (proxy config, license activation), Notifications (channel management).
+**Pages:** Dashboard (quick stats cards, severity breakdown, trend chart with 7d/30d/90d toggle, top detectors, top providers, activity feed, recent sessions with severity breakdown, pipeline health), Findings (paginated table with 8 filters: severity, detector, action, type, provider, client, time range, session; CSV/JSON export), Rules (paginated rule list with search/filter, stat chips, tag chips, rule cards with enable toggle, action select, add/edit/clone/delete; URL hash deep-links from findings; overlap badges linking to Rule Analysis), Rule Analysis (Crossfire-powered overlap detection — duplicate/subset/overlap cards with Disable/Review/Dismiss actions, live progress with log streaming; `pip install lumen-argus-proxy[rules-analysis]`), Allowlists (secrets/PII/paths allowlists — merged YAML config + API entries, inline add/delete, pattern test panel against recent findings), Audit (log viewer with search), Pipeline (scanning stage config — toggle stages, detectors, encoding settings, default action), Settings (proxy config, license activation), Notifications (channel management).
 
-**Pro pages:** MCP, Performance — unlocked with a Pro license. Pro extends the Rules page with "Import Pro Rules" button and `redact` action. Pro also adds 6 analytics charts to the Dashboard: actions trend (stacked area), activity heatmap (hour × weekday), top accounts, top projects, detection coverage gauge, and notification health.
+Plugins extend the dashboard via the `register_dashboard_pages` / `register_dashboard_css` / `register_dashboard_api` extension hooks and the JS-side `registerPage` / `registerSettingsSection` / `registerPipelineAction` registries — adding their own pages, settings sections, action options, or charts on top of the community surface.
 
 ### Dashboard API
 
@@ -371,13 +370,13 @@ Built-in web dashboard at `http://localhost:8081`:
 | `GET /api/v1/sessions` | Sessions with finding counts and metadata |
 | `GET /api/v1/sessions/dashboard` | Active sessions (last 24h) with severity breakdown |
 | `GET /api/v1/stats` | Aggregated statistics incl. `today_count`, `last_finding_time`, `by_client` (`?days=N` for trend) |
-| `GET /api/v1/stats/advanced` | Pro analytics (action trend, heatmap, top accounts/projects) |
+| `GET /api/v1/stats/advanced` | Action trend, activity matrix, top accounts/projects, detection coverage |
 | `GET /api/v1/config` | Current configuration |
-| `PUT /api/v1/config` | Save settings (community: proxy; Pro: all) |
+| `PUT /api/v1/config` | Save settings (triggers SIGHUP reload) |
 | `GET /api/v1/pipeline` | Pipeline stage configuration with stats |
 | `PUT /api/v1/pipeline` | Save stage toggles, detector actions, encoding settings |
 | `GET /api/v1/rules` | Paginated rules (filter by tier, detector, severity, enabled, tag, search) |
-| `POST /api/v1/rules` | Create custom rule (action: log/alert/block; Pro adds redact) |
+| `POST /api/v1/rules` | Create custom rule (action: log/alert/block; plugins may register additional actions) |
 | `GET /api/v1/rules/stats` | Rule counts by tier, detector, enabled, tags |
 | `GET /api/v1/rules/:name` | Single rule detail |
 | `PUT /api/v1/rules/:name` | Update rule (action, enabled, severity, etc.) |
@@ -401,19 +400,9 @@ Built-in web dashboard at `http://localhost:8081`:
 
 ## Notification Channels
 
-Configure alerting via YAML (IaC-managed) or the dashboard. Community includes Webhook with fire-and-forget dispatch. Pro adds 6 more channel types:
+Configure alerting via YAML (IaC-managed) or the dashboard. Community ships with the **Webhook** channel type and fire-and-forget dispatch — point it at any URL (Slack incoming webhooks, Discord, custom HTTP endpoints) with configurable event triggers (`block` / `alert` / `log`) and per-channel minimum severity. Channel count is unlimited.
 
-| Channel | Config |
-|---------|--------|
-| **Webhook** | Any URL — covers Slack webhooks, Discord, custom endpoints |
-| **Email** | SMTP with TLS, authentication |
-| **Slack** | Native integration (Pro) |
-| **Teams** | Adaptive cards (Pro) |
-| **PagerDuty** | Incident routing (Pro) |
-| **OpsGenie** | Team routing (Pro) |
-| **Jira** | Auto-create tickets (Pro) |
-
-**Community:** unlimited webhook channels with fire-and-forget dispatch and configurable event triggers (block/alert/log).
+Plugins extend the available channel types and dispatch backends (e.g. retry with circuit breaker, deduplication, dispatch health monitoring, native Slack/Teams/PagerDuty/OpsGenie/Jira/Email integrations) via the `register_channel_types`, `set_notifier_builder`, and `set_dispatcher` extension hooks.
 
 ```yaml
 notifications:
@@ -513,7 +502,7 @@ custom_rules:
     action: block
 ```
 
-**Pipeline page:** Configure scanning stages from the dashboard — toggle stages on/off, enable/disable individual detectors, set per-detector actions, configure encoding decode settings. Only changed settings are saved to DB and applied via hot-reload. Dispatches `pipeline-rendered` event for Pro extensions.
+**Pipeline page:** Configure scanning stages from the dashboard — toggle stages on/off, enable/disable individual detectors, set per-detector actions, configure encoding decode settings. Only changed settings are saved to DB and applied via hot-reload. Dispatches a `pipeline-rendered` DOM event after each render so plugins can decorate the page.
 
 **Hot-reload:** `kill -HUP $(pgrep -f lumen_argus)` — updates allowlists, actions, timeouts, port/bind, and max body size. No downtime.
 
@@ -526,7 +515,7 @@ custom_rules:
 | **log** | Record in audit log, allow request |
 | **alert** | Log + print to terminal, allow request |
 | **block** | Reject with HTTP 400 (`invalid_request_error`). If findings are only in conversation history, strips those messages and forwards the cleaned request (logged as `strip`). |
-| **redact** | Replace sensitive values in request body (Pro) |
+| **redact** | Replace sensitive values in request body (plugin-provided; downgraded to `alert` if no plugin registers an `evaluate` hook). |
 
 Highest-severity action wins: `block > redact > alert > log`.
 
@@ -534,11 +523,11 @@ Highest-severity action wins: `block > redact > alert > log`.
 
 | Endpoint | Format | Description |
 |----------|--------|-------------|
-| `/health` | JSON | Proxy status, uptime, request count (Pro extends with license/analytics) |
-| `/metrics` | Prometheus | Requests by action, findings by type, scan duration (Pro extends with notification stats) |
+| `/health` | JSON | Proxy status, uptime, request count |
+| `/metrics` | Prometheus | Requests by action, findings by type, scan duration |
 | `--format json` | JSONL | Structured output for log aggregation |
 
-Pro adds OpenTelemetry tracing across the full request lifecycle — detector, redaction, and notification spans nest under a root `proxy.request` span.
+Both endpoints expose extension hooks (`set_health_hook`, `set_metrics_hook`) so plugins can append their own fields/lines. A `set_trace_request_hook` extension wires the full request lifecycle into OpenTelemetry when a tracing plugin is loaded.
 
 ## Packages
 

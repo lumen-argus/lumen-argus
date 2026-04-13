@@ -21,7 +21,6 @@ from lumen_argus.log_utils import sanitize_user_input
 
 log = logging.getLogger("argus.dashboard.api")
 
-# Allowed rule actions in community edition (Pro adds "redact" via extension)
 COMMUNITY_ACTIONS = ("log", "alert", "block")
 
 SENSITIVE_FIELDS = frozenset(

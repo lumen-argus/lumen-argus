@@ -1,6 +1,5 @@
 """Tests for MCP tool approval infrastructure — schema, repository, config, 402 stubs."""
 
-import json
 import unittest
 
 from lumen_argus.config import Config
@@ -206,49 +205,53 @@ class TestToolApprovalConfigParsing(unittest.TestCase):
         self.assertEqual(config.mcp.approval_mode, "dashboard")
 
 
-class TestToolApproval402Stubs(StoreTestCase):
-    """Test that tool approval endpoints return 402 without Pro."""
+class TestPluginOnlyEndpointsAreUnknownInCommunity(StoreTestCase):
+    """Plugin-owned MCP routes return 404 when no plugin handler intercepts them.
+
+    Pro and other plugins register their handler via
+    `extensions.register_dashboard_api(...)`; server.py runs the plugin
+    handler before community's dispatcher, so the 404 only ever surfaces
+    on a community-standalone install (no plugin loaded).
+    """
 
     def _api(self, path, method="GET", body=b""):
         return handle_community_api(path, method, body, self.store)
 
-    def test_policies_get_returns_402(self):
-        status, body = self._api("/api/v1/mcp/policies")
-        self.assertEqual(status, 402)
-        data = json.loads(body)
-        self.assertEqual(data["error"], "pro_required")
+    def test_policies_get_returns_404(self):
+        status, _body = self._api("/api/v1/mcp/policies")
+        self.assertEqual(status, 404)
 
-    def test_policies_post_returns_402(self):
+    def test_policies_post_returns_404(self):
         status, _body = self._api("/api/v1/mcp/policies", "POST", b'{"name":"test"}')
-        self.assertEqual(status, 402)
+        self.assertEqual(status, 404)
 
-    def test_policies_put_returns_402(self):
+    def test_policies_put_returns_404(self):
         status, _body = self._api("/api/v1/mcp/policies/test", "PUT", b"{}")
-        self.assertEqual(status, 402)
+        self.assertEqual(status, 404)
 
-    def test_policies_delete_returns_402(self):
+    def test_policies_delete_returns_404(self):
         status, _body = self._api("/api/v1/mcp/policies/test", "DELETE")
-        self.assertEqual(status, 402)
+        self.assertEqual(status, 404)
 
-    def test_approvals_get_returns_402(self):
+    def test_approvals_get_returns_404(self):
         status, _body = self._api("/api/v1/mcp/approvals")
-        self.assertEqual(status, 402)
+        self.assertEqual(status, 404)
 
-    def test_approvals_approve_returns_402(self):
+    def test_approvals_approve_returns_404(self):
         status, _body = self._api("/api/v1/mcp/approvals/apr_123/approve", "POST", b"{}")
-        self.assertEqual(status, 402)
+        self.assertEqual(status, 404)
 
-    def test_approvals_deny_returns_402(self):
+    def test_approvals_deny_returns_404(self):
         status, _body = self._api("/api/v1/mcp/approvals/apr_123/deny", "POST", b"{}")
-        self.assertEqual(status, 402)
+        self.assertEqual(status, 404)
 
-    def test_risk_get_returns_402(self):
+    def test_risk_get_returns_404(self):
         status, _body = self._api("/api/v1/mcp/risk")
-        self.assertEqual(status, 402)
+        self.assertEqual(status, 404)
 
-    def test_risk_put_returns_402(self):
+    def test_risk_put_returns_404(self):
         status, _body = self._api("/api/v1/mcp/risk/write_file", "PUT", b"{}")
-        self.assertEqual(status, 402)
+        self.assertEqual(status, 404)
 
 
 class TestExtensionHooks(unittest.TestCase):

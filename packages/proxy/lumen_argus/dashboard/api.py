@@ -33,21 +33,8 @@ from lumen_argus.dashboard.api_helpers import (
 
 log = logging.getLogger("argus.dashboard.api")
 
-# Pro endpoint prefixes — return 402 when Pro is not installed
-_PRO_ENDPOINTS: tuple[str, ...] = ()
-
 # Start time for uptime calculation (used by api_config.handle_status)
 _start_time = time.monotonic()
-
-# Re-export helpers that external code (server.py, Pro) may import from api.py
-# for backward compatibility. New code should import from api_helpers directly.
-_json_response = json_response
-_StoreUnavailable = StoreUnavailable
-_COMMUNITY_ACTIONS = ("log", "alert", "block")
-
-
-def _parse_query(path: str) -> tuple[str, dict[str, str]]:
-    return parse_query(path)
 
 
 def handle_community_api(
@@ -101,7 +88,7 @@ def _dispatch_api(
             return api_findings.handle_stats(params, store)
 
         if path == "/api/v1/stats/advanced":
-            return api_findings.handle_stats_advanced(params, store, extensions)
+            return api_findings.handle_stats_advanced(params, store)
 
         if path == "/api/v1/config":
             return api_config.handle_config(config, store)
@@ -246,41 +233,6 @@ def _dispatch_api(
 
     if path == "/api/v1/pipeline" and method == "PUT":
         return api_config.handle_pipeline_update(body, config, store, extensions)
-
-    # --- Tier gating: known Pro paths return 402 ---
-
-    if path.startswith("/api/v1/enrollment/"):
-        return json_response(
-            402,
-            {
-                "error": "pro_required",
-                "message": "Enrollment requires a Pro license",
-                "upgrade_url": "https://lumen-argus.com/pro",
-            },
-        )
-
-    # MCP tool policies, approvals, and risk classification (Pro)
-    if path.startswith(("/api/v1/mcp/policies", "/api/v1/mcp/approvals", "/api/v1/mcp/risk")):
-        return json_response(
-            402,
-            {
-                "error": "pro_required",
-                "message": "MCP tool policies require a Pro license",
-                "upgrade_url": "https://lumen-argus.com/pro",
-            },
-        )
-
-    if method in ("POST", "PUT", "DELETE"):
-        for prefix in _PRO_ENDPOINTS:
-            if path.startswith(prefix):
-                return json_response(
-                    402,
-                    {
-                        "error": "pro_required",
-                        "message": "This feature requires a Pro license",
-                        "upgrade_url": "https://lumen-argus.com/pro",
-                    },
-                )
 
     return json_response(404, {"error": "not_found"})
 

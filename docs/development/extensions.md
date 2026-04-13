@@ -149,7 +149,7 @@ All observability hooks are fully guarded — exceptions never break requests.
 |------|-----------|-------------|
 | `register_channel_types(types)` | `types: dict` | Register channel type definitions (label + fields) for the dashboard dropdown |
 | `set_notifier_builder(builder)` | `builder(channel_dict) -> notifier` | Factory that builds notifier instances from DB channel rows |
-| `set_dispatcher(dispatcher)` | `dispatcher.dispatch(findings, provider, model, session_id, session, **kwargs)` | Set the notification dispatcher (Pro adds circuit breakers, async, dedup) |
+| `set_dispatcher(dispatcher)` | `dispatcher.dispatch(findings, provider, model, session_id, session, **kwargs)` | Set the notification dispatcher. Plugins may add circuit breakers, async dispatch, dedup, etc. |
 | `set_channel_limit(limit)` | `limit: int or None` | Cap the number of dashboard-managed channels (`None` = unlimited, the community default) |
 
 Community provides the DB schema (`notification_channels` table), CRUD API, and dashboard UI, and ships with no channel cap. Plugins register additional channel types, notifier builders, dispatchers, and may impose a channel cap by calling `set_channel_limit(N)`. Without a registered notifier builder, the Notifications page shows YAML-configured channels as read-only with a dispatch warning.

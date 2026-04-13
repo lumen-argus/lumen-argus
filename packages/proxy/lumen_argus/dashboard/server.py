@@ -619,10 +619,10 @@ class AsyncDashboardServer:
 
         # Try plugin API handler first
         agent_identity = request.get("agent_identity")
-        pro_handler = self.extensions.get_dashboard_api_handler() if self.extensions else None
-        if pro_handler:
+        plugin_handler = self.extensions.get_dashboard_api_handler() if self.extensions else None
+        if plugin_handler:
             try:
-                result = await pro_handler(path, method, body, store, audit_reader, agent_identity)
+                result = await plugin_handler(path, method, body, store, audit_reader, agent_identity)
                 if result is not None:
                     if len(result) == 3:
                         status, content_type, response_body = result

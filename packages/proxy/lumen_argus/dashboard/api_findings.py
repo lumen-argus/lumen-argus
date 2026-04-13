@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from lumen_argus.analytics.store import AnalyticsStore
-    from lumen_argus.extensions import ExtensionRegistry
 
 from lumen_argus.dashboard.api_helpers import (
     json_response,
@@ -121,33 +120,14 @@ def handle_stats(params: dict[str, str], store: AnalyticsStore | None) -> tuple[
     return json_response(200, stats)
 
 
-def handle_stats_advanced(
-    params: dict[str, str], store: AnalyticsStore | None, extensions: ExtensionRegistry | None
-) -> tuple[int, bytes]:
-    """Pro-gated advanced analytics for dashboard charts."""
-    # Check if Pro is active via extensions
-    if extensions:
-        try:
-            checker = extensions.get_license_checker()
-            is_valid = checker and checker.is_valid()
-        except Exception:
-            is_valid = False
-        if is_valid:
-            days = parse_days(params)
-            data = {
-                "action_trend": store.get_action_trend(days=days) if store else [],
-                "activity_matrix": store.get_activity_matrix(days=days) if store else [],
-                "top_accounts": store.get_top_accounts(days=days) if store else [],
-                "top_projects": store.get_top_projects(days=days) if store else [],
-                "detection_coverage": store.get_rules_coverage() if store else {},
-            }
-            return json_response(200, data)
-
-    return json_response(
-        402,
-        {
-            "error": "pro_required",
-            "message": "Advanced analytics requires a Pro license",
-            "upgrade_url": "https://lumen-argus.com/pro",
-        },
-    )
+def handle_stats_advanced(params: dict[str, str], store: AnalyticsStore | None) -> tuple[int, bytes]:
+    """Advanced analytics for dashboard charts."""
+    days = parse_days(params)
+    data = {
+        "action_trend": store.get_action_trend(days=days) if store else [],
+        "activity_matrix": store.get_activity_matrix(days=days) if store else [],
+        "top_accounts": store.get_top_accounts(days=days) if store else [],
+        "top_projects": store.get_top_projects(days=days) if store else [],
+        "detection_coverage": store.get_rules_coverage() if store else {},
+    }
+    return json_response(200, data)

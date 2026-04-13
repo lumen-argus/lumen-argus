@@ -36,7 +36,7 @@ Returns the proxy's current status as JSON.
 
 No authentication required — designed for container orchestrator probes (Kubernetes liveness/readiness, ECS, Docker HEALTHCHECK).
 
-Pro extends this response via `set_health_hook()` with license status, notification channel health, and analytics metrics.
+Plugins may extend this response via `set_health_hook()`.
 
 ### Example
 
@@ -185,7 +185,7 @@ lumen_argus_scan_duration_seconds_sum 1.234567
 lumen_argus_scan_duration_seconds_count 137
 ```
 
-Pro extends `/metrics` via `set_metrics_hook()` with notification dispatch stats, license metrics, and more.
+Plugins may append additional metrics via `set_metrics_hook()`.
 
 !!! note "Prometheus scrape config"
     Add a scrape job to your `prometheus.yml`:
@@ -215,9 +215,9 @@ The dashboard runs on a separate port (default `8081`) and provides a REST API f
 | `/api/v1/findings/:id` | GET | Single finding detail |
 | `/api/v1/findings/export` | GET | CSV or JSON export (via `?format=csv` or `?format=json`) |
 | `/api/v1/stats` | GET | Aggregated statistics for dashboard charts (`?days=N`, default 30) |
-| `/api/v1/stats/advanced` | GET | Pro analytics: action trend, activity matrix, top accounts/projects, coverage (402 without Pro) |
-| `/api/v1/config` | GET | Sanitized config (community + Pro sections) |
-| `/api/v1/config` | PUT | Save settings to DB (community: proxy; Pro: all). Triggers SIGHUP reload. |
+| `/api/v1/stats/advanced` | GET | Action trend, activity matrix, top accounts/projects, detection coverage |
+| `/api/v1/config` | GET | Sanitized config (plugin sections appear when registered) |
+| `/api/v1/config` | PUT | Save settings to DB. Triggers SIGHUP reload. |
 | `/api/v1/pipeline` | GET | Pipeline stage configuration with per-stage stats and encoding settings |
 | `/api/v1/pipeline` | PUT | Save stage toggles, detector enables/actions, encoding settings. Triggers SIGHUP reload. |
 | `/api/v1/audit` | GET | Paginated audit log entries with action/provider/search filters |
@@ -265,7 +265,7 @@ The dashboard runs on a separate port (default `8081`) and provides a REST API f
 | `enabled` | Filter by status (`true` or `false`) |
 | `tag` | Filter by tag (exact match in JSON tags array) |
 
-`POST /api/v1/rules` and `PUT /api/v1/rules/:name` validate the `action` field. Community allows: empty string (default), `log`, `alert`, `block`. Pro overrides to also allow `redact`.
+`POST /api/v1/rules` and `PUT /api/v1/rules/:name` validate the `action` field against the registered action set. Community ships with `log`, `alert`, `block` (plus the empty-string default); plugins register additional actions via the dashboard JS `registerPipelineAction(name)` hook.
 
 `GET /api/v1/rules` search supports comma-separated terms for OR matching (e.g., `?search=generic_secret,env_file_assignment` returns rules matching either name).
 
@@ -317,14 +317,6 @@ Install: `pip install lumen-argus-proxy[rules-analysis]` (or `pip install crossf
 |----------|--------|-------------|
 | `/api/v1/license` | POST | Save license key to `~/.lumen-argus/license.key` |
 
-### Pro-only endpoints
-
-These return `402 pro_required` when Pro is not active:
-
-| Endpoint | Description |
-|----------|-------------|
-| `/api/v1/stats/advanced` | Advanced analytics (action trend, activity matrix, top accounts, top projects, detection coverage) |
-
 ### Authentication
 
 When `dashboard.password` is set (or `LUMEN_ARGUS_DASHBOARD_PASSWORD` env var), all mutation endpoints (POST, PUT, DELETE) require session auth + CSRF token. GET endpoints also require authentication except for `/api/v1/live` (SSE) and export endpoints.
@@ -368,7 +360,7 @@ When `dashboard.password` is set (or `LUMEN_ARGUS_DASHBOARD_PASSWORD` env var), 
 }
 ```
 
-Pro extends the list with enterprise clients via `extensions.register_clients()`.
+Plugins may extend the list via `extensions.register_clients()`.
 
 `GET /api/v1/sessions` returns sessions grouped by `session_id`:
 
@@ -407,9 +399,9 @@ Response includes `today_count` (findings from today), `last_finding_time` (most
 
 The dashboard trend chart includes a 7d / 30d / 90d toggle that sets this parameter.
 
-### Advanced analytics (Pro)
+### Advanced analytics
 
-`GET /api/v1/stats/advanced?days=N` returns data for Pro dashboard charts. Returns `402 pro_required` without a valid Pro license.
+`GET /api/v1/stats/advanced?days=N` returns data for dashboard analytics charts:
 
 ```json
 {
@@ -428,13 +420,12 @@ The dashboard trend chart includes a 7d / 30d / 90d toggle that sets this parame
   ],
   "detection_coverage": {
     "active_rules": 43,
-    "total_rules": 45,
-    "pro_imported": 1800
+    "total_rules": 45
   }
 }
 ```
 
-Pro extends this response with `notification_health` (per-channel dispatch status).
+Plugins may extend this response with additional fields such as channel dispatch health.
 
 ### Pipeline configuration
 
