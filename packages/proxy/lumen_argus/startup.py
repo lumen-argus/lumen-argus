@@ -327,7 +327,7 @@ def run_server(
         if relay_instance:
             await relay_instance.start()
         if sse_broadcaster:
-            await sse_broadcaster.start()
+            sse_broadcaster.start()
         if dashboard_server:
             try:
                 await dashboard_server.start()

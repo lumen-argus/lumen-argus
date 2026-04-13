@@ -25,8 +25,8 @@ class SSEBroadcaster:
         self._heartbeat_interval = heartbeat_interval
         self._heartbeat_task: asyncio.Task[None] | None = None
 
-    async def start(self) -> None:
-        """Start the heartbeat background task."""
+    def start(self) -> None:
+        # Must run on the event loop thread — asyncio.create_task requires a running loop.
         self._heartbeat_task = asyncio.create_task(self._heartbeat_loop(), name="sse-heartbeat")
 
     async def stop(self) -> None:

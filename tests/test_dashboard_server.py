@@ -61,7 +61,7 @@ def _start_server(password="", store=None, extensions=None, audit_reader=None, c
     loop = asyncio.new_event_loop()
     thread = threading.Thread(target=loop.run_forever, daemon=True, name="test-dashboard")
     thread.start()
-    asyncio.run_coroutine_threadsafe(sse_broadcaster.start(), loop).result(5)
+    loop.call_soon_threadsafe(sse_broadcaster.start)
     asyncio.run_coroutine_threadsafe(server.start(), loop).result(5)
     return server, port, loop, sse_broadcaster
 
