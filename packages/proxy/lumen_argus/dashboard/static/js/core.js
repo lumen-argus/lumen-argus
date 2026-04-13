@@ -105,12 +105,13 @@ function registerPage(name, label, options) {
       _renderUpgradePrompt(page, label, options.proDescription || '');
     }
   }
-  /* If this page is currently active, call loadFn immediately
-     (handles case where user navigated via URL hash before plugin loaded) */
+  /* If this page is currently active, call loadFn after the current script
+     block finishes — deferring avoids a TDZ trap where a plugin registers at
+     the top of its file and loadFn closes over const/let declared below. */
   if (options.loadFn) {
     const activePage = document.getElementById('page-' + name);
     if (activePage && activePage.classList.contains('active')) {
-      options.loadFn();
+      queueMicrotask(options.loadFn);
     }
   }
 }
