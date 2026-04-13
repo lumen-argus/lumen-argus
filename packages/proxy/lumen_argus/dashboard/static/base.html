@@ -65,22 +65,22 @@
       <div class="col-btn" id="export-json" style="cursor:pointer">Export JSON</div>
     </div></div>
   <div class="filter-bar">
-    <div class="filter-group"><label>Severity</label><select id="f-sev"><option value="">All</option>
+    <div class="filter-group"><label for="f-sev">Severity</label><select id="f-sev"><option value="">All</option>
       <option value="critical">Critical</option><option value="high">High</option>
       <option value="warning">Warning</option><option value="info">Info</option></select></div>
-    <div class="filter-group"><label>Detector</label><select id="f-det"><option value="">All</option></select></div>
-    <div class="filter-group"><label>Action</label><select id="f-action"><option value="">All</option>
+    <div class="filter-group"><label for="f-det">Detector</label><select id="f-det"><option value="">All</option></select></div>
+    <div class="filter-group"><label for="f-action">Action</label><select id="f-action"><option value="">All</option>
       <option value="block">Block</option><option value="alert">Alert</option>
       <option value="redact">Redact</option><option value="log">Log</option></select></div>
-    <div class="filter-group"><label>Type</label><select id="f-type"><option value="">All</option></select></div>
-    <div class="filter-group"><label>Provider</label><select id="f-prov"><option value="">All</option></select></div>
-    <div class="filter-group"><label>Client</label><select id="f-client"><option value="">All</option></select></div>
-    <div class="filter-group"><label>Mode</label><select id="f-mode"><option value="">All</option>
+    <div class="filter-group"><label for="f-type">Type</label><select id="f-type"><option value="">All</option></select></div>
+    <div class="filter-group"><label for="f-prov">Provider</label><select id="f-prov"><option value="">All</option></select></div>
+    <div class="filter-group"><label for="f-client">Client</label><select id="f-client"><option value="">All</option></select></div>
+    <div class="filter-group"><label for="f-mode">Mode</label><select id="f-mode"><option value="">All</option>
       <option value="reverse">Reverse</option><option value="forward">Forward</option></select></div>
-    <div class="filter-group"><label>Time</label><select id="f-days"><option value="">All time</option>
+    <div class="filter-group"><label for="f-days">Time</label><select id="f-days"><option value="">All time</option>
       <option value="1">Today</option><option value="7">7 days</option>
       <option value="30">30 days</option><option value="90">90 days</option></select></div>
-    <div class="filter-group"><label>Session</label><select id="f-sess"><option value="">All</option></select></div>
+    <div class="filter-group"><label for="f-sess">Session</label><select id="f-sess"><option value="">All</option></select></div>
   </div>
   <div class="col-toggle" id="col-toggle"></div>
   <div class="findings-layout">
@@ -100,11 +100,11 @@
       <div class="col-btn" id="audit-export-json" style="cursor:pointer">Export JSON</div>
     </div></div>
   <div class="filter-bar">
-    <label>Action</label><select id="a-action"><option value="">All</option>
+    <label for="a-action">Action</label><select id="a-action"><option value="">All</option>
       <option value="pass">Pass</option><option value="alert">Alert</option>
       <option value="block">Block</option></select>
-    <label>Provider</label><select id="a-prov"><option value="">All</option></select>
-    <label>Search</label><input id="a-search" placeholder="endpoint or model" style="max-width:200px">
+    <label for="a-prov">Provider</label><select id="a-prov"><option value="">All</option></select>
+    <label for="a-search">Search</label><input id="a-search" placeholder="endpoint or model" style="max-width:200px">
   </div>
   <div class="findings-layout" id="audit-layout">
     <div class="table-wrap"><table><thead><tr>
@@ -133,19 +133,19 @@
     </div></div>
   <div id="notif-unavailable" style="display:none"></div>
   <div id="notif-add-form" class="add-form">
-    <div class="form-row"><label>Channel type</label>
+    <div class="form-row"><label for="notif-type">Channel type</label>
       <select id="notif-type"><option value="">Select type&#8230;</option></select></div>
     <div id="notif-type-fields"></div>
-    <div class="form-row"><label>Name</label>
+    <div class="form-row"><label for="notif-name">Name</label>
       <input id="notif-name" placeholder="e.g. Production Slack"></div>
-    <div class="form-row"><label>Min severity</label>
+    <div class="form-row"><label for="notif-severity">Min severity</label>
       <select id="notif-severity">
         <option value="critical">Critical</option><option value="high">High</option>
         <option value="warning" selected>Warning</option><option value="info">Info</option>
       </select></div>
-    <div class="form-row"><label>Trigger on</label>
+    <div class="form-row"><span class="form-label">Trigger on</span>
       <div id="notif-events" style="display:flex;gap:4px"></div></div>
-    <div class="form-row"><label>Enabled</label>
+    <div class="form-row"><label for="notif-enabled">Enabled</label>
       <select id="notif-enabled"><option value="1" selected>Yes</option><option value="0">No</option></select></div>
     <div style="display:flex;gap:8px;margin-top:8px">
       <div class="btn btn-primary btn-sm" id="notif-save">Save Channel</div>

@@ -290,7 +290,7 @@ tbody tr:nth-child(5){animation-delay:.08s}tbody tr:nth-child(6){animation-delay
 .btn-cancel:hover{border-color:var(--border-light);color:var(--text-secondary)}
 .btn-sm{font-size:.68rem;padding:3px 8px}
 .form-row{display:flex;gap:10px;margin-bottom:10px;flex-wrap:wrap;align-items:center}
-.form-row label{font-size:.72rem;color:var(--text-muted);min-width:70px;text-transform:uppercase;letter-spacing:.06em}
+.form-row label,.form-row .form-label{font-size:.72rem;color:var(--text-muted);min-width:70px;text-transform:uppercase;letter-spacing:.06em}
 .form-row input,.form-row select{font-family:var(--font-data);font-size:.78rem;
   background:var(--bg-base);border:1px solid var(--border);border-radius:var(--radius-sm);
   color:var(--text-primary);padding:6px 10px;outline:none;flex:1;min-width:120px}

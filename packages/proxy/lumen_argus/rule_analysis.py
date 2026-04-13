@@ -304,7 +304,7 @@ def _set_status(
             _analysis_status["error"] = None
         # Bump phase-change heartbeat whenever the phase actually changes (or
         # at the very first transition to running). Used by the watchdog.
-        if phase != prev_phase or (running and _analysis_status["last_phase_change_at"] == 0.0):
+        if phase != prev_phase or (running and not _analysis_status["last_phase_change_at"]):
             _analysis_status["last_phase_change_at"] = time.monotonic()
 
 
