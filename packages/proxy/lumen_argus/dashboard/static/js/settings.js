@@ -169,7 +169,7 @@ function _addEditRow(parent,label,key,type,value,opts){opts=opts||{};
       if(o===value)opt.selected=true;v.appendChild(opt);});
   }else{
     v=document.createElement('input');v.type=type||'text';v.value=value;
-    v.style.cssText='font-family:var(--font-data);font-size:.78rem;background:var(--bg-base);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text-primary);padding:4px 8px;outline:none;width:80px';
+    v.style.cssText='font-family:var(--font-data);font-size:.78rem;background:var(--bg-base);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text-primary);padding:4px 8px;outline:none;width:'+(opts.width||'80px');
     if(opts.min!=null)v.min=opts.min;if(opts.max!=null)v.max=opts.max;
   }
   v.setAttribute('data-config-key',key);v.setAttribute('data-original',String(value));
