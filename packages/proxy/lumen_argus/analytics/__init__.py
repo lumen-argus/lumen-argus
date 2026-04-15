@@ -1,6 +1,7 @@
 from lumen_argus.analytics.allowlists import AllowlistRepository
 from lumen_argus.analytics.channels import ChannelsRepository
 from lumen_argus.analytics.config_overrides import ConfigOverridesRepository
+from lumen_argus.analytics.enrollment import EnrollmentRepository, SeatCapExceeded
 from lumen_argus.analytics.findings import FindingsRepository
 from lumen_argus.analytics.mcp_tool_lists import MCPToolListsRepository
 from lumen_argus.analytics.rules import RulesRepository
@@ -12,8 +13,10 @@ __all__ = [
     "AnalyticsStore",
     "ChannelsRepository",
     "ConfigOverridesRepository",
+    "EnrollmentRepository",
     "FindingsRepository",
     "MCPToolListsRepository",
     "RulesRepository",
+    "SeatCapExceeded",
     "WebSocketConnectionsRepository",
 ]

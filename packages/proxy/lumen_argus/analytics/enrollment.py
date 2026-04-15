@@ -15,6 +15,17 @@ log = logging.getLogger("argus.analytics")
 _GAPS_LIMIT = 500
 
 
+class SeatCapExceeded(Exception):
+    """Raised by EnrollmentRepository.register when seat_cap would be exceeded
+    by a new machine_id. Carries .current and .cap so callers can surface them
+    in an error response."""
+
+    def __init__(self, current: int, cap: int) -> None:
+        super().__init__("seat cap exceeded: %d/%d" % (current, cap))
+        self.current = current
+        self.cap = cap
+
+
 class EnrollmentRepository(BaseRepository):
     """Repository for enrollment agent operations."""
 
@@ -30,6 +41,8 @@ class EnrollmentRepository(BaseRepository):
         arch: str,
         agent_version: str,
         enrolled_at: str,
+        *,
+        seat_cap: int | None = None,
     ) -> None:
         """Register a new agent or replace the existing enrollment for this machine.
 
@@ -37,9 +50,33 @@ class EnrollmentRepository(BaseRepository):
         can't UPSERT — PostgreSQL refuses to update a PK referenced by
         enrollment_agent_tools.agent_id. Delete the prior row (cascades to
         agent_tools) and insert anew.
+
+        If seat_cap is not None and the registering machine_id is not already
+        on file, refuse with SeatCapExceeded when the count of active agents
+        would exceed the cap. Re-enrolling an existing machine_id is always
+        allowed (it replaces its own row — no net seat change). The check
+        runs inside the adapter's write_lock alongside the DELETE/INSERT;
+        atomicity against concurrent registrations depends on the adapter's
+        lock semantics.
         """
         with self._adapter.write_lock():
             with self._connect() as conn:
+                if seat_cap is not None:
+                    # Re-registration of the same machine_id is a no-op for
+                    # the seat count because the DELETE below removes its
+                    # old row before the INSERT.
+                    existing = conn.execute(
+                        "SELECT 1 FROM enrollment_agents WHERE machine_id = ? AND status != 'deregistered' LIMIT 1",
+                        (machine_id,),
+                    ).fetchone()
+                    if existing is None:
+                        row = conn.execute(
+                            "SELECT COUNT(*) FROM enrollment_agents WHERE status != 'deregistered'",
+                        ).fetchone()
+                        current = row[0] if row else 0
+                        if current >= seat_cap:
+                            raise SeatCapExceeded(current=current, cap=seat_cap)
+
                 conn.execute(
                     "DELETE FROM enrollment_agents WHERE machine_id = ?",
                     (machine_id,),
