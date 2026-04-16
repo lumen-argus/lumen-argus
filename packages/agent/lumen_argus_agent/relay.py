@@ -32,6 +32,10 @@ from lumen_argus_agent.context import CallerContext, resolve_context, static_con
 
 log = logging.getLogger("argus.relay")
 
+# TCP connect timeout for upstream (proxy or direct API). Separate from the
+# read-idle timeout (config.timeout) so a slow connect fails fast.
+_UPSTREAM_CONNECT_TIMEOUT = 10
+
 # Hop-by-hop headers that must not be forwarded (RFC 2616 §13.5.1)
 _HOP_BY_HOP = frozenset(
     {
@@ -74,7 +78,7 @@ class RelayConfig:
     send_username: bool = True
     send_hostname: bool = True
     timeout: int = 150
-    max_connections: int = 20
+    max_connections: int = 50
     health_interval: int = 5
 
 
@@ -360,7 +364,7 @@ class AgentRelay:
             url,
             data=body,
             headers=headers,
-            timeout=aiohttp.ClientTimeout(total=self.config.timeout),
+            timeout=aiohttp.ClientTimeout(sock_read=self.config.timeout, connect=_UPSTREAM_CONNECT_TIMEOUT),
         ) as resp:
             content_type = resp.headers.get("Content-Type", "")
             is_sse = "text/event-stream" in content_type
@@ -378,8 +382,13 @@ class AgentRelay:
             if is_sse:
                 stream_resp = web.StreamResponse(status=resp.status, headers=resp_headers)
                 await stream_resp.prepare(request)
-                async for chunk in resp.content.iter_any():
-                    await stream_resp.write(chunk)
+                try:
+                    async for chunk in resp.content.iter_any():
+                        await stream_resp.write(chunk)
+                except asyncio.TimeoutError:
+                    # Headers already flushed — close stream cleanly instead
+                    # of surfacing a second response the client can't parse.
+                    log.error("#%d upstream SSE idle timeout", request_id)
                 await stream_resp.write_eof()
                 log.debug("#%d streamed SSE response", request_id)
                 return stream_resp
