@@ -16,7 +16,7 @@ class ProxyConfig:
     timeout: int = 120
     retries: int = 1
     max_body_size: int = 50 * 1024 * 1024  # 50MB
-    max_connections: int = 10  # max concurrent upstream connections
+    max_connections: int = 50  # max concurrent upstream connections
     drain_timeout: int = 30  # seconds to wait for in-flight requests on shutdown
     ca_bundle: str = ""  # path to custom CA cert file/directory
     verify_ssl: bool = True  # set False for dev/testing only

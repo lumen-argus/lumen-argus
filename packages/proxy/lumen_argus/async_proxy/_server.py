@@ -45,7 +45,7 @@ class AsyncArgusProxy:
         max_body_size: int = 50 * 1024 * 1024,
         redact_hook: Any = None,
         ssl_context: ssl.SSLContext | None = None,
-        max_connections: int = 10,
+        max_connections: int = 50,
     ):
         if bind not in ("127.0.0.1", "localhost", "::1"):
             log.warning("binding to %s — proxy is accessible on the network", bind)

@@ -97,16 +97,21 @@ async def stream_sse_response(
 
     text_parts = []
     resp_size = 0
-    async for chunk in upstream_resp.content.iter_any():
-        if not chunk:
-            continue
-        try:
-            await response.write(chunk)
-        except (ConnectionResetError, ConnectionAbortedError):
-            break
-        resp_size += len(chunk)
-        if should_accumulate:
-            text_parts.append(chunk)
+    try:
+        async for chunk in upstream_resp.content.iter_any():
+            if not chunk:
+                continue
+            try:
+                await response.write(chunk)
+            except (ConnectionResetError, ConnectionAbortedError):
+                break
+            resp_size += len(chunk)
+            if should_accumulate:
+                text_parts.append(chunk)
+    except asyncio.TimeoutError:
+        # Socket idle past sock_read. Headers already flushed, so we can't
+        # emit a fresh 504 JSON body — close the SSE stream cleanly instead.
+        log.error("#%d upstream SSE idle timeout after %d bytes", request_id, resp_size)
 
     resp_text = ""
     if should_accumulate and text_parts:

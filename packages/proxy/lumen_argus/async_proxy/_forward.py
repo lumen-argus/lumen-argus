@@ -29,6 +29,11 @@ from lumen_argus.session import extract_session as _extract_session
 
 log = logging.getLogger("argus.proxy")
 
+# TCP connect timeout for upstream API calls. Separate from the read-idle
+# timeout (proxy.timeout) so a slow connect fails fast without punishing
+# slow-but-live SSE streams.
+_UPSTREAM_CONNECT_TIMEOUT = 10
+
 # Addresses that count as loopback for the community-mode /_forward gate.
 # Matches the non-loopback-bind warning set in async_proxy/_server.py.
 # Keep both sites in sync if you add more loopback aliases.
@@ -397,7 +402,7 @@ async def _do_forward(
                 upstream_url,
                 data=body,
                 headers=fwd_headers,
-                timeout=aiohttp.ClientTimeout(total=server.timeout),
+                timeout=aiohttp.ClientTimeout(sock_read=server.timeout, connect=_UPSTREAM_CONNECT_TIMEOUT),
             ) as upstream_resp:
                 # Determine response scanning strategy
                 _should_scan_response = server.response_scanner is not None and server.mode != "passthrough"
@@ -460,11 +465,12 @@ async def _do_forward(
 
         except asyncio.TimeoutError:
             msg = (
-                "Upstream timed out after %ds. "
-                "Increase proxy.timeout in ~/.lumen-argus/config.yaml "
-                "or the dashboard Settings page." % server.timeout
+                "Upstream idle for %ds (no data received). "
+                "This is an idle-read timeout, not a total-duration cap. "
+                "Raise proxy.timeout in ~/.lumen-argus/config.yaml or the "
+                "dashboard Settings page if upstream needs longer idle windows." % server.timeout
             )
-            log.error("#%d upstream timeout after %ds", request_id, server.timeout)
+            log.error("#%d upstream idle timeout after %ds", request_id, server.timeout)
             server.display.show_error(request_id, msg)
             server.stats.record(provider, len(body), scan_result)
             return web.json_response(
@@ -482,7 +488,7 @@ async def _do_forward(
                             upstream_url,
                             data=body,
                             headers=fwd_headers,
-                            timeout=aiohttp.ClientTimeout(total=server.timeout),
+                            timeout=aiohttp.ClientTimeout(sock_read=server.timeout, connect=_UPSTREAM_CONNECT_TIMEOUT),
                         ) as upstream_resp:
                             # On successful retry, read and return full response
                             data = await upstream_resp.read()
