@@ -564,7 +564,22 @@ lumen-argus-agent enroll --server https://argus.corp.io --non-interactive
 # Local mode: full proxy | Dedicated mode: agent only (8MB vs 12MB binary)
 ```
 
-Agent commands: `detect`, `setup`, `watch`, `protection`, `clients`, `enroll`, `heartbeat`.
+Agent commands: `detect`, `setup`, `watch`, `protection`, `clients`, `enroll`, `heartbeat`, `relay`, `forward-proxy`, `uninstall`.
+
+**Clean removal before `pip uninstall` / `brew uninstall`:**
+
+```bash
+# Reverses every system change the agent made: tool configs, MCP
+# wrappers, shell env file, launchctl env vars (macOS), and agent-
+# owned state files in ~/.lumen-argus/
+lumen-argus-agent uninstall
+```
+
+Always emits JSON on stdout, exits `0` on full success and `1` on any
+partial failure — safe to run multiple times (idempotent). Pass
+`--keep-data` when the caller plans to remove `~/.lumen-argus/`
+itself. See `docs/reference/cli.md#uninstall` for the full output
+shape.
 
 ## Docker
 
