@@ -673,11 +673,33 @@ class ExtensionRegistry:
     def loaded_plugin_build_infos(self) -> list[dict[str, Any]]:
         """Return each loaded plugin's build identity for ``/api/v1/build``.
 
-        Reads ``__build_info__`` from the plugin module — contract set by
-        ``sidecar-build-identity-spec.md``. Plugins that haven't shipped
-        the attribute yet still appear, with ``git_commit`` and
-        ``build_id`` defaulted to the "unknown" sentinels. Name and
-        version always come from entry-point metadata.
+        Contract (set by ``sidecar-build-identity-spec.md`` §2) — plugin
+        modules should expose a module-level attribute::
+
+            __build_info__: dict = {
+                "name":       "<dist-name>",         # optional
+                "version":    "<semver>",            # optional
+                "git_commit": "<40-char sha>",       # optional
+                "build_id":   "sha256:<hex>",        # optional
+            }
+
+        All four keys are optional and filled from fallbacks when absent:
+
+        * ``name`` / ``version`` fall back to the entry-point name and
+          the plugin distribution's ``Version`` metadata (already
+          captured in ``_loaded_plugins`` during ``load_plugins()``).
+        * ``git_commit`` falls back to ``UNKNOWN`` from
+          ``lumen_argus_core.build_info``.
+        * ``build_id`` falls back to ``BUILD_ID_UNKNOWN``.
+
+        Plugins that have not shipped ``__build_info__`` at all still
+        appear in the returned list with fallback values only — the
+        contract is additive (for operator visibility), not gating.
+        A non-dict ``__build_info__`` is logged at WARNING and treated
+        as missing; the result row falls back entirely.
+
+        Output order matches ``_loaded_plugins`` iteration order (the
+        topologically-sorted load order set by ``load_plugins()``).
         """
         from lumen_argus_core.build_info import BUILD_ID_UNKNOWN, UNKNOWN
 
