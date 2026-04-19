@@ -1,9 +1,10 @@
 """Extract fixed literal substrings from regex patterns for Aho-Corasick pre-filtering.
 
-Parses regex patterns using Python's sre_parse module to find the longest
-contiguous fixed-string sequences. These literals become Aho-Corasick
-automaton keys — if none of a rule's literals appear in the text, the
-full regex cannot match and can be skipped.
+Parses regex patterns using CPython's internal regex parser (`re._parser`,
+formerly the public `sre_parse` module which emits a DeprecationWarning on
+3.12+) to find the longest contiguous fixed-string sequences. These literals
+become Aho-Corasick automaton keys — if none of a rule's literals appear in
+the text, the full regex cannot match and can be skipped.
 
 Handles:
 - Simple literals: sk_live_ -> "sk_live_"
@@ -14,7 +15,7 @@ Handles:
 """
 
 import logging
-import sre_parse
+from re import _parser as sre_parse  # type: ignore[attr-defined]
 from typing import Any
 
 log = logging.getLogger("argus.detectors.literal_extractor")
@@ -46,7 +47,7 @@ def extract_literals(pattern: str, flags: int = 0) -> list[tuple[str, bool]]:
     effective_flags = flags | getattr(getattr(parsed, "state", None), "flags", 0)
     case_insensitive = bool(effective_flags & sre_parse.SRE_FLAG_IGNORECASE)
 
-    literals = _extract_from_items(list(parsed), case_insensitive)  # type: ignore[call-overload]
+    literals = _extract_from_items(list(parsed), case_insensitive)
 
     # Filter by minimum length
     result = [(lit, ci) for lit, ci in literals if len(lit) >= MIN_LITERAL_LENGTH]

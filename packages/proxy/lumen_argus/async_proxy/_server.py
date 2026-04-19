@@ -123,7 +123,6 @@ class AsyncArgusProxy:
         connector = aiohttp.TCPConnector(
             limit=self.max_connections,
             ssl=self._ssl_context if self._ssl_context else False,
-            enable_cleanup_closed=True,
         )
         self.client_session = aiohttp.ClientSession(
             connector=connector,
