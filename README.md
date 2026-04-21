@@ -35,7 +35,7 @@ lumen-argus sits between your AI tool and the provider, scanning every outbound 
 
 ## Key Features
 
-- **34+ secret patterns** with Shannon entropy analysis
+- **70+ secret patterns** with Shannon entropy analysis
 - **Encoding-aware scanning** — catches base64, hex, URL, Unicode encoded secrets
 - **Response scanning** — detect secrets and prompt injection in API responses (async, zero latency)
 - **MCP proxy** — scan MCP traffic across stdio, HTTP, and WebSocket transports (`lumen-argus mcp`)

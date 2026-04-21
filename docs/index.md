@@ -27,7 +27,7 @@ lumen-argus sits between your AI tool and the provider, scanning every outbound 
 
 ## Key Features
 
-- **34+ secret patterns** with Shannon entropy analysis
+- **70+ secret patterns** with Shannon entropy analysis
 - **PII detection** with validation (Luhn, SSN ranges, IP exclusion)
 - **Custom regex rules** in config — no plugin needed
 - **Zero dependencies** — Python stdlib only
