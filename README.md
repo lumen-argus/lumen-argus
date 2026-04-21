@@ -623,6 +623,10 @@ def register(registry):
 
 See [SECURITY.md](SECURITY.md) for vulnerability reporting.
 
+## Acknowledgments
+
+A subset of community secrets-detection rules is adapted from [Gitleaks](https://github.com/gitleaks/gitleaks) (MIT). See [NOTICE.md](NOTICE.md) for the full list of upstream projects and license attribution.
+
 ## License
 
 MIT — [Artem Senenko](https://github.com/lumen-argus)

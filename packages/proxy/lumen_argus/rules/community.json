@@ -317,7 +317,7 @@
       "pattern": "(?i)(?:password|passwd|pwd|pass)\\s*[:=]\\s*(\\S{8,})",
       "detector": "secrets",
       "severity": "high",
-      "description": "Generic Password (unquoted) — YAML, ENV, config files",
+      "description": "Generic Password (unquoted) \u2014 YAML, ENV, config files",
       "tags": [],
       "validator": "",
       "entropy_context": true
@@ -478,7 +478,10 @@
       "detector": "injection",
       "severity": "high",
       "description": "Prompt injection: ignore previous instructions",
-      "tags": ["injection", "prompt-injection"],
+      "tags": [
+        "injection",
+        "prompt-injection"
+      ],
       "validator": "",
       "entropy_context": false
     },
@@ -488,7 +491,10 @@
       "detector": "injection",
       "severity": "high",
       "description": "Prompt injection: ignore prior instructions",
-      "tags": ["injection", "prompt-injection"],
+      "tags": [
+        "injection",
+        "prompt-injection"
+      ],
       "validator": "",
       "entropy_context": false
     },
@@ -498,7 +504,10 @@
       "detector": "injection",
       "severity": "high",
       "description": "Prompt injection: disregard previous context",
-      "tags": ["injection", "prompt-injection"],
+      "tags": [
+        "injection",
+        "prompt-injection"
+      ],
       "validator": "",
       "entropy_context": false
     },
@@ -508,7 +517,10 @@
       "detector": "injection",
       "severity": "high",
       "description": "Prompt injection: persona/role override attempt",
-      "tags": ["injection", "jailbreak"],
+      "tags": [
+        "injection",
+        "jailbreak"
+      ],
       "validator": "",
       "entropy_context": false
     },
@@ -518,7 +530,10 @@
       "detector": "injection",
       "severity": "high",
       "description": "Prompt injection: fake system prompt",
-      "tags": ["injection", "prompt-injection"],
+      "tags": [
+        "injection",
+        "prompt-injection"
+      ],
       "validator": "",
       "entropy_context": false
     },
@@ -528,7 +543,10 @@
       "detector": "injection",
       "severity": "high",
       "description": "Prompt injection: system tag injection",
-      "tags": ["injection", "prompt-injection"],
+      "tags": [
+        "injection",
+        "prompt-injection"
+      ],
       "validator": "",
       "entropy_context": false
     },
@@ -538,7 +556,10 @@
       "detector": "injection",
       "severity": "high",
       "description": "Prompt injection: instruction tag injection",
-      "tags": ["injection", "prompt-injection"],
+      "tags": [
+        "injection",
+        "prompt-injection"
+      ],
       "validator": "",
       "entropy_context": false
     },
@@ -548,7 +569,10 @@
       "detector": "injection",
       "severity": "high",
       "description": "Prompt injection: command execution directive",
-      "tags": ["injection", "code-execution"],
+      "tags": [
+        "injection",
+        "code-execution"
+      ],
       "validator": "",
       "entropy_context": false
     },
@@ -558,7 +582,10 @@
       "detector": "injection",
       "severity": "critical",
       "description": "Data exfiltration: curl pipe to bash",
-      "tags": ["injection", "exfiltration"],
+      "tags": [
+        "injection",
+        "exfiltration"
+      ],
       "validator": "",
       "entropy_context": false
     },
@@ -568,7 +595,205 @@
       "detector": "injection",
       "severity": "high",
       "description": "Data exfiltration: web API call with URL",
-      "tags": ["injection", "exfiltration"],
+      "tags": [
+        "injection",
+        "exfiltration"
+      ],
+      "validator": "",
+      "entropy_context": false
+    },
+    {
+      "name": "digitalocean_access_token",
+      "pattern": "\\b(doo_v1_[a-f0-9]{64})(?:[\\x60'\"\\s;]|\\\\[nr]|$)",
+      "detector": "secrets",
+      "severity": "critical",
+      "description": "DigitalOcean OAuth access token",
+      "tags": [
+        "gitleaks",
+        "curated"
+      ],
+      "validator": "",
+      "entropy_context": false
+    },
+    {
+      "name": "digitalocean_pat",
+      "pattern": "\\b(dop_v1_[a-f0-9]{64})(?:[\\x60'\"\\s;]|\\\\[nr]|$)",
+      "detector": "secrets",
+      "severity": "critical",
+      "description": "DigitalOcean personal access token",
+      "tags": [
+        "gitleaks",
+        "curated"
+      ],
+      "validator": "",
+      "entropy_context": false
+    },
+    {
+      "name": "digitalocean_refresh_token",
+      "pattern": "(?i)\\b(dor_v1_[a-f0-9]{64})(?:[\\x60'\"\\s;]|\\\\[nr]|$)",
+      "detector": "secrets",
+      "severity": "critical",
+      "description": "DigitalOcean OAuth refresh token",
+      "tags": [
+        "gitleaks",
+        "curated"
+      ],
+      "validator": "",
+      "entropy_context": false
+    },
+    {
+      "name": "cloudflare_api_key",
+      "pattern": "(?i)[\\w.-]{0,50}?(?:cloudflare)(?:[ \\t\\w.-]{0,20})[\\s'\"]{0,3}(?:=|>|:{1,3}=|\\|\\||:|=>|\\?=|,)[\\x60'\"\\s=]{0,5}([a-z0-9_-]{40})(?:[\\x60'\"\\s;]|\\\\[nr]|$)",
+      "detector": "secrets",
+      "severity": "critical",
+      "description": "Cloudflare API key",
+      "tags": [
+        "gitleaks",
+        "curated"
+      ],
+      "validator": "",
+      "entropy_context": false
+    },
+    {
+      "name": "cloudflare_global_api_key",
+      "pattern": "(?i)[\\w.-]{0,50}?(?:cloudflare)(?:[ \\t\\w.-]{0,20})[\\s'\"]{0,3}(?:=|>|:{1,3}=|\\|\\||:|=>|\\?=|,)[\\x60'\"\\s=]{0,5}([a-f0-9]{37})(?:[\\x60'\"\\s;]|\\\\[nr]|$)",
+      "detector": "secrets",
+      "severity": "critical",
+      "description": "Cloudflare Global API key",
+      "tags": [
+        "gitleaks",
+        "curated"
+      ],
+      "validator": "",
+      "entropy_context": false
+    },
+    {
+      "name": "cloudflare_origin_ca_key",
+      "pattern": "\\b(v1\\.0-[a-f0-9]{24}-[a-f0-9]{146})(?:[\\x60'\"\\s;]|\\\\[nr]|$)",
+      "detector": "secrets",
+      "severity": "critical",
+      "description": "Cloudflare Origin CA key",
+      "tags": [
+        "gitleaks",
+        "curated"
+      ],
+      "validator": "",
+      "entropy_context": false
+    },
+    {
+      "name": "linear_api_key",
+      "pattern": "lin_api_[a-zA-Z0-9]{40}",
+      "detector": "secrets",
+      "severity": "critical",
+      "description": "Linear API key",
+      "tags": [
+        "gitleaks",
+        "curated"
+      ],
+      "validator": "",
+      "entropy_context": false
+    },
+    {
+      "name": "linear_client_secret",
+      "pattern": "(?i)[\\w.-]{0,50}?(?:linear)(?:[ \\t\\w.-]{0,20})[\\s'\"]{0,3}(?:=|>|:{1,3}=|\\|\\||:|=>|\\?=|,)[\\x60'\"\\s=]{0,5}([a-f0-9]{32})(?:[\\x60'\"\\s;]|\\\\[nr]|$)",
+      "detector": "secrets",
+      "severity": "high",
+      "description": "Linear client secret",
+      "tags": [
+        "gitleaks",
+        "curated"
+      ],
+      "validator": "",
+      "entropy_context": false
+    },
+    {
+      "name": "notion_api_token",
+      "pattern": "\\b(ntn_[0-9]{11}[A-Za-z0-9]{32}[A-Za-z0-9]{3})(?:[\\x60'\"\\s;]|\\\\[nr]|$)",
+      "detector": "secrets",
+      "severity": "critical",
+      "description": "Notion API token",
+      "tags": [
+        "gitleaks",
+        "curated"
+      ],
+      "validator": "",
+      "entropy_context": false
+    },
+    {
+      "name": "atlassian_api_token",
+      "pattern": "(?i)[\\w.-]{0,50}?(?:(?-i:ATLASSIAN|[Aa]tlassian)|(?-i:CONFLUENCE|[Cc]onfluence)|(?-i:JIRA|[Jj]ira))(?:[ \\t\\w.-]{0,20})[\\s'\"]{0,3}(?:=|>|:{1,3}=|\\|\\||:|=>|\\?=|,)[\\x60'\"\\s=]{0,5}([a-z0-9]{20}[a-f0-9]{4})(?:[\\x60'\"\\s;]|\\\\[nr]|$)|\\b(ATATT3[A-Za-z0-9_\\-=]{186})(?:[\\x60'\"\\s;]|\\\\[nr]|$)",
+      "detector": "secrets",
+      "severity": "critical",
+      "description": "Atlassian API token",
+      "tags": [
+        "gitleaks",
+        "curated"
+      ],
+      "validator": "",
+      "entropy_context": false
+    },
+    {
+      "name": "kubernetes_secret_yaml",
+      "pattern": "(?i)(?:\\bkind:[ \\t]*[\"']?\\bsecret\\b[\"']?(?s:.){0,200}?\\bdata:(?s:.){0,100}?\\s+([\\w.-]+:(?:[ \\t]*(?:\\||>[-+]?)\\s+)?[ \\t]*(?:[\"']?[a-z0-9+/]{10,}={0,3}[\"']?|\\{\\{[ \\t\\w\"|$:=,.-]+}}|\"\"|''))|\\bdata:(?s:.){0,100}?\\s+([\\w.-]+:(?:[ \\t]*(?:\\||>[-+]?)\\s+)?[ \\t]*(?:[\"']?[a-z0-9+/]{10,}={0,3}[\"']?|\\{\\{[ \\t\\w\"|$:=,.-]+}}|\"\"|''))(?s:.){0,200}?\\bkind:[ \\t]*[\"']?\\bsecret\\b[\"']?)",
+      "detector": "secrets",
+      "severity": "critical",
+      "description": "Kubernetes Secret manifest fragment",
+      "tags": [
+        "gitleaks",
+        "curated"
+      ],
+      "validator": "",
+      "entropy_context": false
+    },
+    {
+      "name": "shopify_access_token",
+      "pattern": "shpat_[a-fA-F0-9]{32}",
+      "detector": "secrets",
+      "severity": "critical",
+      "description": "Shopify access token",
+      "tags": [
+        "gitleaks",
+        "curated"
+      ],
+      "validator": "",
+      "entropy_context": false
+    },
+    {
+      "name": "shopify_private_app_token",
+      "pattern": "shppa_[a-fA-F0-9]{32}",
+      "detector": "secrets",
+      "severity": "critical",
+      "description": "Shopify private app access token",
+      "tags": [
+        "gitleaks",
+        "curated"
+      ],
+      "validator": "",
+      "entropy_context": false
+    },
+    {
+      "name": "hubspot_api_key",
+      "pattern": "(?i)[\\w.-]{0,50}?(?:hubspot)(?:[ \\t\\w.-]{0,20})[\\s'\"]{0,3}(?:=|>|:{1,3}=|\\|\\||:|=>|\\?=|,)[\\x60'\"\\s=]{0,5}([0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12})(?:[\\x60'\"\\s;]|\\\\[nr]|$)",
+      "detector": "secrets",
+      "severity": "critical",
+      "description": "HubSpot API token",
+      "tags": [
+        "gitleaks",
+        "curated"
+      ],
+      "validator": "",
+      "entropy_context": false
+    },
+    {
+      "name": "telegram_bot_token",
+      "pattern": "(?i)[\\w.-]{0,50}?(?:telegr)(?:[ \\t\\w.-]{0,20})[\\s'\"]{0,3}(?:=|>|:{1,3}=|\\|\\||:|=>|\\?=|,)[\\x60'\"\\s=]{0,5}([0-9]{5,16}:(?-i:A)[a-z0-9_\\-]{34})(?:[\\x60'\"\\s;]|\\\\[nr]|$)",
+      "detector": "secrets",
+      "severity": "high",
+      "description": "Telegram bot API token",
+      "tags": [
+        "gitleaks",
+        "curated"
+      ],
       "validator": "",
       "entropy_context": false
     }
