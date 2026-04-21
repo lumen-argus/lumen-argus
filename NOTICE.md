@@ -33,4 +33,10 @@ matching shape is unchanged.
   `cloudflare_origin_ca_key`, `linear_api_key`, `linear_client_secret`,
   `notion_api_token`, `atlassian_api_token`, `kubernetes_secret_yaml`,
   `shopify_access_token`, `shopify_private_app_token`, `hubspot_api_key`,
-  `telegram_bot_token`
+  `telegram_bot_token`, `bitbucket_client_id`, `bitbucket_client_secret`,
+  `mailchimp_api_key`, `netlify_access_token`, `databricks_api_token`,
+  `planetscale_api_token`, `planetscale_oauth_token`, `planetscale_password`,
+  `okta_access_token`, `intercom_api_key`, `twitter_access_secret`,
+  `twitter_access_token`, `twitter_api_key`, `twitter_api_secret`,
+  `twitter_bearer_token`, `facebook_access_token`, `facebook_page_access_token`,
+  `facebook_secret`
