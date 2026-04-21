@@ -520,16 +520,16 @@ wheels = [
 
 [[package]]
 name = "crossfire-rules"
-version = "0.2.1"
+version = "0.2.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
     { name = "pyyaml" },
     { name = "rstr" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c2/11/9d0b0d36f347c5d1e5797ca1ede22e453da9738dc66917248b44ae7ceabb/crossfire_rules-0.2.1.tar.gz", hash = "sha256:af808b2c74dca2bc464f189f5c46d5931bf177824cb267ef5a08e4e6e94aee83", size = 68517, upload-time = "2026-04-10T06:54:43.012Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/4c/64/432d3c2f98bf6bf643fd9b3c6dd1ec8b3ce3640db6c6f9bcc969e03c15fc/crossfire_rules-0.2.2.tar.gz", hash = "sha256:2acc3377807c4d56e24378be5737c893f48f5fac7ae71d1de28b246f06b19e03", size = 72076, upload-time = "2026-04-21T08:33:52.203Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/70/b4/cfe44205624b8023183ab6446163a02dcab9293e6fe6a9a56ef920cdabd7/crossfire_rules-0.2.1-py3-none-any.whl", hash = "sha256:3d8d335ee1e9278856cf542fecaa5d569b03fb06acae9eccf632cefa1c556465", size = 55711, upload-time = "2026-04-10T06:54:41.668Z" },
+    { url = "https://files.pythonhosted.org/packages/92/97/1ceebd64dc91ba122ca394a52b5fff9be574c8693fa9119fe02888b0e0d4/crossfire_rules-0.2.2-py3-none-any.whl", hash = "sha256:01fde86c52478bbca11b723de0bea6cc4491e1ccf4896aa84293daa0865c0285", size = 56552, upload-time = "2026-04-21T08:33:51.02Z" },
 ]
 
 [package.optional-dependencies]
@@ -969,7 +969,7 @@ rules-analysis = [
 [package.metadata]
 requires-dist = [
     { name = "aiohttp", specifier = ">=3.13" },
-    { name = "crossfire-rules", extras = ["re2"], marker = "extra == 'rules-analysis'", specifier = ">=0.2.1" },
+    { name = "crossfire-rules", extras = ["re2"], marker = "extra == 'rules-analysis'", specifier = ">=0.2.2" },
     { name = "lumen-argus-core", editable = "packages/core" },
     { name = "phonenumbers", specifier = ">=9.0.28" },
     { name = "pyahocorasick", specifier = ">=2.3" },

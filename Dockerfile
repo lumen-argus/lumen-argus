@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev l
     && rm -rf /var/lib/apt/lists/*
 
 # Copy source and install (only re-runs on code changes, gcc is cached)
-# The [rules-analysis] extra pulls crossfire-rules[re2]>=0.2.0 from PyPI — single source of truth
+# The [rules-analysis] extra pulls crossfire-rules[re2] from PyPI — the floor pin lives in packages/proxy/pyproject.toml
 COPY packages/core/lumen_argus_core/ packages/core/lumen_argus_core/
 COPY packages/proxy/lumen_argus/ packages/proxy/lumen_argus/
 RUN pip install --no-cache-dir --prefix=/install packages/core/ "packages/proxy/[rules-analysis]"
