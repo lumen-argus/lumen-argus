@@ -97,12 +97,6 @@ SECRETS_PATTERNS = (
         "critical",
         False,
     ),
-    SecretPattern(
-        "ssh_private_key",
-        re.compile(r"-----BEGIN OPENSSH PRIVATE KEY-----"),
-        "critical",
-        False,
-    ),
     # --- Tokens & Sessions ---
     SecretPattern(
         "jwt_token",

@@ -82,11 +82,7 @@ class TestSecretsDetector(unittest.TestCase):
     def test_openssh_private_key(self):
         findings = self._scan("-----BEGIN OPENSSH PRIVATE KEY-----")
         types = [f.type for f in findings]
-        # Should match either private_key_pem or ssh_private_key
-        self.assertTrue(
-            "private_key_pem" in types or "ssh_private_key" in types,
-            "Expected private key detection, got: %s" % types,
-        )
+        self.assertIn("private_key_pem", types)
 
     # --- Tokens ---
     def test_jwt(self):

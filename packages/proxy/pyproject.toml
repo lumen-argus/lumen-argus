@@ -36,7 +36,7 @@ dependencies = [
 # 0.2.1 is the hard floor: it added the `parallel` parameter and switched the
 # default multiprocessing context to spawn — both required when calling
 # CorpusGenerator from inside a background thread (see rule_analysis.py).
-rules-analysis = ["crossfire-rules[re2]>=0.2.2"]
+rules-analysis = ["crossfire-rules[re2]>=0.2.8"]
 
 [project.scripts]
 lumen-argus = "lumen_argus.cli:main"

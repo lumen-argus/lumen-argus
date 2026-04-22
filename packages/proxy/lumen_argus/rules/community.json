@@ -133,16 +133,6 @@
       "entropy_context": false
     },
     {
-      "name": "ssh_private_key",
-      "pattern": "-----BEGIN OPENSSH PRIVATE KEY-----",
-      "detector": "secrets",
-      "severity": "critical",
-      "description": "Ssh Private Key",
-      "tags": [],
-      "validator": "",
-      "entropy_context": false
-    },
-    {
       "name": "jwt_token",
       "pattern": "eyJ[A-Za-z0-9_\\-]{10,}\\.eyJ[A-Za-z0-9_\\-]{10,}\\.[A-Za-z0-9_\\-]+",
       "detector": "secrets",

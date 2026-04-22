@@ -40,8 +40,7 @@ analysis to catch credentials, tokens, and cryptographic material.
 
 | Pattern Name | Example Match | Severity |
 |---|---|---|
-| `private_key_pem` | `-----BEGIN RSA PRIVATE KEY-----` | critical |
-| `ssh_private_key` | `-----BEGIN OPENSSH PRIVATE KEY-----` | critical |
+| `private_key_pem` | `-----BEGIN RSA PRIVATE KEY-----` (covers RSA/EC/DSA/OPENSSH) | critical |
 
 ### Tokens and Sessions
 
