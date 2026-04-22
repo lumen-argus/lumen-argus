@@ -1,3 +1,10 @@
+<h1 align="center">lumen-argus</h1>
+
+<p align="center">
+  <strong>AI coding tool DLP proxy</strong><br/>
+  Scan outbound requests for secrets, PII, and proprietary data before they reach AI providers.
+</p>
+
 <p align="center">
   <img src="https://img.shields.io/badge/python-3.12+-blue?logo=python&logoColor=white" alt="Python 3.12+">
   <a href="https://github.com/lumen-argus/lumen-argus/actions/workflows/test.yml"><img src="https://github.com/lumen-argus/lumen-argus/actions/workflows/test.yml/badge.svg" alt="tests"></a>
@@ -6,22 +13,45 @@
   <a href="https://lumen-argus.github.io/lumen-argus/docs/"><img src="https://img.shields.io/badge/docs-mkdocs-blue" alt="Documentation"></a>
 </p>
 
-# lumen-argus
+<p align="center">
+  <a href="#quick-start">Quick Start</a> ·
+  <a href="#what-it-detects">Detectors</a> ·
+  <a href="#dashboard">Dashboard</a> ·
+  <a href="#configuration">Configuration</a> ·
+  <a href="#docker">Docker</a> ·
+  <a href="https://lumen-argus.github.io/lumen-argus/docs/">Docs</a>
+</p>
 
-**AI coding tool DLP proxy** — scan outbound requests for secrets, PII, and proprietary data before they reach AI providers.
+<p align="center">
+  <a href="docs/images/finding.jpg"><img src="docs/images/finding.jpg" alt="Finding detail" width="100%"/></a>
+</p>
 
+<table>
+  <tr>
+    <td align="center" width="25%"><a href="docs/images/dashboard.jpg"><img src="docs/images/dashboard.jpg" width="100%"/></a><br/><sub><b>Dashboard</b></sub></td>
+    <td align="center" width="25%"><a href="docs/images/rules.jpg"><img src="docs/images/rules.jpg" width="100%"/></a><br/><sub><b>Rules</b></sub></td>
+    <td align="center" width="25%"><a href="docs/images/allowlist.jpg"><img src="docs/images/allowlist.jpg" width="100%"/></a><br/><sub><b>Allowlist</b></sub></td>
+    <td align="center" width="25%"><a href="docs/images/pipeline.jpg"><img src="docs/images/pipeline.jpg" width="100%"/></a><br/><sub><b>Pipeline</b></sub></td>
+  </tr>
+</table>
+
+<p align="center">
+  <img src="docs/images/architecture.svg" alt="lumen-argus architecture" width="100%"/>
+</p>
+
+## TL;DR — try it in 30 seconds
+
+> Not yet on PyPI — install from source for now. Requires Python 3.12+ and [uv](https://github.com/astral-sh/uv).
+
+```bash
+git clone https://github.com/lumen-argus/lumen-argus.git
+cd lumen-argus && uv sync
+uv run lumen-argus serve &
+ANTHROPIC_BASE_URL=http://localhost:8080 claude    # point any supported tool at :8080
+open http://localhost:8081                          # live dashboard
 ```
-                        Reverse Proxy (tools with base URL support)
-AI Tool  ──BASE_URL──>  Agent Relay (:8070)  ──>  lumen-argus (:8080)  ──HTTPS──>  AI Provider API
-                              |                          |
-                        OS identity              +-------+-------+
-                        enrichment               | Detection     |
-                                                 |  * Secrets    |
-                        Forward Proxy            |  * PII        |
-AI Tool  ──HTTPS_PROXY──>  Agent (:9090)  ──────>|  * Proprietary|
-  (Copilot CLI,             TLS intercept        +-------+-------+
-   Warp, etc.)              via mitmproxy        Actions: block | alert | log
-```
+
+Paste any secret-looking string into your chat. Proxy catches it, logs a finding, dashboard updates in real time.
 
 ## The Problem
 
@@ -35,35 +65,54 @@ lumen-argus sits between your AI tool and the provider, scanning every outbound 
 
 ## Key Features
 
+### Detection
+
 - **70+ secret patterns** with Shannon entropy analysis
-- **Encoding-aware scanning** — catches base64, hex, URL, Unicode encoded secrets
-- **Response scanning** — detect secrets and prompt injection in API responses (async, zero latency)
-- **MCP proxy** — scan MCP traffic across stdio, HTTP, and WebSocket transports (`lumen-argus mcp`)
-- **MCP detection** — discover MCP servers from 8 AI tools + Claude Code plugins (user-configured and plugin-provided)
-- **WebSocket proxy** — bidirectional frame scanning on same port (opt-in, `ws://localhost:8080/ws?url=ws://target`)
 - **8 PII detectors** with validation (Luhn, SSN ranges, IBAN checksums)
 - **Proprietary code** detection (file patterns + keyword matching)
+- **Encoding-aware scanning** — catches base64, hex, URL, Unicode encoded secrets
+- **Response scanning** — detect secrets and prompt injection in API responses (async, zero latency)
+- **DB-backed rules engine** — import, export, toggle, and manage rules via CLI and dashboard. Aho-Corasick pre-filter scans 1,700+ rules in <50ms
+
+### Coverage
+
+- **27 AI CLI agents** supported, auto-detected and configured
+- **MCP proxy** — scan MCP traffic across stdio, HTTP, and WebSocket transports (`lumen-argus mcp`)
+- **MCP detection** — discover MCP servers from 8 AI tools + Claude Code plugins
+- **WebSocket proxy** — bidirectional frame scanning on same port (opt-in)
+- **Forward proxy** — TLS-intercepting mitmproxy for tools without custom base URL support (Copilot CLI with GitHub auth)
+
+### Identity & Dedup
+
+- **Session tracking** — identify WHO, WHICH project, WHICH conversation per finding
+- **Agent relay** — OS-level identity enrichment (hostname, username, working directory via PID correlation)
+- **Cross-request dedup** — 3-layer dedup eliminates redundant scanning of conversation history
+
+### Operations
+
 - **< 50ms scanning overhead** for typical payloads
 - **Minimal dependencies** — aiohttp, pyyaml, pyahocorasick, phonenumbers — everything else is stdlib
-- **Forward proxy** — TLS-intercepting proxy (mitmproxy) for tools that don't support custom base URLs (Copilot CLI with GitHub auth). Tool-specific shell aliases, CA cert management, combined relay+forward mode
-- **Session tracking** — identify WHO, WHICH project, WHICH conversation per finding. Agent relay enriches with OS-level identity (hostname, username, working directory via PID correlation)
-- **Cross-request dedup** — 3-layer dedup eliminates redundant scanning of conversation history
-- **Web dashboard** with real-time findings, charts, session filtering, and audit log
-- **Notification channels** — webhook, email, Slack, Teams, PagerDuty, OpsGenie, Jira
-- **DB-backed rules engine** — import, export, toggle, and manage detection rules via CLI and dashboard. Aho-Corasick pre-filter scans 1,700+ rules in <50ms
-- **Pre-commit scanner** — catch secrets before they enter conversation history
 - **Relay + engine split** — fault-isolated two-process architecture; relay forwards when engine crashes (fail-open/closed)
-- **Protection toggle** — `lumen-argus protection enable/disable/status` for tray app integration
 - **Hot-reload** — update config via SIGHUP, no downtime
+- **Protection toggle** — `lumen-argus protection enable/disable/status`
 - **Docker ready** — single command, data persists across upgrades
+
+### Developer Experience
+
+- **Web dashboard** — real-time findings, charts, session filtering, audit log
+- **Notification channels** — webhook, email, Slack, Teams, PagerDuty, OpsGenie, Jira
+- **Pre-commit scanner** — catch secrets before they enter conversation history
 
 ## Quick Start
 
-**Requirements:** Python 3.12+
+**Requirements:** Python 3.12+, [uv](https://github.com/astral-sh/uv).
+
+> PyPI packages (`lumen-argus-proxy`, `lumen-argus-agent`, `lumen-argus-core`) are not yet published. Install from source until then.
 
 ```bash
-pip install lumen-argus-proxy
-lumen-argus serve
+git clone https://github.com/lumen-argus/lumen-argus.git
+cd lumen-argus && uv sync
+uv run lumen-argus serve
 ```
 
 Then point your AI tool at the proxy. **27 agents supported** — auto-detect and configure them all:
@@ -157,7 +206,7 @@ lumen-argus relay --port 8080 --engine http://localhost:8090 --fail-mode open
 # Or combined in one process
 lumen-argus serve --engine-port 8090 --fail-mode open
 
-# Toggle protection on/off (for tray app integration)
+# Toggle protection on/off
 lumen-argus protection enable
 lumen-argus protection disable
 lumen-argus protection status
@@ -273,9 +322,21 @@ lumen-argus mcp --upstream ws://localhost:9000/mcp
 - **Session binding** — validates `tools/call` against tool inventory from first `tools/list` (opt-in)
 - **Environment restriction** — subprocess mode strips secrets from child process environment
 
-Configurable tool allow/block lists via `mcp:` config section or dashboard API. Plugin extension hooks (`set_tool_policy_evaluator`, `set_approval_gate`) let out-of-tree packages add ABAC tool policies (glob matching on tool name, server, arguments, context), human-in-the-loop approval gates, and risk classification on top of community's allow/block list. MCP over HTTP is automatically detected and scanned by the main proxy — no config needed. `lumen-argus mcp` covers all other transports: stdio subprocess for local MCP servers, HTTP bridge for remote servers, HTTP reverse proxy for centralized scanning, and WebSocket bridge for WS-based MCP servers.
+**Allow/block lists** configurable via the `mcp:` config section or dashboard API.
 
-**MCP server detection** (`lumen-argus detect --mcp`) discovers servers from 8 AI tools plus Claude Code plugins:
+**Transport coverage:**
+- MCP over HTTP — auto-detected and scanned by the main proxy (no config)
+- stdio subprocess — wrap local MCP servers via `lumen-argus mcp --`
+- HTTP bridge — stdio client talks to a remote HTTP MCP server
+- HTTP reverse proxy — centralized scanning for many clients
+- WebSocket bridge — for WS-based MCP servers
+
+**Plugin hooks** (`set_tool_policy_evaluator`, `set_approval_gate`) let out-of-tree packages add ABAC tool policies (glob matching on tool name, server, arguments, context), human-in-the-loop approval gates, and risk classification on top of the community allow/block list.
+
+**MCP server detection** (`lumen-argus detect --mcp`) discovers servers from 8 AI tools plus Claude Code plugins.
+
+<details>
+<summary><b>Scanned config sources</b> (11 locations)</summary>
 
 | Source | Config Location | JSON Key |
 |--------|----------------|----------|
@@ -292,6 +353,8 @@ Configurable tool allow/block lists via `mcp:` config section or dashboard API. 
 | VS Code (workspace) | `<cwd>/.vscode/mcp.json` | `servers` |
 
 Plugin detection reads `~/.claude/plugins/installed_plugins.json` for install paths and `~/.claude/settings.json` for enabled status. Only enabled plugins are scanned. Both `.mcp.json` formats are supported: top-level server names (serena, greptile) and `mcpServers` wrapper key (playwright).
+
+</details>
 
 ## Rules Engine
 
@@ -355,13 +418,26 @@ Scanning overhead stays under 50ms for typical payloads. Connection pooling elim
 
 ## Dashboard
 
-Built-in web dashboard at `http://localhost:8081`:
+Built-in web dashboard at `http://localhost:8081`.
 
-**Pages:** Dashboard (quick stats cards, severity breakdown, trend chart with 7d/30d/90d toggle, top detectors, top providers, activity feed, recent sessions with severity breakdown, pipeline health), Findings (paginated table with 8 filters: severity, detector, action, type, provider, client, time range, session; CSV/JSON export), Rules (paginated rule list with search/filter, stat chips, tag chips, rule cards with enable toggle, action select, add/edit/clone/delete; URL hash deep-links from findings; overlap badges linking to Rule Analysis), Rule Analysis (Crossfire-powered overlap detection — duplicate/subset/overlap cards with Disable/Review/Dismiss actions, live progress with log streaming; `pip install lumen-argus-proxy[rules-analysis]`), Allowlists (secrets/PII/paths allowlists — merged YAML config + API entries, inline add/delete, pattern test panel against recent findings), Audit (log viewer with search), Pipeline (scanning stage config — toggle stages, detectors, encoding settings, default action), Settings (proxy config, license activation), Notifications (channel management).
+| Page | What's there |
+|---|---|
+| **Dashboard** | Quick stats, severity breakdown, 7/30/90-day trend, top detectors, top providers, activity feed, recent sessions, pipeline health |
+| **Findings** | Paginated table with 8 filters (severity, detector, action, type, provider, client, time range, session) + CSV/JSON export |
+| **Rules** | Search/filter, stat chips, tag chips, enable toggle, action select, add/edit/clone/delete. URL hash deep-links from findings; overlap badges link to Rule Analysis |
+| **Rule Analysis** | Crossfire-powered overlap detection (duplicate/subset/overlap) with Disable/Review/Dismiss. Live progress + log streaming. Requires the `rules-analysis` optional dependency (`uv sync --extra rules-analysis`) |
+| **Allowlists** | Secrets/PII/paths — merged YAML config + API entries, inline add/delete, pattern test panel against recent findings |
+| **Audit** | Log viewer with search |
+| **Pipeline** | Toggle stages, detectors, encoding settings, default action |
+| **Settings** | Proxy config, license activation |
+| **Notifications** | Channel management |
 
-Plugins extend the dashboard via the `register_dashboard_pages` / `register_dashboard_css` / `register_dashboard_api` extension hooks and the JS-side `registerPage` / `registerSettingsSection` / `registerPipelineAction` registries — adding their own pages, settings sections, action options, or charts on top of the community surface.
+Plugins extend the dashboard through Python extension hooks (`register_dashboard_pages`, `register_dashboard_css`, `register_dashboard_api`) and JS registries (`registerPage`, `registerSettingsSection`, `registerPipelineAction`). They can add new pages, settings sections, action options, and charts on top of the community surface.
 
 ### Dashboard API
+
+<details>
+<summary><b>30+ REST endpoints</b> — findings, stats, rules, pipeline, allowlists, notifications</summary>
 
 | Endpoint | Description |
 |---|---|
@@ -397,13 +473,15 @@ Plugins extend the dashboard via the `register_dashboard_pages` / `register_dash
 | `GET /api/v1/notifications/channels` | List notification channels |
 | `POST /api/v1/notifications/channels` | Create channel (limit enforced) |
 
+</details>
+
 [Full API reference](https://lumen-argus.github.io/lumen-argus/docs/reference/api-endpoints/)
 
 ## Notification Channels
 
 Configure alerting via YAML (IaC-managed) or the dashboard. Community ships with the **Webhook** channel type and fire-and-forget dispatch — point it at any URL (Slack incoming webhooks, Discord, custom HTTP endpoints) with configurable event triggers (`block` / `alert` / `log`) and per-channel minimum severity. Channel count is unlimited.
 
-Plugins extend the available channel types and dispatch backends (e.g. retry with circuit breaker, deduplication, dispatch health monitoring, native Slack/Teams/PagerDuty/OpsGenie/Jira/Email integrations) via the `register_channel_types`, `set_notifier_builder`, and `set_dispatcher` extension hooks.
+Plugins add channel types and dispatch backends via `register_channel_types`, `set_notifier_builder`, and `set_dispatcher` hooks. Extensions include retry with circuit breaker, deduplication, dispatch health monitoring, and native Slack/Teams/PagerDuty/OpsGenie/Jira/Email integrations.
 
 ```yaml
 notifications:
@@ -533,7 +611,7 @@ Both endpoints expose extension hooks (`set_health_hook`, `set_metrics_hook`) so
 
 ## Packages
 
-Three PyPI packages from one monorepo:
+Three packages from one monorepo (uv workspace):
 
 | Package | What | Size | Dependencies |
 |---------|------|------|-------------|
@@ -541,33 +619,22 @@ Three PyPI packages from one monorepo:
 | `lumen-argus-agent` | Lightweight workstation agent CLI | 5KB | `lumen-argus-core` |
 | `lumen-argus-proxy` | Full proxy server with dashboard | 245KB | `lumen-argus-core` + aiohttp + pyyaml + pyahocorasick + phonenumbers |
 
-```bash
-# Individual developer — full proxy
-pip install lumen-argus-proxy
-
-# Enterprise workstation — lightweight agent only
-pip install lumen-argus-agent
-lumen-argus-agent detect --audit --proxy-url https://argus.corp.io
-lumen-argus-agent setup --proxy-url https://argus.corp.io --non-interactive
-```
-
-### Enterprise Deployment
-
-Central proxy on K8s, lightweight agent on developer machines:
+> PyPI release pending. Install from source for now.
 
 ```bash
-# Developer machines (via Ansible/MDM)
-pip install lumen-argus-agent
-lumen-argus-agent enroll --server https://argus.corp.io --non-interactive
-# → auto-configures all AI tools, enables protection, installs watch daemon
+git clone https://github.com/lumen-argus/lumen-argus.git
+cd lumen-argus && uv sync
 
-# Or use the desktop tray app (macOS) — bundles both sidecars
-# Local mode: full proxy | Dedicated mode: agent only (8MB vs 12MB binary)
+# Full proxy
+uv run lumen-argus serve
+
+# Lightweight workstation agent (for deployments pointing at a remote proxy)
+uv run lumen-argus-agent setup --proxy-url http://proxy.local:8080
 ```
 
-Agent commands: `detect`, `setup`, `watch`, `protection`, `clients`, `enroll`, `heartbeat`, `refresh-policy`, `relay`, `forward-proxy`, `uninstall`.
+Agent commands: `detect`, `setup`, `watch`, `protection`, `clients`, `relay`, `forward-proxy`, `uninstall`.
 
-**Clean removal before `pip uninstall` / `brew uninstall`:**
+**Clean removal before deleting the checkout (or, once shipped, `pip uninstall`):**
 
 ```bash
 # Reverses every system change the agent made: tool configs, MCP
@@ -622,6 +689,13 @@ def register(registry):
 - Plugin HTML sanitized client-side; plugin JS is trusted (entry-point only)
 
 See [SECURITY.md](SECURITY.md) for vulnerability reporting.
+
+## Community
+
+- **Contributing** — see [CONTRIBUTING.md](CONTRIBUTING.md) for dev setup, testing, and PR guidelines
+- **Discussions** — [GitHub Discussions](https://github.com/lumen-argus/lumen-argus/discussions) for questions and ideas
+- **Bug reports** — [GitHub Issues](https://github.com/lumen-argus/lumen-argus/issues)
+- **Security** — private vulnerability reports via [SECURITY.md](SECURITY.md)
 
 ## Acknowledgments
 

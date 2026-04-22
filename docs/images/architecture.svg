@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 380" role="img" aria-label="lumen-argus architecture diagram" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#6b7280"/>
+    </marker>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#000" flood-opacity="0.12"/>
+    </filter>
+  </defs>
+
+  <!-- AI tool — top lane -->
+  <g filter="url(#shadow)">
+    <rect x="20" y="60" width="170" height="80" rx="10" fill="#e0e7ff" stroke="#4f46e5" stroke-width="1.5"/>
+  </g>
+  <text x="105" y="92" text-anchor="middle" font-size="15" font-weight="600" fill="#1e1b4b">AI Tool</text>
+  <text x="105" y="112" text-anchor="middle" font-size="11" fill="#3730a3">Claude Code · Cursor</text>
+  <text x="105" y="126" text-anchor="middle" font-size="11" fill="#3730a3">Aider · OpenCode</text>
+
+  <!-- AI tool — bottom lane -->
+  <g filter="url(#shadow)">
+    <rect x="20" y="240" width="170" height="80" rx="10" fill="#e0e7ff" stroke="#4f46e5" stroke-width="1.5"/>
+  </g>
+  <text x="105" y="272" text-anchor="middle" font-size="15" font-weight="600" fill="#1e1b4b">AI Tool</text>
+  <text x="105" y="292" text-anchor="middle" font-size="11" fill="#3730a3">Copilot CLI</text>
+  <text x="105" y="306" text-anchor="middle" font-size="11" fill="#3730a3">Warp · others</text>
+
+  <!-- Agent Relay -->
+  <g filter="url(#shadow)">
+    <rect x="240" y="50" width="180" height="100" rx="10" fill="#d1fae5" stroke="#059669" stroke-width="1.5"/>
+  </g>
+  <text x="330" y="80" text-anchor="middle" font-size="15" font-weight="600" fill="#064e3b">Agent Relay</text>
+  <text x="330" y="100" text-anchor="middle" font-size="12" font-weight="600" fill="#047857">:8070</text>
+  <text x="330" y="122" text-anchor="middle" font-size="11" fill="#065f46">OS identity</text>
+  <text x="330" y="136" text-anchor="middle" font-size="11" fill="#065f46">enrichment</text>
+
+  <!-- Forward Proxy -->
+  <g filter="url(#shadow)">
+    <rect x="240" y="230" width="180" height="100" rx="10" fill="#d1fae5" stroke="#059669" stroke-width="1.5"/>
+  </g>
+  <text x="330" y="260" text-anchor="middle" font-size="15" font-weight="600" fill="#064e3b">Forward Proxy</text>
+  <text x="330" y="280" text-anchor="middle" font-size="12" font-weight="600" fill="#047857">:9090</text>
+  <text x="330" y="302" text-anchor="middle" font-size="11" fill="#065f46">TLS intercept</text>
+  <text x="330" y="316" text-anchor="middle" font-size="11" fill="#065f46">via mitmproxy</text>
+
+  <!-- lumen-argus — central scanner -->
+  <g filter="url(#shadow)">
+    <rect x="470" y="110" width="280" height="160" rx="14" fill="#fef3c7" stroke="#d97706" stroke-width="2"/>
+  </g>
+  <text x="610" y="142" text-anchor="middle" font-size="17" font-weight="700" fill="#78350f">lumen-argus</text>
+  <text x="610" y="162" text-anchor="middle" font-size="12" font-weight="600" fill="#92400e">:8080</text>
+  <line x1="500" y1="175" x2="720" y2="175" stroke="#d97706" stroke-width="1" opacity="0.4"/>
+  <text x="610" y="196" text-anchor="middle" font-size="12" fill="#78350f">Secrets · PII · Proprietary</text>
+  <text x="610" y="214" text-anchor="middle" font-size="12" fill="#78350f">Rules · Encoding · Injection</text>
+  <line x1="500" y1="228" x2="720" y2="228" stroke="#d97706" stroke-width="1" opacity="0.4"/>
+  <text x="610" y="252" text-anchor="middle" font-size="12" font-weight="600" fill="#b91c1c">block · alert · log</text>
+
+  <!-- AI Provider API -->
+  <g filter="url(#shadow)">
+    <rect x="800" y="150" width="160" height="80" rx="10" fill="#f1f5f9" stroke="#64748b" stroke-width="1.5"/>
+  </g>
+  <text x="880" y="182" text-anchor="middle" font-size="15" font-weight="600" fill="#0f172a">AI Provider</text>
+  <text x="880" y="202" text-anchor="middle" font-size="11" fill="#334155">Anthropic · OpenAI</text>
+  <text x="880" y="216" text-anchor="middle" font-size="11" fill="#334155">Gemini</text>
+
+  <!-- Arrows -->
+  <!-- Tool 1 → Relay -->
+  <line x1="190" y1="100" x2="238" y2="100" stroke="#6b7280" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="214" y="92" text-anchor="middle" font-size="10" fill="#4b5563" font-weight="500">BASE_URL</text>
+
+  <!-- Tool 2 → Forward -->
+  <line x1="190" y1="280" x2="238" y2="280" stroke="#6b7280" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="214" y="272" text-anchor="middle" font-size="10" fill="#4b5563" font-weight="500">HTTPS_PROXY</text>
+
+  <!-- Relay → Scanner (curves down into top-left of scanner) -->
+  <path d="M 420 100 C 450 100, 450 160, 470 160" stroke="#6b7280" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- Forward → Scanner (curves up into bottom-left of scanner) -->
+  <path d="M 420 280 C 450 280, 450 220, 470 220" stroke="#6b7280" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- Scanner → Provider -->
+  <line x1="750" y1="190" x2="798" y2="190" stroke="#6b7280" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="774" y="182" text-anchor="middle" font-size="10" fill="#4b5563" font-weight="500">HTTPS</text>
+
+  <!-- Lane labels -->
+  <text x="20" y="42" font-size="11" font-weight="600" fill="#64748b" letter-spacing="0.5">REVERSE PROXY · tools with base URL support</text>
+  <text x="20" y="222" font-size="11" font-weight="600" fill="#64748b" letter-spacing="0.5">FORWARD PROXY · TLS interception for the rest</text>
+</svg>
