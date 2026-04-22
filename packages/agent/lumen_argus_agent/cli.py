@@ -101,6 +101,27 @@ def _build_parser() -> argparse.ArgumentParser:
     # heartbeat
     subparsers.add_parser("heartbeat", help="Send a single heartbeat to the central proxy")
 
+    # refresh-policy
+    refresh_parser = subparsers.add_parser(
+        "refresh-policy",
+        help="Re-fetch enrollment policy and atomically rewrite enrollment.json's policy slice.",
+        description=(
+            "Re-fetch enrollment policy from the central proxy and rewrite "
+            "the policy slice of enrollment.json atomically. "
+            "Exit codes: 0 success (any change), 1 network/auth error, 2 not enrolled."
+        ),
+    )
+    refresh_parser.add_argument(
+        "--non-interactive",
+        action="store_true",
+        help="(No-op — refresh is always non-interactive. Flag accepted for script compatibility.)",
+    )
+    refresh_parser.add_argument(
+        "--json",
+        action="store_true",
+        help='Emit {"changed": bool, "policy_version": iso8601} on stdout for machine parsing.',
+    )
+
     # relay
     relay_parser = subparsers.add_parser("relay", help="Start local forwarding proxy with identity enrichment")
     relay_parser.add_argument("--port", type=int, default=8070, help="Listen port (default: 8070)")
@@ -799,6 +820,46 @@ def _run_heartbeat(_args: argparse.Namespace) -> None:
         sys.exit(1)
 
 
+def _run_refresh_policy(args: argparse.Namespace) -> None:
+    from lumen_argus_core.enrollment import (
+        EnrollmentError,
+        fetch_policy,
+        load_enrollment,
+        update_enrollment_policy,
+    )
+
+    enrollment = load_enrollment()
+    if not enrollment:
+        print("Not enrolled. Run 'lumen-argus-agent enroll' first.", file=sys.stderr)
+        sys.exit(2)
+
+    server = enrollment.get("dashboard_url") or enrollment.get("server") or ""
+    agent_token = enrollment.get("agent_token", "")
+    if not server or not agent_token:
+        print("Refresh unavailable: enrollment missing server or agent token.", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        new_policy = fetch_policy(server, agent_token)
+    except EnrollmentError as e:
+        print("Policy refresh failed: %s" % e, file=sys.stderr)
+        sys.exit(1)
+
+    changed = update_enrollment_policy(new_policy)
+    # policy_version mirrors the heartbeat payload convention — enrolled_at
+    # is the stable anchor the server already correlates against. Using
+    # now_iso() would mint a fresh value on every no-op, misleading any
+    # downstream caller that compares versions to detect drift.
+    payload = {"changed": changed, "policy_version": enrollment.get("enrolled_at", "")}
+
+    if args.json:
+        print(json.dumps(payload))
+    elif changed:
+        print("Policy refreshed.")
+    else:
+        print("Policy unchanged.")
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -820,6 +881,7 @@ def main() -> None:
         "watch": _run_watch,
         "enroll": _run_enroll,
         "heartbeat": _run_heartbeat,
+        "refresh-policy": _run_refresh_policy,
         "relay": _run_relay,
         "forward-proxy": _run_forward_proxy,
         "uninstall": _run_uninstall,

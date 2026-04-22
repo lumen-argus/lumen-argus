@@ -12,18 +12,28 @@ import platform
 import urllib.error
 import urllib.request
 
-from lumen_argus_core.enrollment import load_enrollment, ssl_context_for_proxy, update_agent_token
+from lumen_argus_core.enrollment import (
+    EnrollmentError,
+    fetch_policy,
+    load_enrollment,
+    policy_diff_fields,
+    ssl_context_for_proxy,
+    update_agent_token,
+    update_enrollment_policy,
+)
 from lumen_argus_core.time_utils import now_iso
 
 log = logging.getLogger("argus.telemetry")
-
-# Loopback hostnames where HTTP is safe (no network exposure)
-_LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "[::1]"}
 
 
 def _is_loopback_url(url: str) -> bool:
     """Return True if the URL targets a loopback address."""
     from urllib.parse import urlparse
+
+    # Share the single source of truth with the enrollment module so the
+    # two call sites cannot drift on which hosts count as loopback (e.g.
+    # ::1 vs [::1]).
+    from lumen_argus_core.enrollment import _LOOPBACK_HOSTS
 
     host = urlparse(url).hostname or ""
     return host in _LOOPBACK_HOSTS
@@ -103,6 +113,7 @@ def send_heartbeat() -> bool:
         method="POST",
     )
 
+    heartbeat_ok = False
     try:
         ctx = ssl_context_for_proxy()
         with urllib.request.urlopen(req, timeout=10, context=ctx) as resp:
@@ -111,17 +122,60 @@ def send_heartbeat() -> bool:
             except ValueError:
                 response_data = {}
         log.debug("heartbeat sent to %s", dashboard_url)
-        # Handle token rotation — proxy may issue a new token
+        # Handle token rotation — proxy may issue a new token.
+        # Refresh below will then read the rotated token from enrollment.json.
         new_token = response_data.get("new_token", "")
         if new_token:
             update_agent_token(new_token)
-        return True
+        heartbeat_ok = True
     except urllib.error.HTTPError as e:
         log.warning("heartbeat failed: HTTP %d", e.code)
-        return False
     except urllib.error.URLError as e:
         log.warning("heartbeat failed: %s", e.reason)
-        return False
+    except Exception:
+        # SSLError, TimeoutError, and other OSError subclasses can escape
+        # urlopen in edge cases the urllib wrappers do not catch. Swallow
+        # them so the refresh step below still runs — the spec makes policy
+        # propagation independent of heartbeat success.
+        log.warning("heartbeat failed with unexpected error", exc_info=True)
+
+    # Policy refresh runs regardless of heartbeat outcome so admin-side
+    # policy changes can still propagate when dashboard POSTs are flaky.
+    # Failures here never influence the heartbeat return value.
+    _refresh_policy_silent(dashboard_url)
+    return heartbeat_ok
+
+
+def _refresh_policy_silent(dashboard_url: str) -> None:
+    """Re-fetch and persist enrollment policy. Never raises.
+
+    Reads the (possibly rotated) enrollment state fresh so the bearer
+    token matches whatever the heartbeat response just wrote. Logs changed
+    field names — never values, since policy payloads can carry sensitive
+    operational settings.
+    """
+    try:
+        enrollment = load_enrollment()
+        if not enrollment:
+            # Can happen if a concurrent unenroll wiped the file between
+            # the heartbeat's own load_enrollment and this point.
+            log.debug("policy refresh skipped — enrollment state missing")
+            return
+        agent_token = enrollment.get("agent_token", "")
+        if not agent_token:
+            log.debug("policy refresh skipped — no agent bearer token")
+            return
+        old_policy = enrollment.get("policy") if isinstance(enrollment.get("policy"), dict) else {}
+        new_policy = fetch_policy(dashboard_url, agent_token)
+        if update_enrollment_policy(new_policy):
+            fields = policy_diff_fields(old_policy or {}, new_policy)
+            log.info("policy_refresh: changed=true fields=%s", fields)
+        else:
+            log.debug("policy_refresh: changed=false")
+    except EnrollmentError as e:
+        log.warning("policy refresh failed: %s", e)
+    except Exception:  # defensive — never fail heartbeat on unexpected errors
+        log.warning("policy refresh raised unexpectedly", exc_info=True)
 
 
 def _relay_url_or(fallback: str) -> str:

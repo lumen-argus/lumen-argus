@@ -4,6 +4,19 @@ All notable changes to lumen-argus are documented here.
 
 ## Unreleased
 
+### Agent — Enrollment Policy Refresh
+
+- Every heartbeat now re-fetches `GET /api/v1/enrollment/config` and
+  atomically rewrites the `.policy` slice of
+  `~/.lumen-argus/enrollment.json` so admin edits to
+  `enrollment.policy.*` propagate without manual re-enroll. Identity
+  fields stay immutable. Refresh failures never flip the heartbeat
+  return value; agents without a bearer token skip the refresh silently.
+- New `lumen-argus-agent refresh-policy` subcommand for out-of-cycle
+  pulls. Exit `0` success, `1` network/auth/malformed error,
+  `2` not enrolled. `--json` emits
+  `{"changed": bool, "policy_version": iso8601}`.
+
 ### Proxy & Agent — `/api/v1/build` Endpoint
 
 - New `GET /api/v1/build` on both the proxy dashboard (`:8081`) and the

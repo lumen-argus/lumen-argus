@@ -466,7 +466,7 @@ engine:
 
 ## `enrollment`
 
-Enterprise agent deployment configuration. Served to agents via `GET /api/v1/enrollment/config` (Pro).
+Enterprise agent deployment configuration. Served to agents via `GET /api/v1/enrollment/config` (Pro). Edits to the `enrollment.policy.*` keys propagate to already-enrolled devices on the next heartbeat — agents pull the current config and atomically rewrite the `.policy` slice of `~/.lumen-argus/enrollment.json` (identity fields untouched). See [`lumen-argus-agent refresh-policy`](cli.md#refresh-policy) for the out-of-cycle equivalent.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|

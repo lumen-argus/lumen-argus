@@ -565,7 +565,7 @@ lumen-argus-agent enroll --server https://argus.corp.io --non-interactive
 # Local mode: full proxy | Dedicated mode: agent only (8MB vs 12MB binary)
 ```
 
-Agent commands: `detect`, `setup`, `watch`, `protection`, `clients`, `enroll`, `heartbeat`, `relay`, `forward-proxy`, `uninstall`.
+Agent commands: `detect`, `setup`, `watch`, `protection`, `clients`, `enroll`, `heartbeat`, `refresh-policy`, `relay`, `forward-proxy`, `uninstall`.
 
 **Clean removal before `pip uninstall` / `brew uninstall`:**
 

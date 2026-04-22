@@ -3,13 +3,19 @@
 import argparse
 import io
 import json
+import os
+import shutil
 import subprocess
 import sys
+import tempfile
 import unittest
+from typing import ClassVar
 from unittest.mock import patch
 
-from lumen_argus_agent.cli import _run_uninstall
+from lumen_argus_agent.cli import _run_refresh_policy, _run_uninstall
 from lumen_argus_agent.uninstall import UninstallResult
+
+from lumen_argus_core.enrollment import EnrollmentError
 
 
 class TestAgentCLI(unittest.TestCase):
@@ -142,6 +148,125 @@ class TestRunUninstallHandler(unittest.TestCase):
         ):
             _run_uninstall(self._args(keep_data=True))
         fake.assert_called_once_with(keep_data=True)
+
+
+class TestRefreshPolicyCLI(unittest.TestCase):
+    """refresh-policy subcommand contract: exit codes + JSON shape."""
+
+    _ENROLLED: ClassVar[dict] = {
+        "server": "https://argus.corp.io",
+        "proxy_url": "https://argus.corp.io:8080",
+        "dashboard_url": "https://argus.corp.io:8081",
+        "organization": "Acme",
+        "policy": {"fail_mode": "open"},
+        "enrolled_at": "2026-04-02T10:30:00Z",
+        "agent_id": "agent_abc",
+        "machine_id": "mac_abc",
+        "agent_token": "la_agent_token",
+    }
+
+    @staticmethod
+    def _args(*, json_flag: bool = False) -> argparse.Namespace:
+        return argparse.Namespace(json=json_flag, non_interactive=False)
+
+    def test_exit_code_2_when_not_enrolled(self):
+        with (
+            patch("lumen_argus_core.enrollment.load_enrollment", return_value=None),
+            self.assertRaises(SystemExit) as cm,
+        ):
+            _run_refresh_policy(self._args())
+        self.assertEqual(cm.exception.code, 2)
+
+    def test_exit_code_1_on_network_error(self):
+        with (
+            patch("lumen_argus_core.enrollment.load_enrollment", return_value=self._ENROLLED),
+            patch("lumen_argus_core.enrollment.fetch_policy", side_effect=EnrollmentError("boom")),
+            self.assertRaises(SystemExit) as cm,
+        ):
+            _run_refresh_policy(self._args())
+        self.assertEqual(cm.exception.code, 1)
+
+    def test_exit_code_1_when_enrollment_lacks_token(self):
+        state = dict(self._ENROLLED)
+        state.pop("agent_token")
+        with (
+            patch("lumen_argus_core.enrollment.load_enrollment", return_value=state),
+            self.assertRaises(SystemExit) as cm,
+        ):
+            _run_refresh_policy(self._args())
+        self.assertEqual(cm.exception.code, 1)
+
+    def test_success_exit_zero_and_text_output(self):
+        buf = io.StringIO()
+        with (
+            patch("lumen_argus_core.enrollment.load_enrollment", return_value=self._ENROLLED),
+            patch("lumen_argus_core.enrollment.fetch_policy", return_value={"fail_mode": "closed"}),
+            patch("lumen_argus_core.enrollment.update_enrollment_policy", return_value=True),
+            patch("lumen_argus_agent.cli.sys.stdout", buf),
+        ):
+            _run_refresh_policy(self._args())
+        self.assertIn("Policy refreshed", buf.getvalue())
+
+    def test_json_output_shape(self):
+        buf = io.StringIO()
+        with (
+            patch("lumen_argus_core.enrollment.load_enrollment", return_value=self._ENROLLED),
+            patch("lumen_argus_core.enrollment.fetch_policy", return_value={"fail_mode": "closed"}),
+            patch("lumen_argus_core.enrollment.update_enrollment_policy", return_value=True),
+            patch("lumen_argus_agent.cli.sys.stdout", buf),
+        ):
+            _run_refresh_policy(self._args(json_flag=True))
+        payload = json.loads(buf.getvalue())
+        self.assertIn("changed", payload)
+        self.assertIn("policy_version", payload)
+        self.assertTrue(payload["changed"])
+        # policy_version mirrors enrolled_at — stable across no-op refreshes
+        self.assertEqual(payload["policy_version"], self._ENROLLED["enrolled_at"])
+
+    def test_json_output_when_unchanged(self):
+        buf = io.StringIO()
+        with (
+            patch("lumen_argus_core.enrollment.load_enrollment", return_value=self._ENROLLED),
+            patch("lumen_argus_core.enrollment.fetch_policy", return_value={"fail_mode": "open"}),
+            patch("lumen_argus_core.enrollment.update_enrollment_policy", return_value=False),
+            patch("lumen_argus_agent.cli.sys.stdout", buf),
+        ):
+            _run_refresh_policy(self._args(json_flag=True))
+        payload = json.loads(buf.getvalue())
+        self.assertFalse(payload["changed"])
+        # Same anchor on no-op — downstream callers must see a stable version.
+        self.assertEqual(payload["policy_version"], self._ENROLLED["enrolled_at"])
+
+
+class TestRefreshPolicySubprocess(unittest.TestCase):
+    """End-to-end subprocess tests for refresh-policy (not-enrolled case only)."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def _run(self, *args: str) -> subprocess.CompletedProcess[str]:
+        env = {**os.environ, "HOME": self.tmpdir, "USERPROFILE": self.tmpdir}
+        return subprocess.run(
+            [sys.executable, "-m", "lumen_argus_agent", *args],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            env=env,
+        )
+
+    def test_refresh_policy_not_enrolled_exits_two(self):
+        result = self._run("refresh-policy")
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertIn("Not enrolled", result.stderr)
+
+    def test_refresh_policy_help_documents_exit_codes(self):
+        result = self._run("refresh-policy", "--help")
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("Exit codes", result.stdout)
+        self.assertIn("--json", result.stdout)
 
 
 if __name__ == "__main__":

@@ -29,6 +29,18 @@ _CA_CERT_FILE = os.path.join(_ARGUS_DIR, "ca.pem")
 _ssl_ctx_cache: ssl.SSLContext | None = None
 _ssl_ctx_mtime: float = 0.0
 
+_LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "[::1]"})
+
+
+def _is_bearer_safe_url(url: str) -> bool:
+    """Return True if the URL is HTTPS or targets a loopback host."""
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url)
+    if parsed.scheme == "https":
+        return True
+    return (parsed.hostname or "") in _LOOPBACK_HOSTS
+
 
 def ssl_context_for_proxy() -> ssl.SSLContext | None:
     """Build an SSL context using the enrolled CA cert, if available.
@@ -265,6 +277,125 @@ def update_agent_token(new_token: str) -> bool:
     _save_enrollment(state)
     log.info("agent token rotated")
     return True
+
+
+def fetch_policy(server_url: str, agent_token: str) -> dict[str, Any]:
+    """Fetch the current enrollment policy from the central proxy.
+
+    Used by the refresh path so admin-side policy changes propagate to
+    already-enrolled devices. Distinct from fetch_enrollment_config()
+    (bootstrap): this call always sends the agent bearer token so the
+    server can audit authenticated refreshes.
+
+    Args:
+        server_url: Base URL of the central proxy.
+        agent_token: Agent bearer token (la_agent_*). Required.
+
+    Returns:
+        Policy sub-object from GET /api/v1/enrollment/config. May be empty.
+
+    Raises:
+        EnrollmentError: on non-200, malformed JSON, or missing token.
+    """
+    if not agent_token:
+        raise EnrollmentError("fetch_policy requires an agent bearer token")
+
+    if not _is_bearer_safe_url(server_url):
+        raise EnrollmentError("refuse to send bearer token over cleartext HTTP to non-loopback host")
+
+    url = server_url.rstrip("/") + "/api/v1/enrollment/config"
+    headers = {
+        "Accept": "application/json",
+        "Authorization": f"Bearer {agent_token}",
+    }
+
+    req = urllib.request.Request(url, headers=headers, method="GET")
+    try:
+        ctx = ssl_context_for_proxy()
+        with urllib.request.urlopen(req, timeout=15, context=ctx) as resp:
+            body = resp.read()
+    except urllib.error.HTTPError as e:
+        # 401 on the refresh path means the agent token was revoked or
+        # rotated out from under us — the caller should re-enroll rather
+        # than retry. 402 mirrors the bootstrap branch's messaging.
+        if e.code == 401:
+            raise EnrollmentError("Agent token rejected — re-enrollment required") from e
+        if e.code == 402:
+            raise EnrollmentError("Server does not support enrollment (Pro license required)") from e
+        raise EnrollmentError(f"Failed to fetch policy: HTTP {e.code}") from e
+    except urllib.error.URLError as e:
+        raise EnrollmentError(f"Cannot reach server: {e.reason}") from e
+
+    try:
+        data: dict[str, Any] = json.loads(body)
+    except json.JSONDecodeError as e:
+        raise EnrollmentError(f"Invalid policy response: {e}") from e
+
+    # Missing .policy key is a server-side malformed response. Accepting
+    # it would silently wipe the locally-cached policy on every heartbeat
+    # whenever the endpoint regresses (partial failure, schema drift).
+    # An explicit empty dict is still valid — the admin may have cleared
+    # every knob.
+    if "policy" not in data:
+        raise EnrollmentError("Policy response missing 'policy' key")
+    policy = data["policy"]
+    if not isinstance(policy, dict):
+        raise EnrollmentError("Policy response 'policy' is not an object")
+    log.debug("policy fetched from %s (%d key(s))", server_url, len(policy))
+    return policy
+
+
+# Identity fields in enrollment.json that update_enrollment_policy() must
+# never touch. Source of truth for the "policy is the only mutable slice"
+# invariant documented in the refresh spec.
+_ENROLLMENT_IDENTITY_FIELDS = frozenset(
+    {
+        "server",
+        "proxy_url",
+        "dashboard_url",
+        "organization",
+        "enrolled_at",
+        "agent_id",
+        "agent_token",
+        "machine_id",
+    }
+)
+
+
+def update_enrollment_policy(new_policy: dict[str, Any]) -> bool:
+    """Replace the .policy slice of enrollment.json atomically.
+
+    Loads current state, overwrites only the `policy` key, writes via
+    the same tmp+rename path as _save_enrollment(). Identity fields
+    (agent_id, agent_token, enrolled_at, etc.) are untouched — asserted
+    by the community test suite.
+
+    Returns:
+        True if the on-disk policy changed, False if identical or not enrolled.
+    """
+    state = load_enrollment()
+    if not state:
+        log.warning("cannot update policy — not enrolled")
+        return False
+
+    current = state.get("policy") if isinstance(state.get("policy"), dict) else {}
+    if current == new_policy:
+        return False
+
+    state["policy"] = dict(new_policy)
+    _save_enrollment(state)
+    return True
+
+
+def policy_diff_fields(old: dict[str, Any], new: dict[str, Any]) -> list[str]:
+    """Return the sorted list of field names whose values differ.
+
+    Never returns values — callers log names only to avoid leaking
+    sensitive policy payloads into logs. Handles keys present on only
+    one side (treated as changed).
+    """
+    keys = set(old) | set(new)
+    return sorted(k for k in keys if old.get(k) != new.get(k))
 
 
 def _save_enrollment(state: dict[str, Any]) -> None:

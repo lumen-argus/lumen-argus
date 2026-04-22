@@ -437,7 +437,7 @@ lumen-argus clients [--json]
 
 Lightweight workstation agent — available as a separate package (`pip install lumen-argus-agent`).
 
-Supports a subset of commands: `detect`, `setup`, `watch`, `protection`, `clients`, `enroll`, `heartbeat`, `relay`, `forward-proxy`, `uninstall`.
+Supports a subset of commands: `detect`, `setup`, `watch`, `protection`, `clients`, `enroll`, `heartbeat`, `refresh-policy`, `relay`, `forward-proxy`, `uninstall`.
 
 ```bash
 lumen-argus-agent [--version] [--help] <command> [<args>]
@@ -480,6 +480,40 @@ lumen-argus-agent heartbeat
 ```
 
 Reports: agent version, installed tools, proxy configuration status, protection state, watch daemon status. Used by the tray app and cron jobs for fleet monitoring.
+
+Every successful heartbeat also refreshes the enrollment policy from `GET /api/v1/enrollment/config` so admin-side changes (fail-mode, auto-configure, tray-allowed-disable, telemetry interval) propagate to enrolled devices within one heartbeat cycle. Refresh failures never flip the heartbeat return value — the next heartbeat retries. Devices without an agent bearer token (community-only mode) skip the refresh silently.
+
+### `refresh-policy`
+
+Out-of-cycle policy pull. Re-fetches the enrollment policy from the central proxy and atomically rewrites the `.policy` slice of `~/.lumen-argus/enrollment.json`. Identity fields (`agent_id`, `agent_token`, `enrolled_at`, ...) are never touched.
+
+```bash
+lumen-argus-agent refresh-policy [OPTIONS]
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--json` | `bool` | `false` | Emit `{"changed": bool, "policy_version": iso8601}` on stdout for machine parsing |
+| `--non-interactive` | `bool` | `false` | Accepted for script compatibility — refresh has no interactive prompts |
+
+Exit codes:
+
+| Code | Meaning |
+|------|---------|
+| **0** | Refresh completed (policy changed or already current) |
+| **1** | Network, auth, or malformed-response error |
+| **2** | Not enrolled |
+
+```bash
+# Invoke out-of-cycle (e.g. right after re-enroll)
+lumen-argus-agent refresh-policy
+
+# Machine-readable — exit 0 regardless of whether policy changed
+lumen-argus-agent refresh-policy --json
+# {"changed": true, "policy_version": "2026-04-02T10:30:00Z"}
+```
+
+Policy refresh also runs automatically inside every `heartbeat` call; `refresh-policy` is the standalone entry point for callers that want a pull without a heartbeat round-trip. Bearer token is sent over HTTPS or loopback only; cleartext HTTP to a non-loopback host is refused.
 
 ### `relay`
 
