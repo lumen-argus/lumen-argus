@@ -167,20 +167,32 @@ def get_service_status() -> dict[str, str]:
         status["installed"] = "true"
         status["service_path"] = _SYSTEMD_SERVICE_PATH
 
-    # Check relay state file for runtime info
-    try:
-        from lumen_argus_agent.relay import load_relay_state
+    # Runtime state comes from a provider the agent package registers at
+    # import time (see lumen_argus_agent.relay_state_adapter). Proxy-only
+    # consumers never import the agent package, so get_provider() returns
+    # None and we report runtime state as "unknown" without importing from
+    # upstream — the inversion mirrors forward_proxy's setup adapter.
+    from lumen_argus_core.relay_state import get_provider
 
-        state = load_relay_state()
-        if state:
-            status["running"] = "true"
-            status["port"] = str(state.get("port", ""))
-            status["upstream_url"] = state.get("upstream_url", "")
-            status["pid"] = str(state.get("pid", ""))
-        else:
-            status["running"] = "false"
-    except ImportError:
-        # Agent package not installed (running from core only)
+    provider = get_provider()
+    if provider is None:
         status["running"] = "unknown"
+        return status
 
+    try:
+        state = provider.load()
+    except Exception:
+        # Broad catch because the Protocol is a plugin surface — a
+        # third-party provider (Pro/Fleet) could raise anything.
+        log.warning("relay-state provider %s raised during load", type(provider).__name__, exc_info=True)
+        status["running"] = "unknown"
+        return status
+
+    if state:
+        status["running"] = "true"
+        status["port"] = str(state.get("port", ""))
+        status["upstream_url"] = state.get("upstream_url", "")
+        status["pid"] = str(state.get("pid", ""))
+    else:
+        status["running"] = "false"
     return status

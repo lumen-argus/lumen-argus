@@ -27,15 +27,6 @@ def _iter_core_modules() -> list[Path]:
 
 
 # Proxy-only modules that core must never import
-# Known-but-tracked violations. Each entry is a `(relative_path, module)` pair
-# that the agent-import check tolerates while a proper fix (adapter inversion)
-# is scheduled. Empty the set — do not add to it — once the inversion lands.
-# See task: "Invert relay_service → agent dep via adapter".
-_KNOWN_LAZY_AGENT_IMPORTS: set[tuple[str, str]] = {
-    ("relay_service.py", "lumen_argus_agent.relay"),
-}
-
-
 PROXY_ONLY_PACKAGES = [
     "async_proxy",
     "pipeline",
@@ -95,14 +86,10 @@ class TestModuleBoundaries(unittest.TestCase):
             for node in ast.walk(tree):
                 if isinstance(node, ast.ImportFrom) and node.module:
                     if node.module == "lumen_argus_agent" or node.module.startswith("lumen_argus_agent."):
-                        if (rel, node.module) in _KNOWN_LAZY_AGENT_IMPORTS:
-                            continue
                         violations.append(f"{rel}:{node.lineno} imports {node.module}")
                 elif isinstance(node, ast.Import):
                     for alias in node.names:
                         if alias.name == "lumen_argus_agent" or alias.name.startswith("lumen_argus_agent."):
-                            if (rel, alias.name) in _KNOWN_LAZY_AGENT_IMPORTS:
-                                continue
                             violations.append(f"{rel}:{node.lineno} imports {alias.name}")
         self.assertEqual(
             violations,
