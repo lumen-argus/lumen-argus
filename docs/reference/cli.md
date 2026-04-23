@@ -346,8 +346,12 @@ lumen-argus setup
 # Configure specific tool
 lumen-argus setup aider
 
-# Forward proxy setup for Copilot CLI (step-by-step: CA, alias, shell profile)
-lumen-argus setup copilot_cli
+# Forward proxy setup for Copilot CLI (step-by-step: CA, alias, shell profile).
+# CA generation requires mitmproxy, which lives in the agent package — run
+# this command via the agent CLI, not the proxy CLI. Invoking it via
+# `lumen-argus setup copilot_cli` from a proxy-only install emits a clean
+# pointer to `lumen-argus-agent setup copilot_cli`.
+lumen-argus-agent setup copilot_cli
 
 # Preview changes
 lumen-argus setup --dry-run

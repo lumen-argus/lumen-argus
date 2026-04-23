@@ -43,6 +43,7 @@ a = Analysis(
         'lumen_argus_core.clients',
         'lumen_argus_core.detect',
         'lumen_argus_core.setup_wizard',
+        'lumen_argus_core.forward_proxy',
         'lumen_argus_core.watch',
         'lumen_argus_core.time_utils',
         'lumen_argus_core.enrollment',

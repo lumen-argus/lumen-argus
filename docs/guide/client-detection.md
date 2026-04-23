@@ -287,9 +287,16 @@ This removes source blocks and managed lines from shell profiles, truncates the 
 
 Some tools (e.g., Copilot CLI with GitHub auth) can't use custom base URLs.
 The setup wizard detects these (`forward_proxy: true` in the client registry) and
-offers step-by-step forward proxy configuration:
+offers step-by-step forward proxy configuration.
+
+Forward-proxy setup is owned by the agent CLI (`lumen-argus-agent setup`) —
+CA generation depends on mitmproxy, which ships with the agent package.
+Running `lumen-argus setup copilot_cli` from a proxy-only install prints a
+clear pointer to the correct command:
 
 ```
+$ lumen-argus-agent setup copilot_cli
+
 -- GitHub Copilot CLI ----------------------
   This tool requires forward proxy mode (TLS interception via mitmproxy).
 

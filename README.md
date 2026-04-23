@@ -144,8 +144,9 @@ lumen-argus setup
 # Wrap MCP servers through scanning proxy (stdio + HTTP/WS)
 lumen-argus setup --mcp
 
-# Setup includes forward proxy for tools like Copilot CLI (step-by-step):
-lumen-argus setup copilot_cli
+# Setup for tools that need forward proxy (Copilot CLI, Warp) is owned by
+# the agent CLI — CA generation requires the mitmproxy-backed agent package.
+lumen-argus-agent setup copilot_cli
 
 # Or configure manually:
 ANTHROPIC_BASE_URL=http://localhost:8080 claude

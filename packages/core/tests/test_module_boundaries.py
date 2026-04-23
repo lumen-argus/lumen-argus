@@ -17,6 +17,7 @@ CORE_MODULES = [
     "clients.py",
     "detect.py",
     "setup_wizard.py",
+    "forward_proxy.py",
     "watch.py",
     "time_utils.py",
     "enrollment.py",
@@ -67,6 +68,36 @@ class TestModuleBoundaries(unittest.TestCase):
             [],
             "Core modules must not import proxy-only modules "
             "(violates core/proxy package boundary):\n" + "\n".join(f"  - {v}" for v in violations),
+        )
+
+    def test_core_modules_dont_import_agent(self):
+        """Core must not import from lumen_argus_agent — agent depends on core, not reverse.
+
+        Forward-proxy setup previously violated this by importing
+        lumen_argus_agent.ca from setup_wizard. The fix inverts the
+        dependency via forward_proxy.ForwardProxySetupAdapter; regressing
+        here would reintroduce the PyInstaller-bundle breakage where the
+        proxy binary has no agent package to import.
+        """
+        violations = []
+        for mod_file in CORE_MODULES:
+            path = CORE_DIR / mod_file
+            if not path.exists():
+                continue
+            tree = ast.parse(path.read_text())
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ImportFrom) and node.module:
+                    if node.module == "lumen_argus_agent" or node.module.startswith("lumen_argus_agent."):
+                        violations.append(f"{mod_file}:{node.lineno} imports {node.module}")
+                elif isinstance(node, ast.Import):
+                    for alias in node.names:
+                        if alias.name == "lumen_argus_agent" or alias.name.startswith("lumen_argus_agent."):
+                            violations.append(f"{mod_file}:{node.lineno} imports {alias.name}")
+        self.assertEqual(
+            violations,
+            [],
+            "Core modules must not import lumen_argus_agent "
+            "(reverses the package dependency direction):\n" + "\n".join(f"  - {v}" for v in violations),
         )
 
 

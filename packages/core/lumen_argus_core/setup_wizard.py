@@ -1167,23 +1167,50 @@ def _setup_forward_proxy(
             print("  Skipped.")
             return changes
 
-    # Step 1: Generate CA cert
-    try:
-        from lumen_argus_agent.ca import ca_exists, ensure_ca, get_ca_cert_path
-    except ImportError:
-        print("  Error: lumen-argus-agent package not installed (required for forward proxy).")
-        print("  Install with: pip install lumen-argus-agent")
-        return changes
+    # Step 1: Generate CA cert via the registered forward-proxy adapter.
+    # The agent package registers the adapter on import; proxy-only bundles
+    # don't import the agent, so the adapter is absent — we surface a clear
+    # error pointing at the correct binary instead of failing inside setup.
+    from lumen_argus_core.forward_proxy import ForwardProxyUnavailable, get_adapter
 
-    ca_cert = get_ca_cert_path()
-    if not ca_exists():
+    adapter = get_adapter()
+    if adapter is None:
+        log.warning(
+            "forward-proxy setup unavailable: no adapter registered "
+            "(client=%s, dry_run=%s) — invoke via lumen-argus-agent setup",
+            target.client_id,
+            dry_run,
+        )
+        print("  Error: forward-proxy setup is owned by lumen-argus-agent.")
+        print("  Run: lumen-argus-agent setup --client %s" % target.client_id)
+        raise ForwardProxyUnavailable(
+            "forward-proxy setup requires lumen-argus-agent "
+            "(run 'lumen-argus-agent setup --client %s')" % target.client_id
+        )
+
+    log.info(
+        "forward-proxy setup starting: client=%s adapter=%s dry_run=%s",
+        target.client_id,
+        type(adapter).__name__,
+        dry_run,
+    )
+
+    ca_cert = adapter.get_ca_cert_path()
+    if not adapter.ca_exists():
         if dry_run:
+            log.info("forward-proxy CA missing — would generate at %s (dry-run)", ca_cert)
             print("  [dry-run] Would generate CA certificate at %s" % ca_cert)
         else:
-            ensure_ca()
-            ca_cert = get_ca_cert_path()
+            try:
+                adapter.ensure_ca()
+            except Exception:
+                log.exception("forward-proxy CA generation failed (client=%s)", target.client_id)
+                raise
+            ca_cert = adapter.get_ca_cert_path()
+            log.info("forward-proxy CA generated: %s", ca_cert)
             print("  CA certificate generated: %s" % ca_cert)
     else:
+        log.debug("forward-proxy CA already present: %s", ca_cert)
         print("  CA certificate exists: %s" % ca_cert)
 
     # Step 2: Write aliases file
@@ -1239,21 +1266,32 @@ def _setup_forward_proxy(
 
     # Step 4: Offer CA install
     if not non_interactive and not dry_run:
-        from lumen_argus_agent.ca import is_ca_trusted
-
         print()
-        if not is_ca_trusted():
+        if not adapter.is_ca_trusted():
             if _prompt_yes("  Step 4/4: Install CA cert to system trust store? (requires admin)"):
-                from lumen_argus_agent.ca import install_ca_system
-
-                if install_ca_system():
+                try:
+                    installed = adapter.install_ca_system()
+                except Exception:
+                    log.exception(
+                        "forward-proxy system CA install raised (client=%s)",
+                        target.client_id,
+                    )
+                    raise
+                if installed:
+                    log.info("forward-proxy CA installed to system trust store")
                     print("  CA certificate installed to system trust store.")
                 else:
+                    log.warning(
+                        "forward-proxy system CA install returned False — "
+                        "user must run 'sudo lumen-argus-agent forward-proxy install-ca'"
+                    )
                     print("  CA install failed. Run manually:")
                     print("    sudo lumen-argus-agent forward-proxy install-ca")
             else:
+                log.info("forward-proxy CA system install declined by user")
                 print("  Skipped. For Node.js tools, the alias already sets NODE_EXTRA_CA_CERTS.")
         else:
+            log.debug("forward-proxy CA already trusted at system level")
             print("  Step 4/4: CA certificate already trusted at system level.")
     elif non_interactive:
         print("  CA cert at %s — install with: sudo lumen-argus-agent forward-proxy install-ca" % ca_cert)
@@ -1419,13 +1457,25 @@ def run_setup(
 
         elif pc.config_type == ProxyConfigType.MANUAL:
             if pc.forward_proxy:
-                fp_changes = _setup_forward_proxy(
-                    target,
-                    proxy_url,
-                    profile_path,
-                    non_interactive,
-                    dry_run,
-                )
+                from lumen_argus_core.forward_proxy import ForwardProxyUnavailable
+
+                try:
+                    fp_changes = _setup_forward_proxy(
+                        target,
+                        proxy_url,
+                        profile_path,
+                        non_interactive,
+                        dry_run,
+                    )
+                except ForwardProxyUnavailable as exc:
+                    # Already printed a human-readable pointer in _setup_forward_proxy.
+                    # Continue to the next tool rather than aborting the whole run.
+                    log.info(
+                        "skipping forward-proxy tool %s: %s",
+                        target.client_id,
+                        exc,
+                    )
+                    continue
                 changes.extend(fp_changes)
             else:
                 print("  Requires manual configuration:")
