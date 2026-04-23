@@ -137,14 +137,14 @@ class TestConfigureOpenCode(unittest.TestCase):
         )
         stack.enter_context(
             patch(
-                "lumen_argus_core.setup_wizard._OPENCODE_TRACKING_FILE",
+                "lumen_argus_core.setup.opencode._OPENCODE_TRACKING_FILE",
                 self.tracking_path,
             )
         )
         return stack
 
     def test_creates_config_from_scratch(self):
-        from lumen_argus_core.setup_wizard import configure_opencode
+        from lumen_argus_core.setup.opencode import configure_opencode
 
         with self._patches():
             change = configure_opencode("http://localhost:8070")
@@ -165,7 +165,7 @@ class TestConfigureOpenCode(unittest.TestCase):
         self.assertTrue(os.path.exists(self.tracking_path))
 
     def test_preserves_existing_config(self):
-        from lumen_argus_core.setup_wizard import configure_opencode
+        from lumen_argus_core.setup.opencode import configure_opencode
 
         # Write existing config with user settings
         existing = {
@@ -189,7 +189,7 @@ class TestConfigureOpenCode(unittest.TestCase):
         self.assertIn("provider", data)
 
     def test_preserves_user_provider_settings(self):
-        from lumen_argus_core.setup_wizard import configure_opencode
+        from lumen_argus_core.setup.opencode import configure_opencode
 
         # User has custom headers for a provider
         existing = {
@@ -221,7 +221,7 @@ class TestConfigureOpenCode(unittest.TestCase):
         )
 
     def test_idempotent(self):
-        from lumen_argus_core.setup_wizard import configure_opencode
+        from lumen_argus_core.setup.opencode import configure_opencode
 
         with self._patches():
             change1 = configure_opencode("http://localhost:8070")
@@ -231,7 +231,7 @@ class TestConfigureOpenCode(unittest.TestCase):
         self.assertIsNone(change2)  # already configured
 
     def test_dry_run_does_not_write(self):
-        from lumen_argus_core.setup_wizard import configure_opencode
+        from lumen_argus_core.setup.opencode import configure_opencode
 
         with self._patches():
             change = configure_opencode("http://localhost:8070", dry_run=True)
@@ -240,7 +240,7 @@ class TestConfigureOpenCode(unittest.TestCase):
         self.assertFalse(os.path.exists(self.config_path))
 
     def test_unconfigure_removes_overrides(self):
-        from lumen_argus_core.setup_wizard import configure_opencode, unconfigure_opencode
+        from lumen_argus_core.setup.opencode import configure_opencode, unconfigure_opencode
 
         with self._patches():
             configure_opencode("http://localhost:8070")
@@ -256,7 +256,7 @@ class TestConfigureOpenCode(unittest.TestCase):
         self.assertFalse(os.path.exists(self.tracking_path))
 
     def test_unconfigure_preserves_user_providers(self):
-        from lumen_argus_core.setup_wizard import configure_opencode, unconfigure_opencode
+        from lumen_argus_core.setup.opencode import configure_opencode, unconfigure_opencode
 
         # Start with user's custom provider
         existing = {
@@ -284,7 +284,7 @@ class TestConfigureOpenCode(unittest.TestCase):
         )
 
     def test_unconfigure_no_config_returns_zero(self):
-        from lumen_argus_core.setup_wizard import unconfigure_opencode
+        from lumen_argus_core.setup.opencode import unconfigure_opencode
 
         with self._patches():
             cleaned = unconfigure_opencode()
@@ -322,14 +322,14 @@ class TestManagedConfigPath(unittest.TestCase):
         )
         stack.enter_context(
             patch(
-                "lumen_argus_core.setup_wizard._OPENCODE_TRACKING_FILE",
+                "lumen_argus_core.setup.opencode._OPENCODE_TRACKING_FILE",
                 self.tracking_path,
             )
         )
         return stack
 
     def test_managed_writes_to_system_path(self):
-        from lumen_argus_core.setup_wizard import configure_opencode
+        from lumen_argus_core.setup.opencode import configure_opencode
 
         with self._patches():
             change = configure_opencode("http://localhost:8070", managed=True)
@@ -340,7 +340,7 @@ class TestManagedConfigPath(unittest.TestCase):
         self.assertIn("managed", change.detail)
 
     def test_managed_config_content(self):
-        from lumen_argus_core.setup_wizard import configure_opencode
+        from lumen_argus_core.setup.opencode import configure_opencode
 
         with self._patches():
             configure_opencode("http://localhost:8070", managed=True)
@@ -354,7 +354,7 @@ class TestManagedConfigPath(unittest.TestCase):
         )
 
     def test_managed_unconfigure_cleans_managed_path(self):
-        from lumen_argus_core.setup_wizard import configure_opencode, unconfigure_opencode
+        from lumen_argus_core.setup.opencode import configure_opencode, unconfigure_opencode
 
         with self._patches():
             configure_opencode("http://localhost:8070", managed=True)
@@ -367,7 +367,7 @@ class TestManagedConfigPath(unittest.TestCase):
         self.assertEqual(len(providers), 0)
 
     def test_non_managed_writes_to_user_path(self):
-        from lumen_argus_core.setup_wizard import configure_opencode
+        from lumen_argus_core.setup.opencode import configure_opencode
 
         with self._patches():
             change = configure_opencode("http://localhost:8070", managed=False)
@@ -377,7 +377,7 @@ class TestManagedConfigPath(unittest.TestCase):
         self.assertFalse(os.path.exists(self.managed_path))
 
     def test_tracking_file_stores_config_path(self):
-        from lumen_argus_core.setup_wizard import configure_opencode
+        from lumen_argus_core.setup.opencode import configure_opencode
 
         with self._patches():
             configure_opencode("http://localhost:8070", managed=True)

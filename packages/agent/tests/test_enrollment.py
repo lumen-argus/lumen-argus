@@ -177,7 +177,7 @@ class TestHeartbeat(unittest.TestCase):
         with (
             patch("lumen_argus_core.telemetry.load_enrollment", return_value=enrollment),
             patch("lumen_argus_core.detect.detect_installed_clients", return_value=mock_report),
-            patch("lumen_argus_core.setup_wizard.protection_status", return_value={"enabled": True}),
+            patch("lumen_argus_core.setup.protection.protection_status", return_value={"enabled": True}),
             patch("lumen_argus_core.telemetry.urllib.request.urlopen", return_value=mock_resp) as mock_urlopen,
         ):
             result = send_heartbeat()
@@ -222,7 +222,7 @@ class TestHeartbeat(unittest.TestCase):
         with (
             patch("lumen_argus_core.telemetry.load_enrollment", return_value=enrollment),
             patch("lumen_argus_core.detect.detect_installed_clients", return_value=mock_report),
-            patch("lumen_argus_core.setup_wizard.protection_status", return_value={"enabled": True}),
+            patch("lumen_argus_core.setup.protection.protection_status", return_value={"enabled": True}),
             patch("lumen_argus_core.telemetry.urllib.request.urlopen", return_value=mock_resp) as mock_urlopen,
         ):
             send_heartbeat()
@@ -256,7 +256,7 @@ class TestHeartbeat(unittest.TestCase):
             patch("lumen_argus_core.telemetry.load_enrollment", return_value=enrollment),
             patch("lumen_argus_core.telemetry._relay_url_or", side_effect=lambda fb: fb),
             patch("lumen_argus_core.detect.detect_installed_clients", return_value=mock_report) as mock_detect,
-            patch("lumen_argus_core.setup_wizard.protection_status", return_value={"enabled": True}),
+            patch("lumen_argus_core.setup.protection.protection_status", return_value={"enabled": True}),
             patch("lumen_argus_core.telemetry.urllib.request.urlopen", return_value=mock_resp) as mock_urlopen,
         ):
             result = send_heartbeat()
@@ -287,7 +287,7 @@ class TestHeartbeat(unittest.TestCase):
         with (
             patch("lumen_argus_core.telemetry.load_enrollment", return_value=enrollment),
             patch("lumen_argus_core.detect.detect_installed_clients", return_value=mock_report),
-            patch("lumen_argus_core.setup_wizard.protection_status", return_value={"enabled": False}),
+            patch("lumen_argus_core.setup.protection.protection_status", return_value={"enabled": False}),
             patch(
                 "lumen_argus_core.telemetry.urllib.request.urlopen",
                 side_effect=urllib.error.HTTPError(None, 500, "Server Error", {}, None),
@@ -315,7 +315,7 @@ class TestHeartbeat(unittest.TestCase):
         with (
             patch("lumen_argus_core.telemetry.load_enrollment", return_value=enrollment),
             patch("lumen_argus_core.detect.detect_installed_clients", return_value=mock_report),
-            patch("lumen_argus_core.setup_wizard.protection_status", return_value={"enabled": True}),
+            patch("lumen_argus_core.setup.protection.protection_status", return_value={"enabled": True}),
             patch("lumen_argus_core.telemetry.urllib.request.urlopen", return_value=mock_resp) as mock_urlopen,
         ):
             send_heartbeat()
@@ -341,7 +341,7 @@ class TestHeartbeat(unittest.TestCase):
         with (
             patch("lumen_argus_core.telemetry.load_enrollment", return_value=enrollment),
             patch("lumen_argus_core.detect.detect_installed_clients", return_value=mock_report),
-            patch("lumen_argus_core.setup_wizard.protection_status", return_value={"enabled": True}),
+            patch("lumen_argus_core.setup.protection.protection_status", return_value={"enabled": True}),
             patch("lumen_argus_core.telemetry.urllib.request.urlopen", return_value=mock_resp) as mock_urlopen,
         ):
             send_heartbeat()
@@ -369,7 +369,7 @@ class TestHeartbeat(unittest.TestCase):
         with (
             patch("lumen_argus_core.telemetry.load_enrollment", return_value=enrollment),
             patch("lumen_argus_core.detect.detect_installed_clients", return_value=mock_report),
-            patch("lumen_argus_core.setup_wizard.protection_status", return_value={"enabled": True}),
+            patch("lumen_argus_core.setup.protection.protection_status", return_value={"enabled": True}),
             patch("lumen_argus_core.telemetry.urllib.request.urlopen", return_value=mock_resp),
             patch("lumen_argus_core.telemetry.fetch_policy", return_value={"fail_mode": "closed"}) as mock_fetch,
             patch("lumen_argus_core.telemetry.update_enrollment_policy", return_value=True) as mock_update,
@@ -401,7 +401,7 @@ class TestHeartbeat(unittest.TestCase):
         with (
             patch("lumen_argus_core.telemetry.load_enrollment", return_value=enrollment),
             patch("lumen_argus_core.detect.detect_installed_clients", return_value=mock_report),
-            patch("lumen_argus_core.setup_wizard.protection_status", return_value={"enabled": True}),
+            patch("lumen_argus_core.setup.protection.protection_status", return_value={"enabled": True}),
             patch("lumen_argus_core.telemetry.urllib.request.urlopen", return_value=mock_resp),
             patch("lumen_argus_core.telemetry.fetch_policy", side_effect=EnrollmentError("network down")),
             patch("lumen_argus_core.telemetry.update_enrollment_policy") as mock_update,
@@ -431,7 +431,7 @@ class TestHeartbeat(unittest.TestCase):
         with (
             patch("lumen_argus_core.telemetry.load_enrollment", return_value=enrollment),
             patch("lumen_argus_core.detect.detect_installed_clients", return_value=mock_report),
-            patch("lumen_argus_core.setup_wizard.protection_status", return_value={"enabled": True}),
+            patch("lumen_argus_core.setup.protection.protection_status", return_value={"enabled": True}),
             patch(
                 "lumen_argus_core.telemetry.urllib.request.urlopen",
                 side_effect=urllib.error.HTTPError(None, 500, "Server Error", {}, None),
@@ -468,7 +468,7 @@ class TestHeartbeat(unittest.TestCase):
         with (
             patch("lumen_argus_core.telemetry.load_enrollment", return_value=enrollment),
             patch("lumen_argus_core.detect.detect_installed_clients", return_value=mock_report),
-            patch("lumen_argus_core.setup_wizard.protection_status", return_value={"enabled": True}),
+            patch("lumen_argus_core.setup.protection.protection_status", return_value={"enabled": True}),
             patch("lumen_argus_core.telemetry.urllib.request.urlopen", return_value=mock_resp),
             patch("lumen_argus_core.telemetry.fetch_policy", return_value=new_policy),
             patch("lumen_argus_core.telemetry.update_enrollment_policy", return_value=True),
@@ -504,7 +504,7 @@ class TestHeartbeat(unittest.TestCase):
         with (
             patch("lumen_argus_core.telemetry.load_enrollment", return_value=enrollment),
             patch("lumen_argus_core.detect.detect_installed_clients", return_value=mock_report),
-            patch("lumen_argus_core.setup_wizard.protection_status", return_value={"enabled": True}),
+            patch("lumen_argus_core.setup.protection.protection_status", return_value={"enabled": True}),
             patch(
                 "lumen_argus_core.telemetry.urllib.request.urlopen",
                 side_effect=ssl.SSLError("handshake failed"),
@@ -536,7 +536,7 @@ class TestHeartbeat(unittest.TestCase):
         with (
             patch("lumen_argus_core.telemetry.load_enrollment", return_value=enrollment),
             patch("lumen_argus_core.detect.detect_installed_clients", return_value=mock_report),
-            patch("lumen_argus_core.setup_wizard.protection_status", return_value={"enabled": True}),
+            patch("lumen_argus_core.setup.protection.protection_status", return_value={"enabled": True}),
             patch("lumen_argus_core.telemetry.urllib.request.urlopen", return_value=mock_resp),
             patch("lumen_argus_core.telemetry.fetch_policy") as mock_fetch,
         ):
@@ -563,7 +563,7 @@ class TestHeartbeat(unittest.TestCase):
         with (
             patch("lumen_argus_core.telemetry.load_enrollment", return_value=enrollment),
             patch("lumen_argus_core.detect.detect_installed_clients", return_value=mock_report),
-            patch("lumen_argus_core.setup_wizard.protection_status", return_value={"enabled": True}),
+            patch("lumen_argus_core.setup.protection.protection_status", return_value={"enabled": True}),
             patch("lumen_argus_core.telemetry.urllib.request.urlopen", return_value=mock_resp),
             patch("lumen_argus_core.telemetry.update_agent_token") as mock_rotate,
         ):

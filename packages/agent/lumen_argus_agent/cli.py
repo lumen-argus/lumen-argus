@@ -382,7 +382,7 @@ def _run_setup(args: argparse.Namespace) -> None:
 
 def _run_protection(args: argparse.Namespace) -> None:
     from lumen_argus_core.env_template import ManagedBy
-    from lumen_argus_core.setup_wizard import disable_protection, enable_protection, protection_status
+    from lumen_argus_core.setup.protection import disable_protection, enable_protection, protection_status
 
     if args.action == "enable":
         result = enable_protection(proxy_url=args.proxy_url, managed_by=ManagedBy(args.managed_by))
@@ -472,7 +472,8 @@ def _run_enroll(args: argparse.Namespace) -> None:
     if args.undo:
         if unenroll():
             # Also undo tool configuration and protection
-            from lumen_argus_core.setup_wizard import disable_protection, undo_setup
+            from lumen_argus_core.setup.protection import disable_protection
+            from lumen_argus_core.setup_wizard import undo_setup
             from lumen_argus_core.watch import uninstall_service
 
             undo_setup()
@@ -510,7 +511,8 @@ def _run_enroll(args: argparse.Namespace) -> None:
     # Enrollment provides a relay for liveness, so the env file body
     # uses the self-healing guard (managed_by=TRAY).
     from lumen_argus_core.env_template import ManagedBy
-    from lumen_argus_core.setup_wizard import enable_protection, run_setup
+    from lumen_argus_core.setup.protection import enable_protection
+    from lumen_argus_core.setup_wizard import run_setup
 
     proxy_url = state["proxy_url"]
     print("\nConfiguring AI tools for %s..." % proxy_url)

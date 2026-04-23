@@ -52,7 +52,7 @@ def send_heartbeat() -> bool:
 
     # Import detect here to avoid circular imports and keep telemetry lightweight
     from lumen_argus_core.detect import detect_installed_clients
-    from lumen_argus_core.setup_wizard import protection_status
+    from lumen_argus_core.setup.protection import protection_status
 
     proxy_url = enrollment.get("proxy_url") or enrollment["server"]
     # When relay is active, tools are configured against the relay URL,

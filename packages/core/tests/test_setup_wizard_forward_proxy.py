@@ -17,8 +17,9 @@ import unittest
 from contextlib import redirect_stdout
 from unittest import mock
 
-from lumen_argus_core import forward_proxy, setup_wizard
+from lumen_argus_core import forward_proxy
 from lumen_argus_core.detect_models import DetectedClient
+from lumen_argus_core.setup import forward_proxy as fp_setup
 
 
 class _RecordingAdapter:
@@ -52,7 +53,7 @@ class TestForwardProxyDispatch(unittest.TestCase):
         forward_proxy.unregister_adapter()
         self._tmp = tempfile.mkdtemp()
         self._aliases_patch = mock.patch.object(
-            setup_wizard, "_ALIASES_PATH", os.path.join(self._tmp, "forward-proxy-aliases.sh")
+            fp_setup, "_ALIASES_PATH", os.path.join(self._tmp, "forward-proxy-aliases.sh")
         )
         self._aliases_patch.start()
 
@@ -77,7 +78,7 @@ class TestForwardProxyDispatch(unittest.TestCase):
         """Proxy-only PyInstaller bundle case: no adapter, clean error."""
         buf = io.StringIO()
         with redirect_stdout(buf), self.assertRaises(forward_proxy.ForwardProxyUnavailable) as ctx:
-            setup_wizard._setup_forward_proxy(
+            fp_setup._setup_forward_proxy(
                 self._target(),
                 "",
                 non_interactive=True,
@@ -97,7 +98,7 @@ class TestForwardProxyDispatch(unittest.TestCase):
 
         buf = io.StringIO()
         with redirect_stdout(buf):
-            changes = setup_wizard._setup_forward_proxy(
+            changes = fp_setup._setup_forward_proxy(
                 self._target(),
                 profile_path="",
                 non_interactive=True,
@@ -124,7 +125,7 @@ class TestForwardProxyDispatch(unittest.TestCase):
 
         buf = io.StringIO()
         with redirect_stdout(buf):
-            setup_wizard._setup_forward_proxy(
+            fp_setup._setup_forward_proxy(
                 self._target(),
                 profile_path="",
                 non_interactive=True,

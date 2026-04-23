@@ -8,19 +8,12 @@ import unittest
 from unittest.mock import patch
 
 from lumen_argus_core.setup._paths import _SOURCE_BLOCK_BEGIN, _SOURCE_BLOCK_END, MANAGED_TAG
+from lumen_argus_core.setup.env_file import add_env_to_env_file, add_env_to_shell_profile, read_env_file, write_env_file
+from lumen_argus_core.setup.ide import update_ide_settings
+from lumen_argus_core.setup.protection import disable_protection, enable_protection, protection_status
+from lumen_argus_core.setup.shell_hook import install_shell_hook
 from lumen_argus_core.setup.source_block import install_source_block
-from lumen_argus_core.setup_wizard import (
-    add_env_to_env_file,
-    add_env_to_shell_profile,
-    disable_protection,
-    enable_protection,
-    install_shell_hook,
-    protection_status,
-    read_env_file,
-    undo_setup,
-    update_ide_settings,
-    write_env_file,
-)
+from lumen_argus_core.setup_wizard import undo_setup
 
 
 class TestSourceBlock(unittest.TestCase):
@@ -342,7 +335,7 @@ class TestProtection(unittest.TestCase):
         # run.  The two tests that care about the snapshot contract
         # install their own fake in a nested ``with patch(...)``
         # block; mock.patch layering ensures those still win.
-        self._launchctl_patch = patch("lumen_argus_core.setup_wizard.clear_launchctl_env_vars", return_value=[])
+        self._launchctl_patch = patch("lumen_argus_core.setup.protection.clear_launchctl_env_vars", return_value=[])
         self._launchctl_patch.start()
         self.addCleanup(self._launchctl_patch.stop)
 
@@ -406,7 +399,7 @@ class TestProtection(unittest.TestCase):
         regression.
         """
         from lumen_argus_core.env_template import ManagedBy
-        from lumen_argus_core.setup_wizard import add_env_to_env_file, write_env_file
+        from lumen_argus_core.setup.env_file import add_env_to_env_file, write_env_file
 
         with (
             patch("lumen_argus_core.setup.env_file._ENV_FILE", self.env_file),
@@ -429,7 +422,7 @@ class TestProtection(unittest.TestCase):
 
     def test_write_env_file_defaults_to_cli_when_no_file_exists(self):
         """Fresh machine, no ``managed_by`` supplied → CLI default."""
-        from lumen_argus_core.setup_wizard import write_env_file
+        from lumen_argus_core.setup.env_file import write_env_file
 
         with (
             patch("lumen_argus_core.setup.env_file._ENV_FILE", self.env_file),
@@ -498,7 +491,7 @@ class TestProtection(unittest.TestCase):
         with (
             patch("lumen_argus_core.setup.env_file._ENV_FILE", self.env_file),
             patch("lumen_argus_core.setup.env_file._ARGUS_DIR", self.tmpdir),
-            patch("lumen_argus_core.setup_wizard.clear_launchctl_env_vars", fake_clear),
+            patch("lumen_argus_core.setup.protection.clear_launchctl_env_vars", fake_clear),
         ):
             enable_protection("http://localhost:8080")
             result = disable_protection()
@@ -525,7 +518,7 @@ class TestProtection(unittest.TestCase):
         with (
             patch("lumen_argus_core.setup.env_file._ENV_FILE", self.env_file),
             patch("lumen_argus_core.setup.env_file._ARGUS_DIR", self.tmpdir),
-            patch("lumen_argus_core.setup_wizard.clear_launchctl_env_vars", fake_clear),
+            patch("lumen_argus_core.setup.protection.clear_launchctl_env_vars", fake_clear),
         ):
             result = disable_protection()
 
@@ -781,7 +774,7 @@ class TestWindowsSetup(unittest.TestCase):
     @patch("platform.system", return_value="Windows")
     def test_detect_shell_profile_windows(self, _):
         """On Windows, should detect PowerShell profile."""
-        from lumen_argus_core.setup_wizard import _detect_shell_profile
+        from lumen_argus_core.setup.manifest import _detect_shell_profile
 
         ps_profile = os.path.join(self.tmpdir, "Documents", "PowerShell", "Microsoft.PowerShell_profile.ps1")
         os.makedirs(os.path.dirname(ps_profile))
